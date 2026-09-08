@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="ProcurementSystem.API/ProcurementSystem.API.csproj" />
+  <Project Path="ProcurementSystem.Core/ProcurementSystem.Core.csproj" />
+  <Project Path="ProcurementSystem.Infrastructure/ProcurementSystem.Infrastructure.csproj" />
+</Solution>
