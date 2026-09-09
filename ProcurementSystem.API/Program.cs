@@ -31,6 +31,12 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
+// Contractor Services (DEV 2)
+builder.Services.AddHttpClient<ITaxLookupService, TaxLookupService>();
+builder.Services.AddScoped<IPdfSecurityService, PdfSecurityService>();
+builder.Services.AddScoped<IFileStorageService, FileStorageService>();
+builder.Services.AddScoped<IContractorAuthService, ContractorAuthService>();
+
 // ==========================================
 // 3. AUTHENTICATION - JWT
 // ==========================================
@@ -153,6 +159,15 @@ if (app.Environment.IsDevelopment())
 
 // Static files (cho Frontend)
 app.UseStaticFiles();
+
+// Phục vụ tĩnh cho thư mục uploads
+var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
+if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
+    RequestPath = "/uploads"
+});
 
 // CORS
 app.UseCors("AllowAll");
