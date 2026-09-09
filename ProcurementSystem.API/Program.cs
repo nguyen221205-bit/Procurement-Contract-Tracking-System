@@ -8,6 +8,7 @@ using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Data;
 using ProcurementSystem.Infrastructure.Repositories;
 using ProcurementSystem.Infrastructure.Seeders;
+using ProcurementSystem.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,9 +27,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
-// TODO: Register your services here
-// builder.Services.AddScoped<IAuthService, AuthService>();
-// builder.Services.AddScoped<IBidPackageService, BidPackageService>();
+// Auth Services
+builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 // ==========================================
 // 3. AUTHENTICATION - JWT
