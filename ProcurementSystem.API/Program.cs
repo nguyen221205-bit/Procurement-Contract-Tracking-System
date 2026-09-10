@@ -36,6 +36,7 @@ builder.Services.AddHttpClient<ITaxLookupService, TaxLookupService>();
 builder.Services.AddScoped<IPdfSecurityService, PdfSecurityService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IContractorAuthService, ContractorAuthService>();
+builder.Services.AddScoped<IContractorService, ContractorService>();
 
 // ==========================================
 // 3. AUTHENTICATION - JWT
