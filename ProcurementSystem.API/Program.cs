@@ -37,6 +37,9 @@ builder.Services.AddScoped<IPdfSecurityService, PdfSecurityService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IContractorAuthService, ContractorAuthService>();
 
+// User Management Services
+builder.Services.AddScoped<IUserService, UserService>();
+
 // ==========================================
 // 3. AUTHENTICATION - JWT
 // ==========================================
