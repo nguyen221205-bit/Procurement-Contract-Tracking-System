@@ -31,11 +31,12 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
-// Contractor Services (DEV 2)
+// Contractor Services
 builder.Services.AddHttpClient<ITaxLookupService, TaxLookupService>();
 builder.Services.AddScoped<IPdfSecurityService, PdfSecurityService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IContractorAuthService, ContractorAuthService>();
+builder.Services.AddScoped<IContractorService, ContractorService>();
 
 // User Management Services
 builder.Services.AddScoped<IUserService, UserService>();
