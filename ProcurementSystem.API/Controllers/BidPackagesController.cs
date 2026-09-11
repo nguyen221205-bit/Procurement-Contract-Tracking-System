@@ -9,7 +9,6 @@ namespace ProcurementSystem.API.Controllers
 {
     [ApiController]
     [Route("api/bid-packages")]
-    [Route("api/[controller]")]
     public class BidPackagesController : ControllerBase
     {
         private readonly IBidPackageService _bidPackageService;
