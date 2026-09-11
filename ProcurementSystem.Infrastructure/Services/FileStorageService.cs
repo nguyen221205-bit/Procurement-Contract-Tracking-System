@@ -6,8 +6,8 @@ namespace ProcurementSystem.Infrastructure.Services
     public class FileStorageService : IFileStorageService
     {
         private readonly string _baseUploadPath;
-        private readonly string[] _allowedExtensions = { ".pdf", ".jpg", ".jpeg", ".png" };
-        private const long MaxFileSize = 10 * 1024 * 1024; // 10MB
+        private readonly string[] _allowedExtensions = { ".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".rar" };
+        private const long MaxFileSize = 50 * 1024 * 1024; // 50MB
 
         public FileStorageService()
         {
@@ -20,11 +20,11 @@ namespace ProcurementSystem.Infrastructure.Services
                 throw new ArgumentException("File không hợp lệ.");
 
             if (file.Length > MaxFileSize)
-                throw new InvalidOperationException("Kích thước file vượt quá 10MB.");
+                throw new InvalidOperationException("Kích thước file vượt quá 50MB.");
 
             var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!_allowedExtensions.Contains(ext))
-                throw new InvalidOperationException("Định dạng file không được phép. Chỉ chấp nhận .pdf, .jpg, .jpeg, .png.");
+                throw new InvalidOperationException("Định dạng file không được phép. Chỉ chấp nhận .pdf, .jpg, .jpeg, .png, .doc, .docx, .xls, .xlsx, .zip, .rar.");
 
             var folderPath = Path.Combine(_baseUploadPath, subFolder);
             if (!Directory.Exists(folderPath))
