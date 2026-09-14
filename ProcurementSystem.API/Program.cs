@@ -47,6 +47,9 @@ builder.Services.AddScoped<IBidPackageService, BidPackageService>();
 // Bid Submission Services
 builder.Services.AddScoped<IBidSubmissionService, BidSubmissionService>();
 
+// Contract Services
+builder.Services.AddScoped<IContractService, ContractService>();
+
 // ==========================================
 // 3. AUTHENTICATION - JWT
 // ==========================================

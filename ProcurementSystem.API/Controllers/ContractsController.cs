@@ -1,0 +1,266 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ProcurementSystem.Core.DTOs;
+using ProcurementSystem.Core.DTOs.Contract;
+using ProcurementSystem.Core.Interfaces;
+
+namespace ProcurementSystem.API.Controllers
+{
+    [ApiController]
+    [Authorize]
+    public class ContractsController : ControllerBase
+    {
+        private readonly IContractService _contractService;
+
+        public ContractsController(IContractService contractService)
+        {
+            _contractService = contractService;
+        }
+
+        /// <summary>
+        /// Danh sách hợp đồng phân trang (Admin/Procurement xem tất cả; Contractor xem của mình)
+        /// </summary>
+        [HttpGet("api/contracts")]
+        [Authorize]
+        [ProducesResponseType(typeof(ApiResponse<PaginatedList<ContractSummaryDto>>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<ApiResponse<PaginatedList<ContractSummaryDto>>>> GetContracts(
+            [FromQuery] ContractFilterParams filter)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<PaginatedList<ContractSummaryDto>>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _contractService.GetContractsAsync(filter, userId.Value, isInternalStaff);
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Xem chi tiết hợp đồng kèm mốc thanh toán
+        /// </summary>
+        [HttpGet("api/contracts/{id:int}")]
+        [Authorize]
+        [ProducesResponseType(typeof(ApiResponse<ContractDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ContractDto>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<ContractDto>>> GetContractById(int id)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<ContractDto>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _contractService.GetContractByIdAsync(id, userId.Value, isInternalStaff);
+
+            if (!result.Success)
+            {
+                return NotFound(result);
+            }
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Tạo hợp đồng kinh tế từ kết quả trúng thầu
+        /// </summary>
+        [HttpPost("api/contracts")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<ContractDto>), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ApiResponse<ContractDto>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<ContractDto>>> CreateContract(
+            [FromBody] CreateContractRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(ApiResponse<ContractDto>.Fail(errors));
+            }
+
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<ContractDto>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var result = await _contractService.CreateContractFromAwardedBidAsync(request, userId.Value);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return StatusCode(StatusCodes.Status201Created, result);
+        }
+
+        /// <summary>
+        /// Cập nhật điều khoản, giá trị và thời hạn hợp đồng
+        /// </summary>
+        [HttpPut("api/contracts/{id:int}")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<ContractDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ContractDto>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<ContractDto>>> UpdateContract(
+            int id,
+            [FromBody] UpdateContractRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<ContractDto>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var result = await _contractService.UpdateContractAsync(id, request, userId.Value);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Đổi trạng thái hợp đồng (Draft → Active → Completed / Terminated)
+        /// </summary>
+        [HttpPut("api/contracts/{id:int}/status")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<ContractDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ContractDto>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<ContractDto>>> ChangeStatus(
+            int id,
+            [FromBody] ChangeContractStatusRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(ApiResponse<ContractDto>.Fail(errors));
+            }
+
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<ContractDto>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var result = await _contractService.ChangeStatusAsync(id, request, userId.Value);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Upload file PDF hợp đồng có chữ ký scan
+        /// </summary>
+        [HttpPost("api/contracts/{id:int}/scanned-file")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<string>>> UploadScannedFile(
+            int id,
+            IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(ApiResponse<string>.Fail("File tải lên không hợp lệ."));
+            }
+
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var result = await _contractService.UploadScannedContractAsync(id, file, userId.Value);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Thêm mốc thanh toán nghiệm thu vào hợp đồng
+        /// </summary>
+        [HttpPost("api/contracts/{id:int}/milestones")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<ContractMilestoneDto>), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ApiResponse<ContractMilestoneDto>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<ContractMilestoneDto>>> AddMilestone(
+            int id,
+            [FromBody] CreateMilestoneRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(ApiResponse<ContractMilestoneDto>.Fail(errors));
+            }
+
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<ContractMilestoneDto>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var result = await _contractService.AddMilestoneAsync(id, request, userId.Value);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return StatusCode(StatusCodes.Status201Created, result);
+        }
+
+        /// <summary>
+        /// Xóa mốc thanh toán khỏi hợp đồng
+        /// </summary>
+        [HttpDelete("api/contracts/{id:int}/milestones/{milestoneId:int}")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<bool>>> DeleteMilestone(int id, int milestoneId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<bool>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var result = await _contractService.DeleteMilestoneAsync(id, milestoneId, userId.Value);
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        private int? GetCurrentUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            return int.TryParse(userIdClaim, out int userId) ? userId : null;
+        }
+    }
+}
