@@ -54,6 +54,16 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<EvaluationCriteriaDto>.Fail("Không thể thêm tiêu chí khi gói thầu đang trong giai đoạn chấm điểm hoặc đã ký hợp đồng.");
             }
 
+            if (request.MaxScore <= 0)
+            {
+                return ApiResponse<EvaluationCriteriaDto>.Fail("Thang điểm tối đa phải lớn hơn 0.");
+            }
+
+            if (request.Weight <= 0)
+            {
+                return ApiResponse<EvaluationCriteriaDto>.Fail("Trọng số phải lớn hơn 0.");
+            }
+
             var isDuplicate = await _unitOfWork.Repository<EvaluationCriteria>()
                 .ExistsAsync(c => c.BidPackageId == packageId && c.Name.ToLower() == request.Name.Trim().ToLower());
             if (isDuplicate)
@@ -104,6 +114,33 @@ namespace ProcurementSystem.Infrastructure.Services
             if (criteria.BidPackage.Status == BidPackageStatus.Evaluating || criteria.BidPackage.Status == BidPackageStatus.Contracted)
             {
                 return ApiResponse<EvaluationCriteriaDto>.Fail("Không thể chỉnh sửa tiêu chí khi gói thầu đang trong giai đoạn chấm điểm hoặc đã ký hợp đồng.");
+            }
+
+            if (request.MaxScore <= 0)
+            {
+                return ApiResponse<EvaluationCriteriaDto>.Fail("Thang điểm tối đa phải lớn hơn 0.");
+            }
+
+            if (request.Weight <= 0)
+            {
+                return ApiResponse<EvaluationCriteriaDto>.Fail("Trọng số phải lớn hơn 0.");
+            }
+
+            // Kiểm tra trùng tên với tiêu chí khác cùng gói thầu
+            var isDuplicate = await _unitOfWork.Repository<EvaluationCriteria>()
+                .ExistsAsync(c => c.BidPackageId == criteria.BidPackageId 
+                               && c.Id != criteriaId 
+                               && c.Name.ToLower() == request.Name.Trim().ToLower());
+            if (isDuplicate)
+            {
+                return ApiResponse<EvaluationCriteriaDto>.Fail($"Tiêu chí '{request.Name.Trim()}' đã tồn tại trong gói thầu.");
+            }
+
+            // Kiểm tra xem tiêu chí đã có điểm chấm chưa (nếu có, không cho đổi MaxScore hoặc Weight làm lệch bảng điểm)
+            var hasScores = await _unitOfWork.Repository<EvaluationScore>().ExistsAsync(s => s.CriteriaId == criteriaId);
+            if (hasScores && (criteria.MaxScore != request.MaxScore || criteria.Weight != request.Weight))
+            {
+                return ApiResponse<EvaluationCriteriaDto>.Fail("Tiêu chí này đã có điểm đánh giá trong hệ thống, không thể thay đổi thang điểm tối đa hoặc trọng số.");
             }
 
             criteria.Name = request.Name.Trim();
@@ -172,6 +209,24 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<List<EvaluationScoreDto>>.Fail("Không tìm thấy hồ sơ dự thầu.");
             }
 
+            // Kiểm tra trạng thái hồ sơ dự thầu
+            if (submission.Status == "Withdrawn")
+            {
+                return ApiResponse<List<EvaluationScoreDto>>.Fail("Không thể chấm điểm hồ sơ dự thầu đã rút lui khỏi gói thầu.");
+            }
+
+            if (submission.Status == "Selected" || submission.Status == "Rejected")
+            {
+                return ApiResponse<List<EvaluationScoreDto>>.Fail("Gói thầu đã có kết quả phê duyệt trúng thầu chính thức, không thể thay đổi điểm đánh giá.");
+            }
+
+            // Kiểm tra tài khoản giám khảo
+            var evaluator = await _unitOfWork.Repository<User>().GetByIdAsync(evaluatorId);
+            if (evaluator == null || !evaluator.IsActive)
+            {
+                return ApiResponse<List<EvaluationScoreDto>>.Fail("Tài khoản giám khảo không tồn tại hoặc đã bị vô hiệu hóa.");
+            }
+
             var package = submission.BidPackage;
 
             // Ràng buộc nghiệp vụ: Không được chấm điểm khi gói thầu vẫn đang Open (chưa hết hạn/chưa đóng thầu)
@@ -191,6 +246,23 @@ namespace ProcurementSystem.Infrastructure.Services
                 package.Status = BidPackageStatus.Evaluating;
                 package.UpdatedAt = DateTime.UtcNow;
                 _unitOfWork.Repository<BidPackage>().Update(package);
+            }
+
+            if (request.Scores == null || !request.Scores.Any())
+            {
+                return ApiResponse<List<EvaluationScoreDto>>.Fail("Danh sách điểm chấm không được để trống.");
+            }
+
+            // Kiểm tra tiêu chí bị trùng lặp trong cùng 1 phiếu chấm
+            var duplicateCriteriaIds = request.Scores
+                .GroupBy(s => s.CriteriaId)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicateCriteriaIds.Any())
+            {
+                return ApiResponse<List<EvaluationScoreDto>>.Fail($"Danh sách chấm điểm có tiêu chí bị trùng lặp (Mã tiêu chí ID: {string.Join(", ", duplicateCriteriaIds)}). Mỗi tiêu chí chỉ được chấm một lần trong một phiếu chấm.");
             }
 
             // Lấy danh sách tiêu chí của gói thầu
@@ -352,15 +424,30 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Gói thầu đã ký hợp đồng, không thể phê duyệt lại.");
             }
 
+            if (package.Status != BidPackageStatus.Evaluating)
+            {
+                return ApiResponse<bool>.Fail($"Chỉ được phê duyệt kết quả khi gói thầu ở trạng thái 'Evaluating' (Chấm điểm). Trạng thái hiện tại: '{package.Status}'.");
+            }
+
             var submissions = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
                 .Where(s => s.BidPackageId == packageId)
                 .ToListAsync();
 
+            if (!submissions.Any())
+            {
+                return ApiResponse<bool>.Fail("Gói thầu không có hồ sơ dự thầu nào để phê duyệt.");
+            }
+
             var selectedSubmission = submissions.FirstOrDefault(s => s.Id == selectedSubmissionId);
             if (selectedSubmission == null)
             {
                 return ApiResponse<bool>.Fail("Hồ sơ dự thầu được chọn không thuộc gói thầu này.");
+            }
+
+            if (!selectedSubmission.TotalScore.HasValue || selectedSubmission.Status != "Evaluated")
+            {
+                return ApiResponse<bool>.Fail("Hồ sơ dự thầu được chọn chưa hoàn tất quá trình chấm điểm đánh giá.");
             }
 
             // Đánh dấu hồ sơ trúng thầu và từ chối các hồ sơ còn lại
