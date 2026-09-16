@@ -17,6 +17,11 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<ContractDto>> GetContractByIdAsync(int id, int userId, bool isInternalStaff);
 
         /// <summary>
+        /// Lấy thông tin nhà thầu trúng thầu để pre-fill sang hợp đồng
+        /// </summary>
+        Task<ApiResponse<AwardedBidInfoDto>> GetAwardedBidForContractAsync(int packageId);
+
+        /// <summary>
         /// Tạo hợp đồng từ kết quả trúng thầu (chỉ Admin/Procurement)
         /// </summary>
         Task<ApiResponse<ContractDto>> CreateContractFromAwardedBidAsync(CreateContractRequest request, int userId);

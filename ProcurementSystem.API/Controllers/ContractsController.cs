@@ -66,6 +66,23 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
+        /// Lấy thông tin nhà thầu trúng thầu để pre-fill dữ liệu sang hợp đồng
+        /// Gọi trước khi POST /api/contracts để lấy ContractorId, giá đề xuất và số HĐ tự động
+        /// Quyền hạn: Admin, Procurement
+        /// </summary>
+        [HttpGet("api/contracts/awarded-bid/{packageId:int}")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<AwardedBidInfoDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<AwardedBidInfoDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<AwardedBidInfoDto>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<AwardedBidInfoDto>>> GetAwardedBidForContract(int packageId)
+        {
+            var result = await _contractService.GetAwardedBidForContractAsync(packageId);
+            if (!result.Success) return BadRequest(result);
+            return Ok(result);
+        }
+
+        /// <summary>
         /// Tạo hợp đồng kinh tế từ kết quả trúng thầu
         /// </summary>
         [HttpPost("api/contracts")]

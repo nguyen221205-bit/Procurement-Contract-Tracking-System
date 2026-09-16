@@ -128,6 +128,79 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<ContractDto>.Ok(MapToDto(contract));
         }
 
+        public async Task<ApiResponse<AwardedBidInfoDto>> GetAwardedBidForContractAsync(int packageId)
+        {
+            // Tìm gói thầu
+            var bidPackage = await _unitOfWork.Repository<BidPackage>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(bp => bp.Id == packageId);
+
+            if (bidPackage == null)
+            {
+                return ApiResponse<AwardedBidInfoDto>.Fail("Không tìm thấy gói thầu.");
+            }
+
+            // Tìm hồ sơ trúng thầu (Selected)
+            var awardedSubmission = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Include(s => s.Contractor)
+                    .ThenInclude(c => c.User)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.BidPackageId == packageId && s.Status == "Selected");
+
+            if (awardedSubmission == null)
+            {
+                return ApiResponse<AwardedBidInfoDto>.Fail(
+                    "Gói thầu chưa hoàn tất phê duyệt kết quả trúng thầu. " +
+                    "Vui lòng thực hiện 'Phê duyệt trúng thầu' (Finalize Evaluation) trước khi tạo hợp đồng.");
+            }
+
+            // Kiểm tra đã có hợp đồng chưa
+            var existingContract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.BidPackageId == packageId);
+
+            // Đếm tổng số hợp đồng để sinh số thứ tự tự động
+            var contractCount = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .CountAsync();
+            var suggestedNumber = $"HD-{DateTime.UtcNow.Year}-{bidPackage.Code}-{contractCount + 1:D3}";
+
+            var contractor = awardedSubmission.Contractor;
+
+            var dto = new AwardedBidInfoDto
+            {
+                BidPackageId    = bidPackage.Id,
+                PackageCode     = bidPackage.Code,
+                PackageName     = bidPackage.Name,
+                EstimatedBudget = bidPackage.Budget,
+
+                ContractorId    = contractor.Id,
+                CompanyName     = contractor.CompanyName,
+                TaxCode         = contractor.TaxCode,
+                Email           = contractor.User?.Email,
+                Phone           = contractor.User?.Phone,
+                Address         = contractor.Address,
+
+                SubmissionId            = awardedSubmission.Id,
+                TotalScore              = awardedSubmission.TotalScore,
+                Rank                    = awardedSubmission.Rank,
+                SuggestedContractValue  = bidPackage.Budget,
+
+                IsAwarded              = true,
+                HasContract            = existingContract != null,
+                ExistingContractId     = existingContract?.Id,
+                SuggestedContractNumber = suggestedNumber
+            };
+
+            return ApiResponse<AwardedBidInfoDto>.Ok(dto,
+                existingContract != null
+                    ? $"Cảnh báo: Gói thầu này đã có hợp đồng #{existingContract.Id}. Xem chi tiết trước khi tạo mới."
+                    : "Thông tin trúng thầu sẵn sàng để lập hợp đồng.");
+        }
+
         public async Task<ApiResponse<ContractDto>> CreateContractFromAwardedBidAsync(
             CreateContractRequest request, int userId)
         {
@@ -174,18 +247,33 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<ContractDto>.Fail("Ngày kết thúc phải sau ngày bắt đầu.");
             }
 
-            // 5. Tạo hợp đồng
+            // 5. Kiểm soát dự toán ngân sách
+            if (request.Value > bidPackage.Budget)
+            {
+                return ApiResponse<ContractDto>.Fail(
+                    $"Giá trị hợp đồng ({request.Value:N0} VNĐ) vượt quá dự toán được duyệt của gói thầu ({bidPackage.Budget:N0} VNĐ). " +
+                    "Vui lòng điều chỉnh giá trị hợp đồng cho phù hợp.");
+            }
+
+            // 6. Tự động sinh số hợp đồng nếu client không truyền
+            if (string.IsNullOrWhiteSpace(request.ContractNumber))
+            {
+                var existingCount = await _unitOfWork.Repository<Contract>().Query().CountAsync();
+                request.ContractNumber = $"HD-{DateTime.UtcNow.Year}-{bidPackage.Code}-{existingCount + 1:D3}";
+            }
+
+            // 7. Tạo hợp đồng
             var contract = new Contract
             {
-                BidPackageId = request.BidPackageId,
-                ContractorId = request.ContractorId,
+                BidPackageId   = request.BidPackageId,
+                ContractorId   = request.ContractorId,
                 ContractNumber = request.ContractNumber,
-                Value = request.Value,
-                Terms = request.Terms,
-                StartDate = request.StartDate,
-                EndDate = request.EndDate,
-                Status = ContractStatus.Draft,
-                CreatedAt = DateTime.UtcNow
+                Value          = request.Value,
+                Terms          = request.Terms,
+                StartDate      = request.StartDate,
+                EndDate        = request.EndDate,
+                Status         = ContractStatus.Draft,
+                CreatedAt      = DateTime.UtcNow
             };
 
             await _unitOfWork.Repository<Contract>().AddAsync(contract);
@@ -200,7 +288,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == contract.Id);
 
-            return ApiResponse<ContractDto>.Ok(MapToDto(created!), "Tạo hợp đồng thành công.");
+            return ApiResponse<ContractDto>.Ok(MapToDto(created!), $"Tạo hợp đồng #{request.ContractNumber} thành công.");
         }
 
         public async Task<ApiResponse<ContractDto>> UpdateContractAsync(
