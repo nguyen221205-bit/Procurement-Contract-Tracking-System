@@ -14,6 +14,7 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<List<EvaluationScoreDto>>> GetScoresBySubmissionAsync(int submissionId);
         Task<ApiResponse<List<SubmissionRankingDto>>> GetPackageRankingsAsync(int packageId);
         Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId);
+        Task<ApiResponse<AwardedBidDto>> GetAwardedBidAsync(int packageId);
         Task<ApiResponse<bool>> FinalizeEvaluationAsync(int packageId, int selectedSubmissionId, int userId, bool isAdmin);
     }
 }

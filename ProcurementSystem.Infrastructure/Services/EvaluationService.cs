@@ -561,6 +561,88 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<EvaluationSummaryDto>.Ok(summary);
         }
 
+        public async Task<ApiResponse<AwardedBidDto>> GetAwardedBidAsync(int packageId)
+        {
+            var package = await _unitOfWork.Repository<BidPackage>()
+                .Query()
+                .Where(bp => bp.Id == packageId)
+                .AsNoTracking()
+                .Select(bp => new
+                {
+                    bp.Id,
+                    bp.Code,
+                    bp.Name,
+                    bp.Budget,
+                    bp.Status
+                })
+                .FirstOrDefaultAsync();
+
+            if (package == null)
+            {
+                return ApiResponse<AwardedBidDto>.Fail("Không tìm thấy gói thầu.");
+            }
+
+            // Tìm hồ sơ trúng thầu đã được phê duyệt chính thức (Status == "Selected")
+            var awardedSubmission = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Where(s => s.BidPackageId == packageId && s.Status == "Selected")
+                .Include(s => s.Contractor)
+                    .ThenInclude(c => c.User)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
+
+            if (awardedSubmission == null)
+            {
+                return ApiResponse<AwardedBidDto>.Fail(
+                    "Gói thầu chưa có kết quả phê duyệt trúng thầu chính thức. Vui lòng hoàn tất quá trình đánh giá và phê duyệt nhà thầu trúng thầu trước khi lập hợp đồng.");
+            }
+
+            // Kiểm tra xem gói thầu này đã được lập hợp đồng trong hệ thống chưa
+            var existingContract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Where(c => c.BidPackageId == packageId)
+                .AsNoTracking()
+                .Select(c => new
+                {
+                    c.Id,
+                    c.ContractNumber,
+                    c.Status
+                })
+                .FirstOrDefaultAsync();
+
+            var contractor = awardedSubmission.Contractor;
+            var contractorUser = contractor?.User;
+
+            var dto = new AwardedBidDto
+            {
+                BidPackageId = package.Id,
+                PackageCode = package.Code,
+                PackageName = package.Name,
+                Budget = package.Budget,
+                PackageStatus = package.Status.ToString(),
+
+                ContractorId = awardedSubmission.ContractorId,
+                CompanyName = contractor?.CompanyName ?? string.Empty,
+                TaxCode = contractor?.TaxCode,
+                Email = contractorUser?.Email,
+                Phone = contractorUser?.Phone,
+                Address = contractor?.Address,
+
+                SubmissionId = awardedSubmission.Id,
+                TotalScore = awardedSubmission.TotalScore,
+                Rank = awardedSubmission.Rank,
+                AwardedAt = awardedSubmission.SubmittedAt,
+
+                HasContract = existingContract != null,
+                ExistingContractId = existingContract?.Id,
+                ExistingContractNumber = existingContract?.ContractNumber,
+                ContractStatus = existingContract?.Status.ToString(),
+                IsReadyForContract = existingContract == null && package.Status != BidPackageStatus.Contracted
+            };
+
+            return ApiResponse<AwardedBidDto>.Ok(dto, "Lấy thông tin nhà thầu trúng thầu thành công.");
+        }
+
         private async Task CalculateRankingsForPackageAsync(int packageId)
         {
             var criteriaList = await _unitOfWork.Repository<EvaluationCriteria>()
