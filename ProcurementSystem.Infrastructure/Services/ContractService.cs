@@ -251,15 +251,33 @@ namespace ProcurementSystem.Infrastructure.Services
             if (request.Value > bidPackage.Budget)
             {
                 return ApiResponse<ContractDto>.Fail(
-                    $"Giá trị hợp đồng ({request.Value:N0} VNĐ) vượt quá dự toán được duyệt của gói thầu ({bidPackage.Budget:N0} VNĐ). " +
-                    "Vui lòng điều chỉnh giá trị hợp đồng cho phù hợp.");
+                    $"Giá trị hợp đồng ({request.Value:N0} VNĐ) không được vượt quá ngân sách dự toán của gói thầu ({bidPackage.Budget:N0} VNĐ).");
             }
 
-            // 6. Tự động sinh số hợp đồng nếu client không truyền
+            // 6. Tự động sinh số hợp đồng hoặc kiểm tra trùng lặp
             if (string.IsNullOrWhiteSpace(request.ContractNumber))
             {
-                var existingCount = await _unitOfWork.Repository<Contract>().Query().CountAsync();
-                request.ContractNumber = $"HD-{DateTime.UtcNow.Year}-{bidPackage.Code}-{existingCount + 1:D3}";
+                var seq = await _unitOfWork.Repository<Contract>().Query().CountAsync() + 1;
+                string candidateNumber;
+                do
+                {
+                    candidateNumber = $"HD-{DateTime.UtcNow.Year}-{bidPackage.Code}-{seq:D3}";
+                    seq++;
+                } while (await _unitOfWork.Repository<Contract>().ExistsAsync(c => c.ContractNumber == candidateNumber));
+                
+                request.ContractNumber = candidateNumber;
+            }
+            else
+            {
+                request.ContractNumber = request.ContractNumber.Trim();
+                var isDuplicateNumber = await _unitOfWork.Repository<Contract>()
+                    .ExistsAsync(c => c.ContractNumber == request.ContractNumber);
+
+                if (isDuplicateNumber)
+                {
+                    return ApiResponse<ContractDto>.Fail(
+                        $"Số hợp đồng '{request.ContractNumber}' đã tồn tại trong hệ thống. Vui lòng chọn số khác.");
+                }
             }
 
             // 7. Tạo hợp đồng
