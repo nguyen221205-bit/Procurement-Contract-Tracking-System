@@ -359,46 +359,40 @@ namespace ProcurementSystem.Infrastructure.Services
 
         public async Task<ApiResponse<List<SubmissionRankingDto>>> GetPackageRankingsAsync(int packageId)
         {
-            var submissions = await _unitOfWork.Repository<BidSubmission>()
+            var result = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
-                .Include(s => s.Contractor)
-                .Include(s => s.EvaluationScores)
-                    .ThenInclude(es => es.Criteria)
-                .Include(s => s.EvaluationScores)
-                    .ThenInclude(es => es.Evaluator)
                 .Where(s => s.BidPackageId == packageId)
                 .AsNoTracking()
                 .OrderBy(s => s.Rank == null)
                 .ThenBy(s => s.Rank)
                 .ThenByDescending(s => s.TotalScore)
-                .ToListAsync();
-
-            var result = submissions.Select(s => new SubmissionRankingDto
-            {
-                SubmissionId = s.Id,
-                BidPackageId = s.BidPackageId,
-                ContractorId = s.ContractorId,
-                CompanyName = s.Contractor.CompanyName,
-                TaxCode = s.Contractor.TaxCode,
-                TotalScore = s.TotalScore,
-                Rank = s.Rank,
-                Status = s.Status,
-                SubmittedAt = s.SubmittedAt,
-                Scores = s.EvaluationScores.Select(es => new EvaluationScoreDto
+                .Select(s => new SubmissionRankingDto
                 {
-                    Id = es.Id,
-                    BidSubmissionId = es.BidSubmissionId,
-                    CriteriaId = es.CriteriaId,
-                    CriteriaName = es.Criteria?.Name ?? string.Empty,
-                    MaxScore = es.Criteria?.MaxScore ?? 0,
-                    Weight = es.Criteria?.Weight ?? 1,
-                    EvaluatorId = es.EvaluatorId,
-                    EvaluatorName = es.Evaluator?.FullName,
-                    Score = es.Score,
-                    Comment = es.Comment,
-                    ScoredAt = es.ScoredAt
-                }).ToList()
-            }).ToList();
+                    SubmissionId = s.Id,
+                    BidPackageId = s.BidPackageId,
+                    ContractorId = s.ContractorId,
+                    CompanyName = s.Contractor.CompanyName,
+                    TaxCode = s.Contractor.TaxCode,
+                    TotalScore = s.TotalScore,
+                    Rank = s.Rank,
+                    Status = s.Status,
+                    SubmittedAt = s.SubmittedAt,
+                    Scores = s.EvaluationScores.Select(es => new EvaluationScoreDto
+                    {
+                        Id = es.Id,
+                        BidSubmissionId = es.BidSubmissionId,
+                        CriteriaId = es.CriteriaId,
+                        CriteriaName = es.Criteria.Name,
+                        MaxScore = es.Criteria.MaxScore,
+                        Weight = es.Criteria.Weight,
+                        EvaluatorId = es.EvaluatorId,
+                        EvaluatorName = es.Evaluator.FullName,
+                        Score = es.Score,
+                        Comment = es.Comment,
+                        ScoredAt = es.ScoredAt
+                    }).ToList()
+                })
+                .ToListAsync();
 
             return ApiResponse<List<SubmissionRankingDto>>.Ok(result);
         }
@@ -469,17 +463,201 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<bool>.Ok(true, $"Đã phê duyệt nhà thầu (Mã hồ sơ: #{selectedSubmissionId}) trúng thầu thành công. Gói thầu sẵn sàng để ký hợp đồng.");
         }
 
+        public async Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId)
+        {
+            var package = await _unitOfWork.Repository<BidPackage>()
+                .Query()
+                .Where(bp => bp.Id == packageId)
+                .AsNoTracking()
+                .Select(bp => new
+                {
+                    bp.Id,
+                    bp.Code,
+                    bp.Name,
+                    bp.Budget,
+                    bp.Status
+                })
+                .FirstOrDefaultAsync();
+
+            if (package == null)
+            {
+                return ApiResponse<EvaluationSummaryDto>.Fail("Không tìm thấy gói thầu.");
+            }
+
+            // Thống kê tiêu chí
+            var criteriaStats = await _unitOfWork.Repository<EvaluationCriteria>()
+                .Query()
+                .Where(c => c.BidPackageId == packageId)
+                .AsNoTracking()
+                .GroupBy(c => c.BidPackageId)
+                .Select(g => new
+                {
+                    TotalCriteria = g.Count(),
+                    TotalWeight = g.Sum(c => c.Weight)
+                })
+                .FirstOrDefaultAsync();
+
+            // Thống kê hồ sơ dự thầu
+            var submissionsQuery = _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Where(s => s.BidPackageId == packageId)
+                .AsNoTracking();
+
+            var totalSubmissions = await submissionsQuery.CountAsync();
+            var evaluatedSubmissions = await submissionsQuery
+                .CountAsync(s => s.Status == "Evaluated" || s.Status == "Selected" || s.Status == "Rejected");
+            var pendingSubmissions = totalSubmissions - evaluatedSubmissions;
+
+            // Thống kê điểm số (chỉ lấy các hồ sơ đã có điểm)
+            var scoredQuery = submissionsQuery.Where(s => s.TotalScore.HasValue);
+            decimal? highestScore = null;
+            decimal? lowestScore = null;
+            decimal? averageScore = null;
+
+            if (await scoredQuery.AnyAsync())
+            {
+                highestScore = await scoredQuery.MaxAsync(s => s.TotalScore);
+                lowestScore = await scoredQuery.MinAsync(s => s.TotalScore);
+                var avg = await scoredQuery.AverageAsync(s => s.TotalScore!.Value);
+                averageScore = Math.Round(avg, 2);
+            }
+
+            // Thông tin hồ sơ trúng thầu (nếu đã phê duyệt)
+            var winningSub = await submissionsQuery
+                .Where(s => s.Status == "Selected")
+                .Select(s => new
+                {
+                    s.Id,
+                    s.ContractorId,
+                    CompanyName = s.Contractor.CompanyName,
+                    TaxCode = s.Contractor.TaxCode,
+                    s.TotalScore
+                })
+                .FirstOrDefaultAsync();
+
+            var summary = new EvaluationSummaryDto
+            {
+                BidPackageId = package.Id,
+                BidPackageCode = package.Code,
+                BidPackageName = package.Name,
+                Budget = package.Budget,
+                PackageStatus = package.Status.ToString(),
+                TotalCriteria = criteriaStats?.TotalCriteria ?? 0,
+                TotalWeight = criteriaStats?.TotalWeight ?? 0,
+                TotalSubmissions = totalSubmissions,
+                EvaluatedSubmissions = evaluatedSubmissions,
+                PendingSubmissions = pendingSubmissions,
+                HighestScore = highestScore,
+                LowestScore = lowestScore,
+                AverageScore = averageScore,
+                IsFinalized = winningSub != null,
+                WinningSubmissionId = winningSub?.Id,
+                WinningContractorId = winningSub?.ContractorId,
+                WinningContractorName = winningSub?.CompanyName,
+                WinningContractorTaxCode = winningSub?.TaxCode,
+                WinningScore = winningSub?.TotalScore
+            };
+
+            return ApiResponse<EvaluationSummaryDto>.Ok(summary);
+        }
+
+        public async Task<ApiResponse<AwardedBidDto>> GetAwardedBidAsync(int packageId)
+        {
+            var package = await _unitOfWork.Repository<BidPackage>()
+                .Query()
+                .Where(bp => bp.Id == packageId)
+                .AsNoTracking()
+                .Select(bp => new
+                {
+                    bp.Id,
+                    bp.Code,
+                    bp.Name,
+                    bp.Budget,
+                    bp.Status
+                })
+                .FirstOrDefaultAsync();
+
+            if (package == null)
+            {
+                return ApiResponse<AwardedBidDto>.Fail("Không tìm thấy gói thầu.");
+            }
+
+            // Tìm hồ sơ trúng thầu đã được phê duyệt chính thức (Status == "Selected")
+            var awardedSubmission = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Where(s => s.BidPackageId == packageId && s.Status == "Selected")
+                .Include(s => s.Contractor)
+                    .ThenInclude(c => c.User)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
+
+            if (awardedSubmission == null)
+            {
+                return ApiResponse<AwardedBidDto>.Fail(
+                    "Gói thầu chưa có kết quả phê duyệt trúng thầu chính thức. Vui lòng hoàn tất quá trình đánh giá và phê duyệt nhà thầu trúng thầu trước khi lập hợp đồng.");
+            }
+
+            // Kiểm tra xem gói thầu này đã được lập hợp đồng trong hệ thống chưa
+            var existingContract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Where(c => c.BidPackageId == packageId)
+                .AsNoTracking()
+                .Select(c => new
+                {
+                    c.Id,
+                    c.ContractNumber,
+                    c.Status
+                })
+                .FirstOrDefaultAsync();
+
+            var contractor = awardedSubmission.Contractor;
+            var contractorUser = contractor?.User;
+
+            var dto = new AwardedBidDto
+            {
+                BidPackageId = package.Id,
+                PackageCode = package.Code,
+                PackageName = package.Name,
+                Budget = package.Budget,
+                PackageStatus = package.Status.ToString(),
+
+                ContractorId = awardedSubmission.ContractorId,
+                CompanyName = contractor?.CompanyName ?? string.Empty,
+                TaxCode = contractor?.TaxCode,
+                Email = contractorUser?.Email,
+                Phone = contractorUser?.Phone,
+                Address = contractor?.Address,
+
+                SubmissionId = awardedSubmission.Id,
+                TotalScore = awardedSubmission.TotalScore,
+                Rank = awardedSubmission.Rank,
+                AwardedAt = awardedSubmission.SubmittedAt,
+
+                HasContract = existingContract != null,
+                ExistingContractId = existingContract?.Id,
+                ExistingContractNumber = existingContract?.ContractNumber,
+                ContractStatus = existingContract?.Status.ToString(),
+                IsReadyForContract = existingContract == null && package.Status != BidPackageStatus.Contracted
+            };
+
+            return ApiResponse<AwardedBidDto>.Ok(dto, "Lấy thông tin nhà thầu trúng thầu thành công.");
+        }
+
         private async Task CalculateRankingsForPackageAsync(int packageId)
         {
             var criteriaList = await _unitOfWork.Repository<EvaluationCriteria>()
                 .Query()
                 .Where(c => c.BidPackageId == packageId)
                 .AsNoTracking()
+                .Select(c => new { c.Id, c.Weight })
                 .ToListAsync();
 
             if (!criteriaList.Any()) return;
 
             var totalWeight = criteriaList.Sum(c => c.Weight);
+            if (totalWeight <= 0) return;
+
+            var criteriaWeights = criteriaList.ToDictionary(c => c.Id, c => c.Weight);
 
             var submissions = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
@@ -493,23 +671,27 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 // Tính điểm bình quân từng tiêu chí (nếu có nhiều giám khảo chấm cùng tiêu chí)
                 decimal weightedScoreSum = 0;
-                foreach (var criteria in criteriaList)
+                foreach (var (criteriaId, weight) in criteriaWeights)
                 {
                     var scoresForCriteria = sub.EvaluationScores
-                        .Where(es => es.CriteriaId == criteria.Id)
+                        .Where(es => es.CriteriaId == criteriaId)
+                        .Select(es => es.Score)
                         .ToList();
 
                     if (scoresForCriteria.Any())
                     {
-                        var avgScore = scoresForCriteria.Average(es => es.Score);
-                        weightedScoreSum += avgScore * criteria.Weight;
+                        var avgScore = scoresForCriteria.Average();
+                        weightedScoreSum += avgScore * weight;
                     }
                 }
 
                 // Điểm tổng hợp theo trọng số = Tổng (Điểm bình quân tiêu chí * Trọng số) / Tổng trọng số
-                var finalTotalScore = totalWeight > 0 ? (weightedScoreSum / totalWeight) : 0;
+                var finalTotalScore = weightedScoreSum / totalWeight;
                 sub.TotalScore = Math.Round(finalTotalScore, 2);
-                sub.Status = "Evaluated";
+                if (sub.Status != "Selected" && sub.Status != "Rejected")
+                {
+                    sub.Status = "Evaluated";
+                }
             }
 
             // Tự động sắp xếp phân hạng Rank 1, 2, 3...

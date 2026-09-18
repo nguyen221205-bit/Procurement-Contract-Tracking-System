@@ -147,6 +147,44 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
+        /// Lấy báo cáo thống kê đánh giá tổng hợp của gói thầu (Dashboard Summary)
+        /// Thống kê số lượng hồ sơ, tiến độ chấm điểm, điểm cao nhất/thấp nhất/trung bình và kết quả trúng thầu
+        /// Quyền hạn: Admin, Procurement, Evaluator
+        /// </summary>
+        [HttpGet("packages/{packageId:int}/summary")]
+        [Authorize(Roles = "Admin,Procurement,Evaluator")]
+        [ProducesResponseType(typeof(ApiResponse<EvaluationSummaryDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<EvaluationSummaryDto>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<EvaluationSummaryDto>>> GetEvaluationSummary(int packageId)
+        {
+            var result = await _evaluationService.GetEvaluationSummaryAsync(packageId);
+            if (!result.Success) return NotFound(result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Lấy thông tin nhà thầu trúng thầu để bàn giao sang phân hệ Quản lý Hợp đồng (Awarded Bid Export)
+        /// Trả về thông tin gói thầu, nhà thầu trúng thầu (Selected), điểm số và trạng thái hợp đồng liên thông
+        /// Quyền hạn: Admin, Procurement
+        /// </summary>
+        [HttpGet("packages/{packageId:int}/awarded-bid")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<AwardedBidDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<AwardedBidDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<AwardedBidDto>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<AwardedBidDto>>> GetAwardedBid(int packageId)
+        {
+            var result = await _evaluationService.GetAwardedBidAsync(packageId);
+            if (!result.Success)
+            {
+                if (result.Message.Contains("Không tìm thấy"))
+                    return NotFound(result);
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+
+        /// <summary>
         /// Phê duyệt nhà thầu trúng thầu (Selected) và từ chối các hồ sơ còn lại
         /// Sẵn sàng chuyển sang giai đoạn ký kết Hợp đồng
         /// Quyền hạn: Admin, Procurement
