@@ -40,6 +40,25 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
+        /// Tra cứu lịch sử hợp đồng theo nhà thầu
+        /// </summary>
+        [HttpGet("api/contracts/contractor/{contractorId:int}")]
+        [Authorize(Roles = "Admin,Procurement,Contractor")]
+        [ProducesResponseType(typeof(ApiResponse<List<ContractSummaryDto>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<List<ContractSummaryDto>>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<List<ContractSummaryDto>>>> GetContractsByContractor(int contractorId)
+        {
+            var result = await _contractService.GetContractsByContractorIdAsync(contractorId);
+
+            if (!result.Success)
+            {
+                return NotFound(result);
+            }
+
+            return Ok(result);
+        }
+
+        /// <summary>
         /// Xem chi tiết hợp đồng kèm mốc thanh toán
         /// </summary>
         [HttpGet("api/contracts/{id:int}")]

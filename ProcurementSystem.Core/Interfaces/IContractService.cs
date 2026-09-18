@@ -50,5 +50,10 @@ namespace ProcurementSystem.Core.Interfaces
         /// Xóa mốc thanh toán
         /// </summary>
         Task<ApiResponse<bool>> DeleteMilestoneAsync(int contractId, int milestoneId, int userId);
+
+        /// <summary>
+        /// Tra cứu toàn bộ lịch sử hợp đồng theo mã nhà thầu
+        /// </summary>
+        Task<ApiResponse<List<ContractSummaryDto>>> GetContractsByContractorIdAsync(int contractorId);
     }
 }

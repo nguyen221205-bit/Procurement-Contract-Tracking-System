@@ -571,5 +571,46 @@ namespace ProcurementSystem.Infrastructure.Services
                 StatusName = milestone.Status.ToString()
             };
         }
+
+        public async Task<ApiResponse<List<ContractSummaryDto>>> GetContractsByContractorIdAsync(int contractorId)
+        {
+            var contractor = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == contractorId);
+
+            if (contractor == null)
+            {
+                return ApiResponse<List<ContractSummaryDto>>.Fail(
+                    $"Không tìm thấy thông tin nhà thầu có mã #{contractorId}.");
+            }
+
+            var contracts = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.BidPackage)
+                .Include(c => c.Contractor)
+                .Include(c => c.Milestones)
+                .AsNoTracking()
+                .Where(c => c.ContractorId == contractorId)
+                .OrderByDescending(c => c.CreatedAt)
+                .Select(c => new ContractSummaryDto
+                {
+                    Id = c.Id,
+                    BidPackageId = c.BidPackageId,
+                    BidPackageCode = c.BidPackage.Code,
+                    ContractorId = c.ContractorId,
+                    CompanyName = c.Contractor.CompanyName,
+                    ContractNumber = c.ContractNumber,
+                    Value = c.Value,
+                    Status = c.Status,
+                    StatusName = c.Status.ToString(),
+                    StartDate = c.StartDate,
+                    EndDate = c.EndDate,
+                    MilestoneCount = c.Milestones.Count
+                })
+                .ToListAsync();
+
+            return ApiResponse<List<ContractSummaryDto>>.Ok(contracts);
+        }
     }
 }
