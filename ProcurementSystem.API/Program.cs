@@ -53,6 +53,9 @@ builder.Services.AddScoped<IEvaluationService, EvaluationService>();
 // Contract Services
 builder.Services.AddScoped<IContractService, ContractService>();
 
+// Management & Reporting Services
+builder.Services.AddScoped<IReportService, ReportService>();
+
 // ==========================================
 // 3. AUTHENTICATION - JWT
 // ==========================================
