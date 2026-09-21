@@ -378,5 +378,64 @@ namespace ProcurementSystem.Infrastructure.Services
                 UploadedAt = file.UploadedAt
             };
         }
+
+        public async Task<ApiResponse<SubmissionFileDownloadDto>> GetSubmissionFileForDownloadAsync(
+            int fileId, int userId, bool isInternalStaff)
+        {
+            var file = await _unitOfWork.Repository<SubmissionFile>()
+                .Query()
+                .Include(f => f.BidSubmission)
+                .FirstOrDefaultAsync(f => f.Id == fileId);
+
+            if (file == null)
+            {
+                return ApiResponse<SubmissionFileDownloadDto>.Fail("Không tìm thấy tệp tài liệu đính kèm.");
+            }
+
+            // Kiểm soát IDOR: Contractor chỉ được tải tệp của hồ sơ do chính mình nộp
+            if (!isInternalStaff)
+            {
+                var contractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.UserId == userId);
+
+                if (contractor == null || contractor.Id != file.BidSubmission.ContractorId)
+                {
+                    return ApiResponse<SubmissionFileDownloadDto>.Fail(
+                        "Bạn không có quyền tải tệp hồ sơ của nhà thầu khác.");
+                }
+            }
+
+            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), file.FilePath.TrimStart('/'));
+            if (!File.Exists(physicalPath))
+            {
+                return ApiResponse<SubmissionFileDownloadDto>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ.");
+            }
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var contentType = ext switch
+            {
+                ".pdf" => "application/pdf",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".doc" => "application/msword",
+                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".xls" => "application/vnd.ms-excel",
+                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".zip" => "application/zip",
+                ".rar" => "application/x-rar-compressed",
+                _ => "application/octet-stream"
+            };
+
+            var dto = new SubmissionFileDownloadDto
+            {
+                FileName = file.FileName,
+                ContentType = contentType,
+                PhysicalPath = physicalPath
+            };
+
+            return ApiResponse<SubmissionFileDownloadDto>.Ok(dto);
+        }
     }
 }

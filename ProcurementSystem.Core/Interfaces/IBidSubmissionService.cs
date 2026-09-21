@@ -31,5 +31,10 @@ namespace ProcurementSystem.Core.Interfaces
         /// Nhà thầu rút hồ sơ dự thầu trước thời hạn đóng thầu
         /// </summary>
         Task<ApiResponse<bool>> WithdrawSubmissionAsync(int submissionId, int userId);
+
+        /// <summary>
+        /// Tải file tài liệu đính kèm hồ sơ dự thầu (kiểm tra phân quyền chống IDOR)
+        /// </summary>
+        Task<ApiResponse<SubmissionFileDownloadDto>> GetSubmissionFileForDownloadAsync(int fileId, int userId, bool isInternalStaff);
     }
 }

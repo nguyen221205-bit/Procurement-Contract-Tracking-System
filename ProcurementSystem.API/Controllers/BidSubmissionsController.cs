@@ -76,6 +76,10 @@ namespace ProcurementSystem.API.Controllers
 
             if (!result.Success)
             {
+                if (result.Message.Contains("không có quyền"))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
                 return NotFound(result);
             }
 
@@ -159,6 +163,37 @@ namespace ProcurementSystem.API.Controllers
             }
 
             return Ok(result);
+        }
+
+        /// <summary>
+        /// Tải tệp tài liệu đính kèm của hồ sơ dự thầu (chống IDOR)
+        /// </summary>
+        [HttpGet("api/submissions/files/{fileId:int}/download")]
+        [Authorize]
+        [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DownloadSubmissionFile(int fileId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement") || User.IsInRole("Evaluator");
+            var result = await _bidSubmissionService.GetSubmissionFileForDownloadAsync(fileId, userId.Value, isInternalStaff);
+
+            if (!result.Success)
+            {
+                if (result.Message.Contains("không có quyền"))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<string>.Fail(result.Message));
+                }
+                return NotFound(ApiResponse<string>.Fail(result.Message));
+            }
+
+            return PhysicalFile(result.Data!.PhysicalPath, result.Data.ContentType, result.Data.FileName);
         }
 
         private int? GetCurrentUserId()

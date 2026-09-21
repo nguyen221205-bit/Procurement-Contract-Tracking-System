@@ -52,8 +52,18 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<bool>> DeleteMilestoneAsync(int contractId, int milestoneId, int userId);
 
         /// <summary>
-        /// Tra cứu toàn bộ lịch sử hợp đồng theo mã nhà thầu
+        /// Tra cứu toàn bộ lịch sử hợp đồng theo mã nhà thầu (kiểm tra phân quyền chống IDOR)
         /// </summary>
-        Task<ApiResponse<List<ContractSummaryDto>>> GetContractsByContractorIdAsync(int contractorId);
+        Task<ApiResponse<List<ContractSummaryDto>>> GetContractsByContractorIdAsync(int contractorId, int userId, bool isInternalStaff);
+
+        /// <summary>
+        /// Nhà thầu gửi báo cáo tiến độ tuần cho hợp đồng
+        /// </summary>
+        Task<ApiResponse<ProgressUpdateDto>> AddProgressUpdateAsync(int contractId, CreateProgressUpdateRequest request, int userId);
+
+        /// <summary>
+        /// Phê duyệt hoặc từ chối biên bản nghiệm thu mốc thanh toán
+        /// </summary>
+        Task<ApiResponse<MilestoneAcceptanceDto>> ApproveMilestoneAcceptanceAsync(int milestoneId, ApproveMilestoneAcceptanceRequest request, int userId);
     }
 }

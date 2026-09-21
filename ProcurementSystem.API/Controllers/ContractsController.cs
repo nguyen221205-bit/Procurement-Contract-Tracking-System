@@ -40,18 +40,30 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
-        /// Tra cứu lịch sử hợp đồng theo nhà thầu
+        /// Tra cứu lịch sử hợp đồng theo nhà thầu (chống IDOR)
         /// </summary>
         [HttpGet("api/contracts/contractor/{contractorId:int}")]
         [Authorize(Roles = "Admin,Procurement,Contractor")]
         [ProducesResponseType(typeof(ApiResponse<List<ContractSummaryDto>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<List<ContractSummaryDto>>), StatusCodes.Status403Forbidden)]
         [ProducesResponseType(typeof(ApiResponse<List<ContractSummaryDto>>), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<ApiResponse<List<ContractSummaryDto>>>> GetContractsByContractor(int contractorId)
         {
-            var result = await _contractService.GetContractsByContractorIdAsync(contractorId);
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<List<ContractSummaryDto>>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _contractService.GetContractsByContractorIdAsync(contractorId, userId.Value, isInternalStaff);
 
             if (!result.Success)
             {
+                if (result.Message.Contains("không có quyền"))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
                 return NotFound(result);
             }
 
@@ -78,6 +90,10 @@ namespace ProcurementSystem.API.Controllers
 
             if (!result.Success)
             {
+                if (result.Message.Contains("không có quyền"))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
                 return NotFound(result);
             }
 
@@ -287,6 +303,93 @@ namespace ProcurementSystem.API.Controllers
 
             if (!result.Success)
             {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Nhà thầu gửi báo cáo tiến độ tuần cho hợp đồng (kiểm soát IDOR)
+        /// </summary>
+        [HttpPost("api/contracts/{id:int}/progress")]
+        [Authorize(Roles = "Contractor")]
+        [ProducesResponseType(typeof(ApiResponse<ProgressUpdateDto>), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ApiResponse<ProgressUpdateDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<ProgressUpdateDto>), StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(typeof(ApiResponse<ProgressUpdateDto>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<ProgressUpdateDto>>> AddProgressUpdate(
+            int id,
+            [FromBody] CreateProgressUpdateRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(ApiResponse<ProgressUpdateDto>.Fail(errors));
+            }
+
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<ProgressUpdateDto>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var result = await _contractService.AddProgressUpdateAsync(id, request, userId.Value);
+
+            if (!result.Success)
+            {
+                if (result.Message.Contains("không có quyền"))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
+                if (result.Message.Contains("Không tìm thấy"))
+                {
+                    return NotFound(result);
+                }
+                return BadRequest(result);
+            }
+
+            return StatusCode(StatusCodes.Status201Created, result);
+        }
+
+        /// <summary>
+        /// Phê duyệt biên bản nghiệm thu mốc thanh toán
+        /// </summary>
+        [HttpPut("api/contracts/milestones/{id:int}/acceptance")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<MilestoneAcceptanceDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<MilestoneAcceptanceDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<MilestoneAcceptanceDto>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<MilestoneAcceptanceDto>>> ApproveMilestoneAcceptance(
+            int id,
+            [FromBody] ApproveMilestoneAcceptanceRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(ApiResponse<MilestoneAcceptanceDto>.Fail(errors));
+            }
+
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<MilestoneAcceptanceDto>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var result = await _contractService.ApproveMilestoneAcceptanceAsync(id, request, userId.Value);
+
+            if (!result.Success)
+            {
+                if (result.Message.Contains("Không tìm thấy"))
+                {
+                    return NotFound(result);
+                }
                 return BadRequest(result);
             }
 

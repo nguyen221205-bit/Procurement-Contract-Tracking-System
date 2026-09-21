@@ -572,8 +572,24 @@ namespace ProcurementSystem.Infrastructure.Services
             };
         }
 
-        public async Task<ApiResponse<List<ContractSummaryDto>>> GetContractsByContractorIdAsync(int contractorId)
+        public async Task<ApiResponse<List<ContractSummaryDto>>> GetContractsByContractorIdAsync(
+            int contractorId, int userId, bool isInternalStaff)
         {
+            // Kiểm tra phân quyền chống IDOR: Contractor chỉ xem được của chính mình
+            if (!isInternalStaff)
+            {
+                var currentContractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.UserId == userId);
+
+                if (currentContractor == null || currentContractor.Id != contractorId)
+                {
+                    return ApiResponse<List<ContractSummaryDto>>.Fail(
+                        "Bạn không có quyền xem lịch sử hợp đồng của nhà thầu khác.");
+                }
+            }
+
             var contractor = await _unitOfWork.Repository<Contractor>()
                 .Query()
                 .AsNoTracking()
@@ -611,6 +627,130 @@ namespace ProcurementSystem.Infrastructure.Services
                 .ToListAsync();
 
             return ApiResponse<List<ContractSummaryDto>>.Ok(contracts);
+        }
+
+        public async Task<ApiResponse<ProgressUpdateDto>> AddProgressUpdateAsync(
+            int contractId, CreateProgressUpdateRequest request, int userId)
+        {
+            var contract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.Contractor)
+                .FirstOrDefaultAsync(c => c.Id == contractId);
+
+            if (contract == null)
+            {
+                return ApiResponse<ProgressUpdateDto>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            // Kiểm tra quyền sở hữu IDOR: chỉ nhà thầu sở hữu hợp đồng mới được gửi báo cáo
+            var contractor = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.UserId == userId);
+
+            if (contractor == null || contractor.Id != contract.ContractorId)
+            {
+                return ApiResponse<ProgressUpdateDto>.Fail(
+                    "Bạn không có quyền cập nhật tiến độ cho hợp đồng này.");
+            }
+
+            // Chỉ cập nhật khi hợp đồng đang ở trạng thái Active
+            if (contract.Status != ContractStatus.Active)
+            {
+                return ApiResponse<ProgressUpdateDto>.Fail(
+                    "Chỉ có thể cập nhật tiến độ cho hợp đồng đang ở trạng thái Hoạt động (Active).");
+            }
+
+            var progressUpdate = new ProgressUpdate
+            {
+                ContractId = contractId,
+                WeekNumber = request.WeekNumber,
+                CompletionPercent = request.CompletionPercent,
+                Note = request.Note,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.Repository<ProgressUpdate>().AddAsync(progressUpdate);
+            await _unitOfWork.SaveChangesAsync();
+
+            var resultDto = new ProgressUpdateDto
+            {
+                Id = progressUpdate.Id,
+                ContractId = progressUpdate.ContractId,
+                WeekNumber = progressUpdate.WeekNumber,
+                CompletionPercent = progressUpdate.CompletionPercent,
+                Note = progressUpdate.Note,
+                CreatedAt = progressUpdate.CreatedAt
+            };
+
+            return ApiResponse<ProgressUpdateDto>.Ok(
+                resultDto,
+                $"Cập nhật tiến độ tuần {request.WeekNumber} ({request.CompletionPercent}%) thành công.");
+        }
+
+        public async Task<ApiResponse<MilestoneAcceptanceDto>> ApproveMilestoneAcceptanceAsync(
+            int milestoneId, ApproveMilestoneAcceptanceRequest request, int userId)
+        {
+            var milestone = await _unitOfWork.Repository<ContractMilestone>()
+                .Query()
+                .Include(m => m.Contract)
+                .FirstOrDefaultAsync(m => m.Id == milestoneId);
+
+            if (milestone == null)
+            {
+                return ApiResponse<MilestoneAcceptanceDto>.Fail("Không tìm thấy mốc thanh toán nghiệm thu.");
+            }
+
+            if (milestone.Contract.Status != ContractStatus.Active)
+            {
+                return ApiResponse<MilestoneAcceptanceDto>.Fail(
+                    "Chỉ có thể nghiệm thu mốc thanh toán khi hợp đồng đang ở trạng thái Hoạt động (Active).");
+            }
+
+            var approver = await _unitOfWork.Repository<User>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            var acceptance = new Acceptance
+            {
+                ContractId = milestone.ContractId,
+                MilestoneId = milestone.Id,
+                ApprovedBy = userId,
+                ApprovedAt = DateTime.UtcNow,
+                Status = request.IsApproved ? AcceptanceStatus.Approved : AcceptanceStatus.Rejected,
+                Note = request.Note
+            };
+
+            await _unitOfWork.Repository<Acceptance>().AddAsync(acceptance);
+
+            if (request.IsApproved)
+            {
+                milestone.Status = MilestoneStatus.Completed;
+                _unitOfWork.Repository<ContractMilestone>().Update(milestone);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+
+            var resultDto = new MilestoneAcceptanceDto
+            {
+                Id = acceptance.Id,
+                ContractId = acceptance.ContractId,
+                MilestoneId = acceptance.MilestoneId,
+                ApprovedBy = acceptance.ApprovedBy,
+                ApproverName = approver?.FullName ?? string.Empty,
+                ApprovedAt = acceptance.ApprovedAt,
+                Status = acceptance.Status,
+                StatusName = acceptance.Status.ToString(),
+                Note = acceptance.Note,
+                MilestoneStatus = milestone.Status,
+                MilestoneStatusName = milestone.Status.ToString()
+            };
+
+            var actionMsg = request.IsApproved ? "Phê duyệt" : "Từ chối";
+            return ApiResponse<MilestoneAcceptanceDto>.Ok(
+                resultDto,
+                $"{actionMsg} biên bản nghiệm thu mốc '{milestone.Title}' thành công.");
         }
     }
 }
