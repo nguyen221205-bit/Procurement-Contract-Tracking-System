@@ -207,8 +207,15 @@ namespace ProcurementSystem.Infrastructure.Data
             modelBuilder.Entity<Notification>().HasIndex(n => n.IsRead);
             modelBuilder.Entity<BidPackage>().HasIndex(bp => bp.Status);
             modelBuilder.Entity<BidPackage>().HasIndex(bp => bp.Deadline);
+            modelBuilder.Entity<BidPackage>().HasIndex(bp => new { bp.Status, bp.Deadline });
+            modelBuilder.Entity<BidPackage>().HasIndex(bp => bp.CreatedBy);
+            modelBuilder.Entity<BidSubmission>().HasIndex(bs => new { bs.BidPackageId, bs.Status });
+            modelBuilder.Entity<BidSubmission>().HasIndex(bs => bs.TotalScore);
             modelBuilder.Entity<Contract>().HasIndex(c => c.Status);
             modelBuilder.Entity<Contract>().HasIndex(c => c.EndDate);
+            modelBuilder.Entity<Contract>().HasIndex(c => new { c.ContractorId, c.Status });
+            modelBuilder.Entity<ContractMilestone>().HasIndex(cm => new { cm.ContractId, cm.Status });
+            modelBuilder.Entity<EvaluationCriteria>().HasIndex(ec => ec.BidPackageId);
         }
     }
 }
