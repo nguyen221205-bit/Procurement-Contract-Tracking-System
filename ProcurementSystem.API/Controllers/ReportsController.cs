@@ -18,7 +18,7 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
-        /// Báo cáo thống kê tổng hợp cấp Quản lý (Management Procurement & Contract Dashboard)
+        /// Báo cáo thống kê tổng hợp cấp Quản lý (Management Procurement and Contract Dashboard)
         /// Thống kê tình trạng gói thầu, hiệu quả tài chính đấu thầu, giá trị hợp đồng và tiến độ giải ngân mốc thanh toán
         /// Quyền hạn: Admin, Procurement
         /// </summary>

@@ -47,6 +47,11 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<ContractMilestoneDto>> AddMilestoneAsync(int contractId, CreateMilestoneRequest request, int userId);
 
         /// <summary>
+        /// Cập nhật mốc thanh toán nghiệm thu
+        /// </summary>
+        Task<ApiResponse<ContractMilestoneDto>> UpdateMilestoneAsync(int contractId, int milestoneId, CreateMilestoneRequest request, int userId);
+
+        /// <summary>
         /// Xóa mốc thanh toán
         /// </summary>
         Task<ApiResponse<bool>> DeleteMilestoneAsync(int contractId, int milestoneId, int userId);

@@ -133,6 +133,11 @@ builder.Services.AddSwaggerGen(options =>
             Array.Empty<string>()
         }
     });
+
+    foreach (var xmlFile in Directory.GetFiles(AppContext.BaseDirectory, "*.xml"))
+    {
+        options.IncludeXmlComments(xmlFile, includeControllerXmlComments: true);
+    }
 });
 
 // ==========================================

@@ -16,5 +16,7 @@ namespace ProcurementSystem.Core.DTOs.Contract
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
         public int MilestoneCount { get; set; }
+        public decimal TotalDisbursedAmount { get; set; }
+        public decimal TotalRemainingAmount { get; set; }
     }
 }

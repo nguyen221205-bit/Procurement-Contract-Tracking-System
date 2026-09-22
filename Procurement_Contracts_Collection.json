@@ -1,0 +1,272 @@
+{
+  "info": {
+    "name": "Procurement Contracts Collection",
+    "description": "Postman Collection v2.1 for contract acceptance, disbursement dashboard, and bid submission file download checks.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5225"
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "contractorToken",
+      "value": ""
+    },
+    {
+      "key": "contractId",
+      "value": "1"
+    },
+    {
+      "key": "milestoneId",
+      "value": "1"
+    },
+    {
+      "key": "contractorId",
+      "value": "1"
+    },
+    {
+      "key": "submissionFileId",
+      "value": "1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Dashboard - Disbursement Metrics",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/dashboard",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "dashboard"
+          ]
+        },
+        "description": "Checks totalDisbursedAmount, totalRemainingAmount, and disbursementRate after milestone acceptance."
+      }
+    },
+    {
+      "name": "Contracts - Get Detail With Disbursement",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/contracts/{{contractId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "contracts",
+            "{{contractId}}"
+          ]
+        },
+        "description": "Gets contract detail including totalDisbursedAmount and totalRemainingAmount."
+      }
+    },
+    {
+      "name": "Contracts - Contractor History",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{contractorToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/contracts/contractor/{{contractorId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "contracts",
+            "contractor",
+            "{{contractorId}}"
+          ]
+        },
+        "description": "Contractor history endpoint with IDOR protection."
+      }
+    },
+    {
+      "name": "Milestones - Add",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Acceptance milestone\",\n  \"dueDate\": \"2026-10-15T00:00:00Z\",\n  \"amount\": 1000000\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/contracts/{{contractId}}/milestones",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "contracts",
+            "{{contractId}}",
+            "milestones"
+          ]
+        },
+        "description": "Creates a milestone and validates that total milestone amount does not exceed contract value."
+      }
+    },
+    {
+      "name": "Milestones - Update",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Updated acceptance milestone\",\n  \"dueDate\": \"2026-10-20T00:00:00Z\",\n  \"amount\": 1200000\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/contracts/{{contractId}}/milestones/{{milestoneId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "contracts",
+            "{{contractId}}",
+            "milestones",
+            "{{milestoneId}}"
+          ]
+        },
+        "description": "Updates a Pending milestone and validates the contract budget cap."
+      }
+    },
+    {
+      "name": "Milestones - Approve Acceptance",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"isApproved\": true,\n  \"note\": \"Acceptance approved and ready for disbursement.\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/contracts/milestones/{{milestoneId}}/acceptance",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "contracts",
+            "milestones",
+            "{{milestoneId}}",
+            "acceptance"
+          ]
+        },
+        "description": "Approves a milestone. If all milestones are completed, the contract is automatically marked Completed."
+      }
+    },
+    {
+      "name": "Bid Submissions - Download File IDOR Check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{contractorToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/submissions/files/{{submissionFileId}}/download",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "submissions",
+            "files",
+            "{{submissionFileId}}",
+            "download"
+          ]
+        },
+        "description": "Downloads a bid submission file. Use another contractor token to verify HTTP 403 on competitor files."
+      }
+    },
+    {
+      "name": "Contracts - Report Weekly Progress",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{contractorToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"weekNumber\": 1,\n  \"completionPercent\": 25.5,\n  \"note\": \"Báo cáo tiến độ tuần 1: Đã hoàn thành khảo sát và tập kết vật tư.\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/contracts/{{contractId}}/progress",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "contracts",
+            "{{contractId}}",
+            "progress"
+          ]
+        },
+        "description": "Contractor reports weekly contract progress. Protected against IDOR."
+      }
+    }
+  ]
+}

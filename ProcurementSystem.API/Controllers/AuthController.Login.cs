@@ -19,7 +19,7 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
-        /// Đăng nhập hệ thống (Lấy JWT Access Token & Refresh Token)
+        /// Đăng nhập hệ thống (Lấy JWT Access Token và Refresh Token)
         /// </summary>
         [HttpPost("login")]
         [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status200OK)]

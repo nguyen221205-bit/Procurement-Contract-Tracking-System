@@ -86,7 +86,17 @@ namespace ProcurementSystem.Infrastructure.Services
                     StatusName = c.Status.ToString(),
                     StartDate = c.StartDate,
                     EndDate = c.EndDate,
-                    MilestoneCount = c.Milestones.Count
+                    MilestoneCount = c.Milestones.Count,
+                    TotalDisbursedAmount = c.Milestones
+                        .Where(m => m.Status == MilestoneStatus.Completed)
+                        .Sum(m => m.Amount),
+                    TotalRemainingAmount = c.Value - c.Milestones
+                        .Where(m => m.Status == MilestoneStatus.Completed)
+                        .Sum(m => m.Amount) > 0
+                            ? c.Value - c.Milestones
+                                .Where(m => m.Status == MilestoneStatus.Completed)
+                                .Sum(m => m.Amount)
+                            : 0
                 });
 
             var paginatedResult = await PaginatedList<ContractSummaryDto>.CreateAsync(
@@ -498,6 +508,64 @@ namespace ProcurementSystem.Infrastructure.Services
                 "Thêm mốc thanh toán thành công.");
         }
 
+        public async Task<ApiResponse<ContractMilestoneDto>> UpdateMilestoneAsync(
+            int contractId, int milestoneId, CreateMilestoneRequest request, int userId)
+        {
+            var contract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.Milestones)
+                .FirstOrDefaultAsync(c => c.Id == contractId);
+
+            if (contract == null)
+            {
+                return ApiResponse<ContractMilestoneDto>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            if (contract.Status == ContractStatus.Completed || contract.Status == ContractStatus.Terminated)
+            {
+                return ApiResponse<ContractMilestoneDto>.Fail(
+                    "Không thể cập nhật mốc thanh toán của hợp đồng đã hoàn thành hoặc chấm dứt.");
+            }
+
+            var milestone = contract.Milestones.FirstOrDefault(m => m.Id == milestoneId);
+            if (milestone == null)
+            {
+                return ApiResponse<ContractMilestoneDto>.Fail("Không tìm thấy mốc thanh toán trong hợp đồng này.");
+            }
+
+            if (milestone.Status != MilestoneStatus.Pending)
+            {
+                return ApiResponse<ContractMilestoneDto>.Fail(
+                    "Chỉ có thể cập nhật các mốc thanh toán đang ở trạng thái Chờ xử lý (Pending).");
+            }
+
+            var totalExcludingCurrent = contract.Milestones
+                .Where(m => m.Id != milestoneId)
+                .Sum(m => m.Amount);
+
+            if (totalExcludingCurrent + request.Amount > contract.Value)
+            {
+                return ApiResponse<ContractMilestoneDto>.Fail(
+                    $"Không thể cập nhật mốc thành {request.Amount:N0} VNĐ. " +
+                    $"Tổng các mốc khác: {totalExcludingCurrent:N0} VNĐ. " +
+                    $"Giá trị hợp đồng: {contract.Value:N0} VNĐ. " +
+                    $"Còn lại có thể phân bổ: {(contract.Value - totalExcludingCurrent):N0} VNĐ.");
+            }
+
+            milestone.Title = request.Title;
+            milestone.DueDate = request.DueDate;
+            milestone.Amount = request.Amount;
+            contract.UpdatedAt = DateTime.UtcNow;
+
+            _unitOfWork.Repository<ContractMilestone>().Update(milestone);
+            _unitOfWork.Repository<Contract>().Update(contract);
+            await _unitOfWork.SaveChangesAsync();
+
+            return ApiResponse<ContractMilestoneDto>.Ok(
+                MapMilestoneToDto(milestone),
+                "Cập nhật mốc thanh toán thành công.");
+        }
+
         public async Task<ApiResponse<bool>> DeleteMilestoneAsync(
             int contractId, int milestoneId, int userId)
         {
@@ -535,6 +603,9 @@ namespace ProcurementSystem.Infrastructure.Services
 
         private static ContractDto MapToDto(Contract contract)
         {
+            var totalDisbursedAmount = GetTotalDisbursedAmount(contract);
+            var totalRemainingAmount = GetTotalRemainingAmount(contract);
+
             return new ContractDto
             {
                 Id = contract.Id,
@@ -554,6 +625,11 @@ namespace ProcurementSystem.Infrastructure.Services
                 ScannedFilePath = contract.ScannedFilePath,
                 CreatedAt = contract.CreatedAt,
                 UpdatedAt = contract.UpdatedAt,
+                TotalDisbursedAmount = totalDisbursedAmount,
+                TotalRemainingAmount = totalRemainingAmount,
+                DisbursementRate = contract.Value > 0
+                    ? Math.Round((totalDisbursedAmount / contract.Value) * 100, 2)
+                    : 0,
                 Milestones = contract.Milestones?.Select(MapMilestoneToDto).ToList() ?? new()
             };
         }
@@ -622,7 +698,17 @@ namespace ProcurementSystem.Infrastructure.Services
                     StatusName = c.Status.ToString(),
                     StartDate = c.StartDate,
                     EndDate = c.EndDate,
-                    MilestoneCount = c.Milestones.Count
+                    MilestoneCount = c.Milestones.Count,
+                    TotalDisbursedAmount = c.Milestones
+                        .Where(m => m.Status == MilestoneStatus.Completed)
+                        .Sum(m => m.Amount),
+                    TotalRemainingAmount = c.Value - c.Milestones
+                        .Where(m => m.Status == MilestoneStatus.Completed)
+                        .Sum(m => m.Amount) > 0
+                            ? c.Value - c.Milestones
+                                .Where(m => m.Status == MilestoneStatus.Completed)
+                                .Sum(m => m.Amount)
+                            : 0
                 })
                 .ToListAsync();
 
@@ -728,9 +814,32 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 milestone.Status = MilestoneStatus.Completed;
                 _unitOfWork.Repository<ContractMilestone>().Update(milestone);
+
+                var contractMilestones = await _unitOfWork.Repository<ContractMilestone>()
+                    .Query()
+                    .Where(m => m.ContractId == milestone.ContractId)
+                    .ToListAsync();
+
+                if (contractMilestones.Count > 0 &&
+                    contractMilestones.All(m => m.Status == MilestoneStatus.Completed))
+                {
+                    milestone.Contract.Status = ContractStatus.Completed;
+                    milestone.Contract.UpdatedAt = DateTime.UtcNow;
+                    _unitOfWork.Repository<Contract>().Update(milestone.Contract);
+                }
             }
 
             await _unitOfWork.SaveChangesAsync();
+
+            var totalDisbursedAmount = await _unitOfWork.Repository<ContractMilestone>()
+                .Query()
+                .AsNoTracking()
+                .Where(m => m.ContractId == milestone.ContractId && m.Status == MilestoneStatus.Completed)
+                .SumAsync(m => (decimal?)m.Amount) ?? 0;
+
+            var totalRemainingAmount = milestone.Contract.Value > totalDisbursedAmount
+                ? milestone.Contract.Value - totalDisbursedAmount
+                : 0;
 
             var resultDto = new MilestoneAcceptanceDto
             {
@@ -744,13 +853,34 @@ namespace ProcurementSystem.Infrastructure.Services
                 StatusName = acceptance.Status.ToString(),
                 Note = acceptance.Note,
                 MilestoneStatus = milestone.Status,
-                MilestoneStatusName = milestone.Status.ToString()
+                MilestoneStatusName = milestone.Status.ToString(),
+                ContractStatus = milestone.Contract.Status,
+                ContractStatusName = milestone.Contract.Status.ToString(),
+                TotalDisbursedAmount = totalDisbursedAmount,
+                TotalRemainingAmount = totalRemainingAmount
             };
 
             var actionMsg = request.IsApproved ? "Phê duyệt" : "Từ chối";
+            var completedMsg = milestone.Contract.Status == ContractStatus.Completed
+                ? " Hợp đồng đã được tự động chuyển sang trạng thái Completed vì tất cả mốc thanh toán đã hoàn thành."
+                : string.Empty;
+
             return ApiResponse<MilestoneAcceptanceDto>.Ok(
                 resultDto,
-                $"{actionMsg} biên bản nghiệm thu mốc '{milestone.Title}' thành công.");
+                $"{actionMsg} biên bản nghiệm thu mốc '{milestone.Title}' thành công.{completedMsg}");
+        }
+
+        private static decimal GetTotalDisbursedAmount(Contract contract)
+        {
+            return contract.Milestones?
+                .Where(m => m.Status == MilestoneStatus.Completed)
+                .Sum(m => m.Amount) ?? 0;
+        }
+
+        private static decimal GetTotalRemainingAmount(Contract contract)
+        {
+            var remaining = contract.Value - GetTotalDisbursedAmount(contract);
+            return remaining > 0 ? remaining : 0;
         }
     }
 }
