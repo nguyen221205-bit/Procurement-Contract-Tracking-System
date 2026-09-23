@@ -134,9 +134,18 @@ builder.Services.AddSwaggerGen(options =>
         }
     });
 
-    foreach (var xmlFile in Directory.GetFiles(AppContext.BaseDirectory, "*.xml"))
+    // Include XML Documentation Comments for Swagger
+    var apiXmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var apiXmlPath = Path.Combine(AppContext.BaseDirectory, apiXmlFile);
+    if (File.Exists(apiXmlPath))
     {
-        options.IncludeXmlComments(xmlFile, includeControllerXmlComments: true);
+        options.IncludeXmlComments(apiXmlPath, includeControllerXmlComments: true);
+    }
+
+    var coreXmlPath = Path.Combine(AppContext.BaseDirectory, "ProcurementSystem.Core.xml");
+    if (File.Exists(coreXmlPath))
+    {
+        options.IncludeXmlComments(coreXmlPath);
     }
 });
 
