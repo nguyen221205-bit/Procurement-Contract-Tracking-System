@@ -77,3 +77,8 @@ Thumbs.db
 # Project specific ignores
 docx/
 implementation*.md
+
+# Postman Collections & Handoff docs
+Procurement_Contracts_Collection.json
+Procurement_API_v2_Postman_Collection.json
+HUONG_DAN_CAI_DAT_VA_TICH_HOP_API.md
