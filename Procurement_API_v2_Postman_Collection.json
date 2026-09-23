@@ -1,0 +1,677 @@
+{
+  "info": {
+    "name": "Procurement & Contract Tracking System - API v2.0",
+    "description": "Bộ sưu tập kiểm thử Postman v2.1 toàn diện cho Hệ thống Quản trị Đấu thầu & Theo dõi Hợp đồng (Procurement & Contract Tracking System). Bao gồm đầy đủ 7 phân hệ: Xác thực, Nhà thầu, Gói thầu, Nộp thầu & IDOR, Đánh giá xếp hạng, Quản lý Hợp đồng & Nghiệm thu mốc thanh toán tự động, Báo cáo KPI Dashboard.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5225",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "procurementToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "evaluatorToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "contractorToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "packageId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "submissionId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "submissionFileId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "contractId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "milestoneId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "contractorId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Authentication & Identity",
+      "item": [
+        {
+          "name": "Login - Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.success && res.data && res.data.token) {",
+                  "    pm.collectionVariables.set('adminToken', res.data.token);",
+                  "    console.log('Admin Token Saved Successfully');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@procurement.com\",\n  \"password\": \"Admin@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Auth", "login"]
+            },
+            "description": "Đăng nhập với vai trò Quản trị viên (Admin) và lưu Token vào biến adminToken."
+          }
+        },
+        {
+          "name": "Login - Procurement Staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.success && res.data && res.data.token) {",
+                  "    pm.collectionVariables.set('procurementToken', res.data.token);",
+                  "    console.log('Procurement Token Saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"procurement@procurement.com\",\n  \"password\": \"Procurement@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Auth", "login"]
+            },
+            "description": "Đăng nhập với vai trò Chuyên viên Mua sắm (Procurement) lưu token vào procurementToken."
+          }
+        },
+        {
+          "name": "Login - Contractor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.success && res.data && res.data.token) {",
+                  "    pm.collectionVariables.set('contractorToken', res.data.token);",
+                  "    if (res.data.user && res.data.user.contractorId) {",
+                  "        pm.collectionVariables.set('contractorId', res.data.user.contractorId.toString());",
+                  "    }",
+                  "    console.log('Contractor Token & ID Saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"contractor1@fpt.com\",\n  \"password\": \"Contractor@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Auth", "login"]
+            },
+            "description": "Đăng nhập với vai trò Nhà thầu 1 (Contractor) và lưu contractorToken."
+          }
+        },
+        {
+          "name": "Login - Evaluator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.success && res.data && res.data.token) {",
+                  "    pm.collectionVariables.set('evaluatorToken', res.data.token);",
+                  "    console.log('Evaluator Token Saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"evaluator1@procurement.com\",\n  \"password\": \"Evaluator@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Auth", "login"]
+            },
+            "description": "Đăng nhập với vai trò Giám khảo thẩm định (Evaluator)."
+          }
+        },
+        {
+          "name": "Register Contractor Account",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "Email", "value": "newcontractor@techcorp.vn", "type": "text" },
+                { "key": "Password", "value": "Contractor@123", "type": "text" },
+                { "key": "ConfirmPassword", "value": "Contractor@123", "type": "text" },
+                { "key": "FullName", "value": "Trần Văn A", "type": "text" },
+                { "key": "Phone", "value": "0988776655", "type": "text" },
+                { "key": "CompanyName", "value": "Công ty Cổ phần Công nghệ TechCorp", "type": "text" },
+                { "key": "TaxCode", "value": "0109988776", "type": "text" },
+                { "key": "Address", "value": "Tòa nhà Keangnam, Cầu Giấy, Hà Nội", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Auth/register-contractor",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Auth", "register-contractor"]
+            },
+            "description": "Đăng ký tài khoản nhà thầu mới kèm thông tin doanh nghiệp."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Contractors Management",
+      "item": [
+        {
+          "name": "Get Contractors List",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/Contractors?pageNumber=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Contractors"],
+              "query": [
+                { "key": "pageNumber", "value": "1" },
+                { "key": "pageSize", "value": "10" }
+              ]
+            },
+            "description": "Quản trị viên hoặc chuyên viên mua sắm xem danh sách nhà thầu phân trang."
+          }
+        },
+        {
+          "name": "Get Contractor Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/Contractors/{{contractorId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Contractors", "{{contractorId}}"]
+            },
+            "description": "Xem chi tiết hồ sơ năng lực nhà thầu theo ID."
+          }
+        },
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{contractorToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/Contractors/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Contractors", "me"]
+            },
+            "description": "Nhà thầu tự tra cứu hồ sơ năng lực của chính mình."
+          }
+        },
+        {
+          "name": "Update Contractor Rating",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4.8\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Contractors/{{contractorId}}/rating",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Contractors", "{{contractorId}}", "rating"]
+            },
+            "description": "Chuyên viên mua sắm cập nhật điểm đánh giá uy tín nhà thầu (0.0 đến 5.0)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Bid Packages",
+      "item": [
+        {
+          "name": "Get Bid Packages List",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bid-packages?pageNumber=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "bid-packages"],
+              "query": [
+                { "key": "pageNumber", "value": "1" },
+                { "key": "pageSize", "value": "10" }
+              ]
+            },
+            "description": "Lấy danh sách các gói thầu kèm bộ lọc trạng thái và hạn nộp thầu."
+          }
+        },
+        {
+          "name": "Get Bid Package Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bid-packages/{{packageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "bid-packages", "{{packageId}}"]
+            },
+            "description": "Xem chi tiết gói thầu theo ID."
+          }
+        },
+        {
+          "name": "Create Bid Package",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"TB-2026-004\",\n  \"name\": \"Gói thầu nâng cấp hệ thống An toàn thông tin\",\n  \"description\": \"Mua sắm thiết bị Firewall NextGen và triển khai SOC\",\n  \"budget\": 3500000000,\n  \"deadline\": \"2026-10-30T17:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/bid-packages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "bid-packages"]
+            },
+            "description": "Tạo mới gói thầu kinh tế."
+          }
+        },
+        {
+          "name": "Update Package Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/bid-packages/{{packageId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "bid-packages", "{{packageId}}", "status"]
+            },
+            "description": "Chuyển trạng thái gói thầu: 0=Draft, 1=Open, 2=Closed, 3=Evaluating, 4=Awarded, 5=Contracted."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. Bid Submissions & IDOR Protection",
+      "item": [
+        {
+          "name": "Get Submissions of Package",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bid-packages/{{packageId}}/submissions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "bid-packages", "{{packageId}}", "submissions"]
+            },
+            "description": "Ban thẩm định/Admin xem danh sách các hồ sơ dự thầu đã nộp vào gói thầu."
+          }
+        },
+        {
+          "name": "Get Submission Detail (IDOR Protected)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{contractorToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/submissions/{{submissionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "submissions", "{{submissionId}}"]
+            },
+            "description": "Xem chi tiết hồ sơ nộp thầu. Có kiểm soát IDOR: Contractor chỉ xem được hồ sơ của mình."
+          }
+        },
+        {
+          "name": "Get My Submissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{contractorToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/my-submissions?pageNumber=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "my-submissions"],
+              "query": [
+                { "key": "pageNumber", "value": "1" },
+                { "key": "pageSize", "value": "10" }
+              ]
+            },
+            "description": "Nhà thầu tra cứu toàn bộ các gói thầu mình đã nộp hồ sơ."
+          }
+        },
+        {
+          "name": "Download Submission File (IDOR Audit)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{contractorToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/submissions/files/{{submissionFileId}}/download",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "submissions", "files", "{{submissionFileId}}", "download"]
+            },
+            "description": "Tải tệp đề xuất kỹ thuật đính kèm. Thẩm tra IDOR: Nếu nhà thầu khác tải tệp của đối thủ -> 403 Forbidden."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. Contracts, Milestones & Acceptance",
+      "item": [
+        {
+          "name": "Get Contracts List",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/contracts?pageNumber=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contracts"],
+              "query": [
+                { "key": "pageNumber", "value": "1" },
+                { "key": "pageSize", "value": "10" }
+              ]
+            },
+            "description": "Lấy danh sách hợp đồng phân trang. Admin xem tất cả, Contractor chỉ xem của mình."
+          }
+        },
+        {
+          "name": "Get Contract Detail with Disbursement",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/contracts/{{contractId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contracts", "{{contractId}}"]
+            },
+            "description": "Xem chi tiết hợp đồng: giá trị, danh sách mốc, số tiền đã giải ngân và số tiền còn lại."
+          }
+        },
+        {
+          "name": "Get Awarded Bid Info For Contract",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{procurementToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/contracts/awarded-bid/{{packageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contracts", "awarded-bid", "{{packageId}}"]
+            },
+            "description": "Lấy thông tin nhà thầu trúng thầu để điền tự động sang hợp đồng mới."
+          }
+        },
+        {
+          "name": "Create Contract",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{procurementToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bidPackageId\": 3,\n  \"contractorId\": 1,\n  \"contractNumber\": \"HD-2026-CLOUD-001\",\n  \"value\": 1480000000,\n  \"terms\": \"Điều khoản thanh toán theo 3 đợt nghiệm thu thực tế\",\n  \"startDate\": \"2026-10-01T00:00:00Z\",\n  \"endDate\": \"2027-03-31T00:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/contracts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contracts"]
+            },
+            "description": "Tạo hợp đồng từ kết quả trúng thầu. Kiểm soát không vượt ngân sách gói thầu."
+          }
+        },
+        {
+          "name": "Get Contractor Contracts History (IDOR Protected)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{contractorToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/contracts/contractor/{{contractorId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contracts", "contractor", "{{contractorId}}"]
+            },
+            "description": "Tra cứu toàn bộ lịch sử hợp đồng theo nhà thầu. Có kiểm soát IDOR chặt chẽ."
+          }
+        },
+        {
+          "name": "Report Weekly Progress",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{contractorToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"weekNumber\": 1,\n  \"completionPercent\": 30.5,\n  \"note\": \"Hoàn thành bàn giao thiết bị và cài đặt môi trường cơ sở\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/contracts/{{contractId}}/progress",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contracts", "{{contractId}}", "progress"]
+            },
+            "description": "Nhà thầu gửi báo cáo tiến độ tuần cho hợp đồng Active."
+          }
+        },
+        {
+          "name": "Add Milestone (Budget Cap Validation)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{procurementToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Mốc 1: Bàn giao thiết bị và cài đặt ban đầu\",\n  \"dueDate\": \"2026-10-15T00:00:00Z\",\n  \"amount\": 500000000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/contracts/{{contractId}}/milestones",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contracts", "{{contractId}}", "milestones"]
+            },
+            "description": "Thêm mốc thanh toán mới. Kiểm tra tổng các mốc không vượt quá giá trị hợp đồng."
+          }
+        },
+        {
+          "name": "Update Milestone",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{procurementToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Mốc 1: Bàn giao và nghiệm thu kỹ thuật bước 1\",\n  \"dueDate\": \"2026-10-20T00:00:00Z\",\n  \"amount\": 550000000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/contracts/{{contractId}}/milestones/{{milestoneId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contracts", "{{contractId}}", "milestones", "{{milestoneId}}"]
+            },
+            "description": "Cập nhật mốc thanh toán Pending và kiểm tra không vượt trần ngân sách hợp đồng."
+          }
+        },
+        {
+          "name": "Approve Milestone Acceptance (Auto-Complete Contract)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{procurementToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isApproved\": true,\n  \"note\": \"Biên bản nghiệm thu đạt yêu cầu kỹ thuật. Đủ điều kiện giải ngân đợt 1.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/contracts/milestones/{{milestoneId}}/accept",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contracts", "milestones", "{{milestoneId}}", "accept"]
+            },
+            "description": "Phê duyệt nghiệm thu mốc thanh toán. Khi mọi mốc hoàn thành, hợp đồng tự động chuyển sang Completed và dòng tiền giải ngân được cập nhật."
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Management Reports & Dashboard",
+      "item": [
+        {
+          "name": "Get Executive Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/reports/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reports", "dashboard"]
+            },
+            "description": "Báo cáo tổng hợp KPI: số lượng gói thầu, hiệu quả đấu thầu, tổng tiền đã giải ngân và tỷ lệ hoàn thành giải ngân."
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. System Health",
+      "item": [
+        {
+          "name": "Check Health Endpoint",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Kiểm tra tình trạng sống của API server."
+          }
+        }
+      ]
+    }
+  ]
+}

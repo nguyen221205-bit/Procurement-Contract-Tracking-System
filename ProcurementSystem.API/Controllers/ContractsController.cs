@@ -460,6 +460,7 @@ namespace ProcurementSystem.API.Controllers
         /// <param name="request">Kết quả phê duyệt hoặc từ chối kèm ghi chú.</param>
         /// <remarks>Khi phê duyệt tất cả milestone của hợp đồng, hợp đồng Active sẽ tự động chuyển sang Completed.</remarks>
         [HttpPut("api/contracts/milestones/{id:int}/acceptance")]
+        [HttpPut("api/contracts/milestones/{id:int}/accept")]
         [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(ApiResponse<MilestoneAcceptanceDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<MilestoneAcceptanceDto>), StatusCodes.Status400BadRequest)]
