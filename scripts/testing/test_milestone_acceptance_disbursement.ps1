@@ -17,24 +17,63 @@ $contToken = $contRes.data.token
 $contHeaders = @{ Authorization = "Bearer $contToken" }
 Write-Host "  -> Tokens obtained successfully." -ForegroundColor Green
 
-# 2. Get active contracts
-Write-Host "`n[2] Fetching Active Contracts..." -ForegroundColor Yellow
-$contractsRes = Invoke-RestMethod -Uri "$baseUrl/api/contracts?pageSize=10" -Method Get -Headers $adminHeaders
+# 2. Get active/draft contracts
+Write-Host "`n[2] Fetching Active / Draft Contracts..." -ForegroundColor Yellow
+$contractsRes = Invoke-RestMethod -Uri "$baseUrl/api/contracts?pageSize=20" -Method Get -Headers $adminHeaders
 if (-not $contractsRes.success -or $contractsRes.data.items.Count -eq 0) {
     throw "No contracts found in database!"
 }
 
-# Find a contract with milestones or create one
-$targetContract = $contractsRes.data.items | Where-Object { $_.milestoneCount -gt 0 } | Select-Object -First 1
+# Lọc hợp đồng chưa hoàn thành để có thể nghiệm thu mốc
+$targetContract = $contractsRes.data.items | Where-Object { $_.statusName -in @("Active", "Draft") } | Select-Object -First 1
+
 if (-not $targetContract) {
-    $targetContract = $contractsRes.data.items[0]
+    Write-Host "  -> All existing contracts are Completed. Creating a fresh contract for testing..." -ForegroundColor Yellow
+    $deadline = (Get-Date).ToUniversalTime().AddDays(30).ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $pkgBody = @{
+        name = "Goi thau Test Nghiem thu Giai ngan " + (Get-Random -Minimum 1000 -Maximum 9999)
+        type = 0
+        budget = 500000000
+        deadline = $deadline
+        description = "Goi thau phuc vu kiem thu tu dong hoa nghiem thu va giai ngan"
+    } | ConvertTo-Json
+    $pkgRes = Invoke-RestMethod -Uri "$baseUrl/api/bid-packages" -Method Post -Body $pkgBody -Headers $adminHeaders -ContentType "application/json"
+    $pkgId = $pkgRes.data.id
+
+    $critBody = @{ name = "Nang luc ky thuat"; description = "Tieu chi kiem thu"; weight = 100; maxScore = 100 } | ConvertTo-Json
+    $critRes = Invoke-RestMethod -Uri "$baseUrl/api/evaluations/packages/$pkgId/criteria" -Method Post -Body $critBody -Headers $adminHeaders -ContentType "application/json"
+    $critId = $critRes.data.id
+
+    $dummyFile = "$env:TEMP\dummy_bid_test.pdf"
+    [System.IO.File]::WriteAllText($dummyFile, "%PDF-1.4 dummy bid proposal")
+    $subJson = Invoke-Expression "curl.exe -s -X POST `"$baseUrl/api/bid-packages/$pkgId/submissions`" -H `"Authorization: Bearer $contToken`" -F `"Files=@$dummyFile`" -F `"FileTypes=0`""
+    $subRes = $subJson | ConvertFrom-Json
+    $subId = $subRes.data.id
+
+    Invoke-RestMethod -Uri "$baseUrl/api/bid-packages/$pkgId/status" -Method Put -Body (@{ newStatus = 1 } | ConvertTo-Json) -Headers $adminHeaders -ContentType "application/json" | Out-Null
+    Invoke-RestMethod -Uri "$baseUrl/api/bid-packages/$pkgId/status" -Method Put -Body (@{ newStatus = 2 } | ConvertTo-Json) -Headers $adminHeaders -ContentType "application/json" | Out-Null
+    $scoreBody = @{ scores = @(@{ criteriaId = $critId; score = 100; comment = "Dat tieu chuan" }) } | ConvertTo-Json
+    Invoke-RestMethod -Uri "$baseUrl/api/evaluations/submissions/$subId/scores" -Method Post -Body $scoreBody -Headers $adminHeaders -ContentType "application/json" | Out-Null
+    Invoke-RestMethod -Uri "$baseUrl/api/evaluations/packages/$pkgId/finalize?selectedSubmissionId=$subId" -Method Post -Headers $adminHeaders | Out-Null
+
+    $ctrBody = @{
+        bidPackageId = $pkgId
+        contractorId = 1
+        value = 450000000
+        terms = "Dieu khoan nghiem thu va giai ngan theo dot"
+        startDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        endDate = (Get-Date).ToUniversalTime().AddMonths(6).ToString("yyyy-MM-ddTHH:mm:ssZ")
+    } | ConvertTo-Json
+    $ctrRes = Invoke-RestMethod -Uri "$baseUrl/api/contracts" -Method Post -Body $ctrBody -Headers $adminHeaders -ContentType "application/json"
+    $contractId = $ctrRes.data.id
+} else {
+    $contractId = $targetContract.id
 }
-$contractId = $targetContract.id
-Write-Host "  -> Target Contract ID: $contractId, Number: $($targetContract.contractNumber), Value: $($targetContract.value) VND" -ForegroundColor Green
 
 # 3. Check detailed contract before test
 $detailRes = Invoke-RestMethod -Uri "$baseUrl/api/contracts/$contractId" -Method Get -Headers $adminHeaders
 $contract = $detailRes.data
+Write-Host "  -> Target Contract ID: $contractId, Number: $($contract.contractNumber), Value: $($contract.value) VND" -ForegroundColor Green
 Write-Host "  -> Initial Disbursed Amount: $($contract.totalDisbursedAmount) VND" -ForegroundColor Green
 Write-Host "  -> Initial Remaining Amount: $($contract.totalRemainingAmount) VND" -ForegroundColor Green
 Write-Host "  -> Initial Contract Status: $($contract.statusName)" -ForegroundColor Green
@@ -52,10 +91,17 @@ if ($contract.statusName -eq "Draft" -or $contract.status -eq 0) {
 $pendingMs = $contract.milestones | Where-Object { $_.statusName -eq "Pending" } | Select-Object -First 1
 if (-not $pendingMs) {
     Write-Host "  -> Adding a new Pending milestone for testing..." -ForegroundColor Yellow
+    $existingMilestonesTotal = ($contract.milestones | Measure-Object -Property amount -Sum).Sum
+    if (-not $existingMilestonesTotal) { $existingMilestonesTotal = 0 }
+    $availableBudget = [decimal]$contract.value - [decimal]$existingMilestonesTotal
+
+    $msAmount = [Math]::Min(10000000, [Math]::Max(1000000, [decimal]$availableBudget * 0.5))
+    if ($msAmount -gt $availableBudget) { $msAmount = $availableBudget }
+
     $newMsBody = @{
-        title = "Nghiem thu hang muc kiem thu tu dong hoa"
+        title = "Nghiem thu hang muc kiem thu tu dong hoa dot " + (Get-Random -Minimum 10 -Maximum 99)
         dueDate = (Get-Date).ToUniversalTime().AddMonths(1).ToString("yyyy-MM-ddTHH:mm:ssZ")
-        amount = [Math]::Min(50000000, [Math]::Max(10000000, [decimal]$contract.value * 0.05))
+        amount = $msAmount
     } | ConvertTo-Json
     $addMsRes = Invoke-RestMethod -Uri "$baseUrl/api/contracts/$contractId/milestones" -Method Post -Body $newMsBody -Headers $adminHeaders -ContentType "application/json"
     $pendingMs = $addMsRes.data
