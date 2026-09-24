@@ -39,6 +39,15 @@ Write-Host "  -> Initial Disbursed Amount: $($contract.totalDisbursedAmount) VND
 Write-Host "  -> Initial Remaining Amount: $($contract.totalRemainingAmount) VND" -ForegroundColor Green
 Write-Host "  -> Initial Contract Status: $($contract.statusName)" -ForegroundColor Green
 
+# Ensure contract is in Active status for acceptance testing
+if ($contract.statusName -eq "Draft" -or $contract.status -eq 0) {
+    Write-Host "  -> Contract is in Draft status. Transitioning to Active (Status = 1)..." -ForegroundColor Yellow
+    $actBody = @{ newStatus = 1 } | ConvertTo-Json
+    $actRes = Invoke-RestMethod -Uri "$baseUrl/api/contracts/$contractId/status" -Method Put -Body $actBody -Headers $adminHeaders -ContentType "application/json"
+    $contract.statusName = "Active"
+    Write-Host "  -> Contract status updated to Active successfully." -ForegroundColor Green
+}
+
 # 4. Check or add a pending milestone
 $pendingMs = $contract.milestones | Where-Object { $_.statusName -eq "Pending" } | Select-Object -First 1
 if (-not $pendingMs) {
