@@ -454,6 +454,54 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
+        /// Nhà thầu gửi báo cáo tiến độ tuần theo mốc thanh toán (kiểm soát IDOR)
+        /// </summary>
+        /// <param name="id">Mã mốc thanh toán cần gửi báo cáo tiến độ.</param>
+        /// <param name="request">Thông tin tuần, phần trăm hoàn thành và ghi chú tiến độ.</param>
+        [HttpPost("api/contracts/milestones/{id:int}/progress")]
+        [Authorize(Roles = "Contractor")]
+        [ProducesResponseType(typeof(ApiResponse<ProgressUpdateDto>), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ApiResponse<ProgressUpdateDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<ProgressUpdateDto>), StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(typeof(ApiResponse<ProgressUpdateDto>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<ProgressUpdateDto>>> AddMilestoneProgressUpdate(
+            int id,
+            [FromBody] CreateProgressUpdateRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(ApiResponse<ProgressUpdateDto>.Fail(errors));
+            }
+
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<ProgressUpdateDto>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var result = await _contractService.AddMilestoneProgressUpdateAsync(id, request, userId.Value);
+
+            if (!result.Success)
+            {
+                if (result.Message.Contains("không có quyền"))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
+                if (result.Message.Contains("Không tìm thấy"))
+                {
+                    return NotFound(result);
+                }
+                return BadRequest(result);
+            }
+
+            return StatusCode(StatusCodes.Status201Created, result);
+        }
+
+        /// <summary>
         /// Phê duyệt biên bản nghiệm thu mốc thanh toán
         /// </summary>
         /// <param name="id">Mã mốc thanh toán cần nghiệm thu.</param>
