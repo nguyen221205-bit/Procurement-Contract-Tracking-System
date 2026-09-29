@@ -5,6 +5,9 @@ using ProcurementSystem.Infrastructure.Data;
 
 namespace ProcurementSystem.API.Controllers
 {
+    /// <summary>
+    /// Bộ điều khiển kiểm tra trạng thái hoạt động của hệ thống và kết nối cơ sở dữ liệu
+    /// </summary>
     [ApiController]
     [Route("api/[controller]")]
     public class HealthController : ControllerBase
@@ -16,7 +19,12 @@ namespace ProcurementSystem.API.Controllers
             _context = context;
         }
 
+        /// <summary>
+        /// Kiểm tra sức khỏe hệ thống (Health Check), kiểm tra kết nối cơ sở dữ liệu và tổng số tài khoản
+        /// </summary>
+        /// <returns>Trạng thái hoạt động chi tiết của máy chủ Web API và kết nối CSDL SQL Server</returns>
         [HttpGet]
+        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
         public async Task<IActionResult> CheckHealth()
         {
             var canConnect = await _context.Database.CanConnectAsync();

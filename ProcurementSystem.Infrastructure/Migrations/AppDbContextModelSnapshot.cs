@@ -193,6 +193,8 @@ namespace ProcurementSystem.Infrastructure.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("Status", "Deadline");
+
                     b.ToTable("BidPackages");
                 });
 
@@ -228,8 +230,12 @@ namespace ProcurementSystem.Infrastructure.Migrations
 
                     b.HasIndex("ContractorId");
 
+                    b.HasIndex("TotalScore");
+
                     b.HasIndex("BidPackageId", "ContractorId")
                         .IsUnique();
+
+                    b.HasIndex("BidPackageId", "Status");
 
                     b.ToTable("BidSubmissions");
                 });
@@ -287,11 +293,11 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.HasIndex("ContractNumber")
                         .IsUnique();
 
-                    b.HasIndex("ContractorId");
-
                     b.HasIndex("EndDate");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("ContractorId", "Status");
 
                     b.ToTable("Contracts");
                 });
@@ -323,7 +329,7 @@ namespace ProcurementSystem.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ContractId");
+                    b.HasIndex("ContractId", "Status");
 
                     b.ToTable("ContractMilestones");
                 });

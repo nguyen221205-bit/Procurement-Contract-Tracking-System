@@ -8,6 +8,7 @@ using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Data;
 using ProcurementSystem.Infrastructure.Repositories;
 using ProcurementSystem.Infrastructure.Seeders;
+using ProcurementSystem.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,9 +27,34 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
-// TODO: Register your services here
-// builder.Services.AddScoped<IAuthService, AuthService>();
-// builder.Services.AddScoped<IBidPackageService, BidPackageService>();
+// Auth Services
+builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+
+// Contractor Services
+builder.Services.AddHttpClient<ITaxLookupService, TaxLookupService>();
+builder.Services.AddScoped<IPdfSecurityService, PdfSecurityService>();
+builder.Services.AddScoped<IFileStorageService, FileStorageService>();
+builder.Services.AddScoped<IContractorAuthService, ContractorAuthService>();
+builder.Services.AddScoped<IContractorService, ContractorService>();
+
+// User Management Services
+builder.Services.AddScoped<IUserService, UserService>();
+
+// Bid Package Services
+builder.Services.AddScoped<IBidPackageService, BidPackageService>();
+
+// Bid Submission Services
+builder.Services.AddScoped<IBidSubmissionService, BidSubmissionService>();
+
+// Evaluation & Scoring Services
+builder.Services.AddScoped<IEvaluationService, EvaluationService>();
+
+// Contract Services
+builder.Services.AddScoped<IContractService, ContractService>();
+
+// Management & Reporting Services
+builder.Services.AddScoped<IReportService, ReportService>();
 
 // ==========================================
 // 3. AUTHENTICATION - JWT
@@ -107,6 +133,20 @@ builder.Services.AddSwaggerGen(options =>
             Array.Empty<string>()
         }
     });
+
+    // Include XML Documentation Comments for Swagger
+    var apiXmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var apiXmlPath = Path.Combine(AppContext.BaseDirectory, apiXmlFile);
+    if (File.Exists(apiXmlPath))
+    {
+        options.IncludeXmlComments(apiXmlPath, includeControllerXmlComments: true);
+    }
+
+    var coreXmlPath = Path.Combine(AppContext.BaseDirectory, "ProcurementSystem.Core.xml");
+    if (File.Exists(coreXmlPath))
+    {
+        options.IncludeXmlComments(coreXmlPath);
+    }
 });
 
 // ==========================================
@@ -152,6 +192,15 @@ if (app.Environment.IsDevelopment())
 
 // Static files (cho Frontend)
 app.UseStaticFiles();
+
+// Phục vụ tĩnh cho thư mục uploads
+var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
+if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
+    RequestPath = "/uploads"
+});
 
 // CORS
 app.UseCors("AllowAll");
