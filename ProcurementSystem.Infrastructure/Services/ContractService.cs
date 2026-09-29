@@ -774,6 +774,22 @@ namespace ProcurementSystem.Infrastructure.Services
                 $"Cập nhật tiến độ tuần {request.WeekNumber} ({request.CompletionPercent}%) thành công.");
         }
 
+        public async Task<ApiResponse<ProgressUpdateDto>> AddMilestoneProgressUpdateAsync(
+            int milestoneId, CreateProgressUpdateRequest request, int userId)
+        {
+            var milestone = await _unitOfWork.Repository<ContractMilestone>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(m => m.Id == milestoneId);
+
+            if (milestone == null)
+            {
+                return ApiResponse<ProgressUpdateDto>.Fail("Không tìm thấy mốc thanh toán nghiệm thu.");
+            }
+
+            return await AddProgressUpdateAsync(milestone.ContractId, request, userId);
+        }
+
         public async Task<ApiResponse<MilestoneAcceptanceDto>> ApproveMilestoneAcceptanceAsync(
             int milestoneId, ApproveMilestoneAcceptanceRequest request, int userId)
         {

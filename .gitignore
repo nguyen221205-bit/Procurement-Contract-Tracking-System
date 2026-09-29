@@ -81,4 +81,6 @@ implementation*.md
 # Postman Collections & Handoff docs
 Procurement_Contracts_Collection.json
 Procurement_API_v2_Postman_Collection.json
+ProcurementSystem_Postman_Collection_v2.json
 HUONG_DAN_CAI_DAT_VA_TICH_HOP_API.md
+HUONG_DAN_KIEM_THU_POSTMAN_V2.md
