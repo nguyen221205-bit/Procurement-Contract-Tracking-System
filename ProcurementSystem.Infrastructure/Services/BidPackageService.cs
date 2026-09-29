@@ -267,6 +267,27 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidPackageDto>.Fail($"Không thể chuyển trạng thái từ '{package.Status}' sang '{request.NewStatus}'. Quy trình hợp lệ: Mở thầu -> Đóng thầu -> Chấm điểm -> Ký hợp đồng.");
             }
 
+            // Lựa chọn A: Bắt buộc tiêu chí phải đủ 100% trước khi bắt đầu giai đoạn Chấm điểm (Evaluating)
+            if (request.NewStatus == BidPackageStatus.Evaluating)
+            {
+                var criteriaList = await _unitOfWork.Repository<EvaluationCriteria>()
+                    .Query()
+                    .Where(c => c.BidPackageId == id)
+                    .ToListAsync();
+
+                if (!criteriaList.Any())
+                {
+                    return ApiResponse<BidPackageDto>.Fail("Không thể bắt đầu giai đoạn Chấm điểm. Gói thầu chưa được thiết lập bộ tiêu chí đánh giá.");
+                }
+
+                var totalWeight = criteriaList.Sum(c => c.Weight);
+                if (totalWeight != 100)
+                {
+                    return ApiResponse<BidPackageDto>.Fail(
+                        $"Không thể bắt đầu giai đoạn Chấm điểm. Tổng trọng số bộ tiêu chí phải đạt đúng 100% (Hiện tại: {totalWeight}%).");
+                }
+            }
+
             package.Status = request.NewStatus;
             package.UpdatedAt = DateTime.UtcNow;
 

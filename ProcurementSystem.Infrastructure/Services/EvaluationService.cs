@@ -64,6 +64,19 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<EvaluationCriteriaDto>.Fail("Trọng số phải lớn hơn 0.");
             }
 
+            // Rào chặn nghiệp vụ: Tổng trọng số các tiêu chí trong gói thầu không được vượt quá 100%
+            var currentTotalWeight = await _unitOfWork.Repository<EvaluationCriteria>()
+                .Query()
+                .Where(c => c.BidPackageId == packageId)
+                .SumAsync(c => c.Weight);
+
+            if (currentTotalWeight + request.Weight > 100)
+            {
+                var remaining = Math.Max(0, 100 - currentTotalWeight);
+                return ApiResponse<EvaluationCriteriaDto>.Fail(
+                    $"Tổng trọng số không được vượt quá 100%. Gói thầu hiện đã có {currentTotalWeight}%, bạn chỉ có thể thêm tối đa {remaining}%.");
+            }
+
             var isDuplicate = await _unitOfWork.Repository<EvaluationCriteria>()
                 .ExistsAsync(c => c.BidPackageId == packageId && c.Name.ToLower() == request.Name.Trim().ToLower());
             if (isDuplicate)
@@ -124,6 +137,19 @@ namespace ProcurementSystem.Infrastructure.Services
             if (request.Weight <= 0)
             {
                 return ApiResponse<EvaluationCriteriaDto>.Fail("Trọng số phải lớn hơn 0.");
+            }
+
+            // Rào chặn nghiệp vụ: Tổng trọng số các tiêu chí khác trong gói thầu không được vượt quá 100%
+            var otherTotalWeight = await _unitOfWork.Repository<EvaluationCriteria>()
+                .Query()
+                .Where(c => c.BidPackageId == criteria.BidPackageId && c.Id != criteriaId)
+                .SumAsync(c => c.Weight);
+
+            if (otherTotalWeight + request.Weight > 100)
+            {
+                var remaining = Math.Max(0, 100 - otherTotalWeight);
+                return ApiResponse<EvaluationCriteriaDto>.Fail(
+                    $"Tổng trọng số không được vượt quá 100%. Các tiêu chí khác đã chiếm {otherTotalWeight}%, trọng số tối đa có thể đặt là {remaining}%.");
             }
 
             // Kiểm tra trùng tên với tiêu chí khác cùng gói thầu
@@ -274,6 +300,13 @@ namespace ProcurementSystem.Infrastructure.Services
             if (!criteriaList.Any())
             {
                 return ApiResponse<List<EvaluationScoreDto>>.Fail("Gói thầu chưa được thiết lập bộ tiêu chí đánh giá. Vui lòng tạo tiêu chí trước.");
+            }
+
+            var totalCriteriaWeight = criteriaList.Sum(c => c.Weight);
+            if (totalCriteriaWeight != 100)
+            {
+                return ApiResponse<List<EvaluationScoreDto>>.Fail(
+                    $"Không thể chấm điểm. Gói thầu cần có bộ tiêu chí với tổng trọng số đạt đúng 100% (Hiện tại: {totalCriteriaWeight}%).");
             }
 
             var criteriaMap = criteriaList.ToDictionary(c => c.Id);
