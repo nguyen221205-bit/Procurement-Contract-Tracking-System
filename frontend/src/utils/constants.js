@@ -6,54 +6,6 @@ export const ROLES = {
   CONTRACTOR: 'Contractor',
 };
 
-// Seed accounts for Quick 1-Click Demo
-export const DEMO_ACCOUNTS = [
-  {
-    role: ROLES.ADMIN,
-    name: 'Quản trị viên',
-    email: 'admin@procurement.com',
-    password: 'Admin@123',
-    badgeColor: 'bg-rose-100 text-rose-700 border-rose-200',
-    icon: 'Crown',
-    desc: 'Xem báo cáo, duyệt trao thầu',
-  },
-  {
-    role: ROLES.PROCUREMENT,
-    name: 'Bên mời thầu',
-    email: 'procurement@procurement.com',
-    password: 'Admin@123',
-    badgeColor: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-    icon: 'Briefcase',
-    desc: 'Tạo gói thầu, duyệt nghiệm thu',
-  },
-  {
-    role: ROLES.EVALUATOR,
-    name: 'Giám khảo',
-    email: 'evaluator@procurement.com',
-    password: 'Admin@123',
-    badgeColor: 'bg-amber-100 text-amber-700 border-amber-200',
-    icon: 'Scale',
-    desc: 'Chấm điểm hồ sơ thầu',
-  },
-  {
-    role: ROLES.CONTRACTOR,
-    name: 'Nhà thầu 1',
-    email: 'contractor1@test.com',
-    password: 'Admin@123',
-    badgeColor: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    icon: 'Building2',
-    desc: 'Nộp thầu, cập nhật tiến độ',
-  },
-  {
-    role: ROLES.CONTRACTOR,
-    name: 'Nhà thầu 2',
-    email: 'contractor2@test.com',
-    password: 'Admin@123',
-    badgeColor: 'bg-teal-100 text-teal-700 border-teal-200',
-    icon: 'Building',
-    desc: 'Nộp thầu cạnh tranh',
-  },
-];
 
 // Bid Package Lifecycle Status khớp 100% Enum Backend (BidPackageStatus.cs)
 export const PACKAGE_STATUS = {
