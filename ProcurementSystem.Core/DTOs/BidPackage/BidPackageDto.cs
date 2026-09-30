@@ -18,5 +18,6 @@ namespace ProcurementSystem.Core.DTOs.BidPackage
         public DateTime? UpdatedAt { get; set; }
         public List<BidDocumentDto> BidDocuments { get; set; } = new();
         public int SubmissionsCount { get; set; }
+        public bool IsAwarded { get; set; }
     }
 }

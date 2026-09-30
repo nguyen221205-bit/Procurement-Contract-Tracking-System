@@ -15,5 +15,6 @@ namespace ProcurementSystem.Core.DTOs.BidPackage
         public DateTime CreatedAt { get; set; }
         public int DocumentsCount { get; set; }
         public int SubmissionsCount { get; set; }
+        public bool IsAwarded { get; set; }
     }
 }
