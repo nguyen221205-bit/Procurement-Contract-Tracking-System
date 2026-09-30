@@ -5,15 +5,7 @@ export const bidPackageApi = {
     return await axiosClient.get('/bid-packages', { params });
   },
 
-  getAll: async (params = {}) => {
-    return await axiosClient.get('/bid-packages', { params });
-  },
-
   getPackageById: async (id) => {
-    return await axiosClient.get(`/bid-packages/${id}`);
-  },
-
-  getById: async (id) => {
     return await axiosClient.get(`/bid-packages/${id}`);
   },
 

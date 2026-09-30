@@ -40,12 +40,3 @@ export const formatPercent = (val) => {
   return `${Number(val).toFixed(1)}%`;
 };
 
-// Alias formatCurrency -> formatVND
-export const formatCurrency = formatVND;
-
-// Định dạng số chuẩn
-export const formatNumber = (num, decimals = 2) => {
-  if (num === undefined || num === null || isNaN(num)) return '0';
-  return Number(num).toLocaleString('vi-VN', { maximumFractionDigits: decimals });
-};
-

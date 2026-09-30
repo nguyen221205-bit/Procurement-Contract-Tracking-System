@@ -312,12 +312,6 @@ export const PackageDetailPage = () => {
   const isClosed = statusStr === 'Closed' || statusStr === '1';
   const isEvaluating = statusStr === 'Evaluating' || statusStr === '2';
   const isContracted = statusStr === 'Contracted' || statusStr === '3';
-  const isAwarded = Boolean(pkg.isAwarded || statusStr === 'Awarded');
-  const displayStatus = isContracted
-    ? 'Contracted'
-    : isAwarded
-    ? 'Awarded'
-    : pkg.status;
   const canEditCriteria = (isAdmin || isProcurement) && (isOpen || isClosed);
 
   return (
@@ -344,7 +338,7 @@ export const PackageDetailPage = () => {
             <span className={`text-xs px-2.5 py-1 rounded-lg font-medium border ${typeConfig.color}`}>
               {typeConfig.label}
             </span>
-            <StatusBadge status={displayStatus} />
+            <StatusBadge status={pkg.status} />
           </div>
 
           <div className="text-xs text-slate-500 flex items-center space-x-4">
@@ -762,7 +756,7 @@ export const PackageDetailPage = () => {
               <div className="space-y-3">
                 <div className="text-xs text-slate-600">
                   <span className="font-semibold">Trạng thái hiện tại: </span>
-                  <StatusBadge status={displayStatus} />
+                  <StatusBadge status={pkg.status} />
                 </div>
 
                 {isOpen && (

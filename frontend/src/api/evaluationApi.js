@@ -21,24 +21,8 @@ export const evaluationApi = {
     return await axiosClient.get(`/evaluations/packages/${packageId}/summary`);
   },
 
-  getRankings: async (packageId) => {
-    return await axiosClient.get(`/evaluations/packages/${packageId}/rankings`);
-  },
-
-  scoreSubmission: async (submissionId, data) => {
-    return await axiosClient.post(`/evaluations/submissions/${submissionId}/scores`, data);
-  },
-
-  getScoresBySubmission: async (submissionId) => {
-    return await axiosClient.get(`/evaluations/submissions/${submissionId}/scores`);
-  },
-
-  finalizeEvaluation: async (packageId, selectedSubmissionId) => {
-    return await axiosClient.post(`/evaluations/packages/${packageId}/finalize?selectedSubmissionId=${selectedSubmissionId}`);
-  },
-
-  getAwardedBid: async (packageId) => {
-    return await axiosClient.get(`/evaluations/packages/${packageId}/awarded-bid`);
+  finalizeEvaluation: async (packageId) => {
+    return await axiosClient.post(`/evaluations/packages/${packageId}/finalize`);
   },
 };
 

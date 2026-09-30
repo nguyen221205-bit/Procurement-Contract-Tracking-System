@@ -393,7 +393,7 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 { ContractStatus.Draft, new List<ContractStatus> { ContractStatus.Active } },
                 { ContractStatus.Active, new List<ContractStatus> { ContractStatus.Completed, ContractStatus.Terminated } },
-                { ContractStatus.Completed, new List<ContractStatus> { ContractStatus.Active } },
+                { ContractStatus.Completed, new List<ContractStatus>() },
                 { ContractStatus.Terminated, new List<ContractStatus>() }
             };
 
@@ -401,24 +401,6 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 return ApiResponse<ContractDto>.Fail(
                     $"Không thể chuyển hợp đồng từ trạng thái '{contract.Status}' sang '{request.NewStatus}'.");
-            }
-
-            // Nghiệp vụ: Chỉ cho phép chuyển sang Completed khi đã nghiệm thu và giải ngân đủ 100% giá trị hợp đồng
-            if (request.NewStatus == ContractStatus.Completed)
-            {
-                var totalDisbursed = contract.Milestones?
-                    .Where(m => m.Status == MilestoneStatus.Completed)
-                    .Sum(m => m.Amount) ?? 0;
-
-                var allMilestonesCompleted = contract.Milestones != null && contract.Milestones.Count > 0 &&
-                    contract.Milestones.All(m => m.Status == MilestoneStatus.Completed);
-
-                if (!allMilestonesCompleted || totalDisbursed < contract.Value)
-                {
-                    return ApiResponse<ContractDto>.Fail(
-                        $"Không thể hoàn thành hợp đồng khi chưa nghiệm thu và giải ngân đủ 100% giá trị hợp đồng. " +
-                        $"Hiện tại đã giải ngân: {totalDisbursed:N0} / {contract.Value:N0} VNĐ.");
-                }
             }
 
             var oldStatus = contract.Status;
@@ -854,16 +836,8 @@ namespace ProcurementSystem.Infrastructure.Services
                     .Where(m => m.ContractId == milestone.ContractId)
                     .ToListAsync();
 
-                var totalCompletedAmount = contractMilestones
-                    .Where(m => m.Status == MilestoneStatus.Completed)
-                    .Sum(m => m.Amount);
-
-                // Nghiệp vụ: Chỉ tự động chuyển Hợp đồng sang Completed khi:
-                // 1. Toàn bộ các mốc hiện có đều đã Completed
-                // 2. VÀ Tổng số tiền đã nghiệm thu phải đạt đủ 100% giá trị hợp đồng
                 if (contractMilestones.Count > 0 &&
-                    contractMilestones.All(m => m.Status == MilestoneStatus.Completed) &&
-                    totalCompletedAmount >= milestone.Contract.Value)
+                    contractMilestones.All(m => m.Status == MilestoneStatus.Completed))
                 {
                     milestone.Contract.Status = ContractStatus.Completed;
                     milestone.Contract.UpdatedAt = DateTime.UtcNow;
@@ -904,7 +878,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
             var actionMsg = request.IsApproved ? "Phê duyệt" : "Từ chối";
             var completedMsg = milestone.Contract.Status == ContractStatus.Completed
-                ? " Hợp đồng đã được tự động chuyển sang trạng thái Completed vì tất cả mốc thanh toán đã hoàn thành và giải ngân đủ 100%."
+                ? " Hợp đồng đã được tự động chuyển sang trạng thái Completed vì tất cả mốc thanh toán đã hoàn thành."
                 : string.Empty;
 
             return ApiResponse<MilestoneAcceptanceDto>.Ok(
