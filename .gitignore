@@ -33,8 +33,9 @@ bld/
 
 # NuGet Packages
 *.nupkg
-**/[Pp]ackages/*
+/[Pp]ackages/*
 !**/[Pp]ackages/build/
+!frontend/src/components/packages/
 
 # Build Results of an ATL Project
 [Dd]ebugPS/

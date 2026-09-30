@@ -91,7 +91,8 @@ namespace ProcurementSystem.Infrastructure.Services
                                        CreatedByName = bp.Creator != null ? bp.Creator.FullName : null,
                                        CreatedAt = bp.CreatedAt,
                                        DocumentsCount = bp.BidDocuments.Count,
-                                       SubmissionsCount = bp.BidSubmissions.Count
+                                       SubmissionsCount = bp.BidSubmissions.Count,
+                                       IsAwarded = bp.BidSubmissions.Any(s => s.Status == "Selected")
                                    })
                                    .ToListAsync();
 
@@ -406,7 +407,8 @@ namespace ProcurementSystem.Infrastructure.Services
                     FilePath = d.FilePath,
                     UploadedAt = d.UploadedAt
                 }).ToList() ?? new List<BidDocumentDto>(),
-                SubmissionsCount = package.BidSubmissions?.Count ?? 0
+                SubmissionsCount = package.BidSubmissions?.Count ?? 0,
+                IsAwarded = package.BidSubmissions != null && package.BidSubmissions.Any(s => s.Status == "Selected")
             };
         }
     }

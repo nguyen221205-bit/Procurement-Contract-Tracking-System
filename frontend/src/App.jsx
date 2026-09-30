@@ -7,6 +7,10 @@ import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import PackagesPage from './pages/PackagesPage';
 import PackageDetailPage from './pages/PackageDetailPage';
+import EvaluationPage from './pages/EvaluationPage';
+import EvaluationListPage from './pages/EvaluationListPage';
+import ContractsPage from './pages/ContractsPage';
+import ContractDetailPage from './pages/ContractDetailPage';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 
@@ -34,8 +38,10 @@ function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/packages" element={<PackagesPage />} />
               <Route path="/packages/:id" element={<PackageDetailPage />} />
-              <Route path="/contracts" element={<PagePlaceholder title="Hợp đồng" description="Màn hình quản lý hợp đồng và mốc thanh toán." />} />
-              <Route path="/evaluation" element={<PagePlaceholder title="Chấm điểm" description="Màn hình chấm điểm và xếp hạng trúng thầu." />} />
+              <Route path="/contracts" element={<ContractsPage />} />
+              <Route path="/contracts/:id" element={<ContractDetailPage />} />
+              <Route path="/evaluation" element={<EvaluationListPage />} />
+              <Route path="/evaluation/:packageId" element={<EvaluationPage />} />
               <Route path="/users" element={<PagePlaceholder title="Người dùng" description="Màn hình quản trị người dùng hệ thống." />} />
             </Route>
           </Route>
