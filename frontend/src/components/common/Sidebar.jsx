@@ -33,7 +33,7 @@ const MENU_ITEMS = [
     name: 'Chấm điểm',
     path: '/evaluation',
     icon: Scale,
-    roles: [ROLES.ADMIN, ROLES.EVALUATOR],
+    roles: [ROLES.ADMIN, ROLES.PROCUREMENT, ROLES.EVALUATOR],
   },
   {
     name: 'Người dùng',
