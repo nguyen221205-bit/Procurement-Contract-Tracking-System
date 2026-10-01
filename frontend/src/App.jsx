@@ -11,16 +11,9 @@ import EvaluationPage from './pages/EvaluationPage';
 import EvaluationListPage from './pages/EvaluationListPage';
 import ContractsPage from './pages/ContractsPage';
 import ContractDetailPage from './pages/ContractDetailPage';
+import UsersPage from './pages/UsersPage';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/common/ProtectedRoute';
-
-// Temporary placeholder for pages to be built in subsequent steps
-const PagePlaceholder = ({ title, description }) => (
-  <div className="bg-white p-8 rounded-2xl shadow-xs border border-slate-200 text-center space-y-2 max-w-lg mx-auto mt-10">
-    <h3 className="text-lg font-bold text-slate-800">{title}</h3>
-    <p className="text-xs text-slate-500">{description}</p>
-  </div>
-);
 
 function App() {
   return (
@@ -42,7 +35,7 @@ function App() {
               <Route path="/contracts/:id" element={<ContractDetailPage />} />
               <Route path="/evaluation" element={<EvaluationListPage />} />
               <Route path="/evaluation/:packageId" element={<EvaluationPage />} />
-              <Route path="/users" element={<PagePlaceholder title="Người dùng" description="Màn hình quản trị người dùng hệ thống." />} />
+              <Route path="/users" element={<UsersPage />} />
             </Route>
           </Route>
 

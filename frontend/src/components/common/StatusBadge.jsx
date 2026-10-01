@@ -3,6 +3,7 @@ import {
   PACKAGE_STATUS_CONFIG,
   CONTRACT_STATUS_CONFIG,
   MILESTONE_STATUS_CONFIG,
+  ROLE_CONFIG,
 } from '../../utils/constants';
 
 export const StatusBadge = ({ status, type = 'auto' }) => {
@@ -14,12 +15,20 @@ export const StatusBadge = ({ status, type = 'auto' }) => {
     config = MILESTONE_STATUS_CONFIG[status];
   } else if (type === 'package') {
     config = PACKAGE_STATUS_CONFIG[status];
+  } else if (type === 'role') {
+    config = ROLE_CONFIG[status];
+  } else if (type === 'user_status') {
+    const isActive = status === true || status === 'true' || status === 'Active';
+    config = isActive
+      ? { label: 'Đang hoạt động', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+      : { label: 'Đã bị khóa', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' };
   } else {
-    // Auto lookup order: Contract -> Package -> Milestone
+    // Auto lookup order: Contract -> Package -> Milestone -> Role
     config =
       CONTRACT_STATUS_CONFIG[status] ||
       PACKAGE_STATUS_CONFIG[status] ||
-      MILESTONE_STATUS_CONFIG[status];
+      MILESTONE_STATUS_CONFIG[status] ||
+      ROLE_CONFIG[status];
   }
 
   const finalConfig = config || {
