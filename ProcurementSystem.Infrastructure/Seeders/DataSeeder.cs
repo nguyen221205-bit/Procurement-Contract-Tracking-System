@@ -15,6 +15,24 @@ namespace ProcurementSystem.Infrastructure.Seeders
 
             await context.Database.MigrateAsync();
 
+            // Bảo đảm bảng BidPackageEvaluators luôn tồn tại trên mọi máy môi trường dev
+            await context.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'BidPackageEvaluators')
+                BEGIN
+                    CREATE TABLE BidPackageEvaluators (
+                        BidPackageId INT NOT NULL,
+                        EvaluatorId INT NOT NULL,
+                        AssignedAt DATETIME2 NOT NULL CONSTRAINT DF_BidPackageEvaluators_AssignedAt DEFAULT SYSUTCDATETIME(),
+                        AssignedBy INT NULL,
+                        CONSTRAINT PK_BidPackageEvaluators PRIMARY KEY CLUSTERED (BidPackageId, EvaluatorId),
+                        CONSTRAINT FK_BidPackageEvaluators_BidPackages FOREIGN KEY (BidPackageId) REFERENCES BidPackages(Id) ON DELETE CASCADE,
+                        CONSTRAINT FK_BidPackageEvaluators_Users_Evaluator FOREIGN KEY (EvaluatorId) REFERENCES Users(Id) ON DELETE NO ACTION,
+                        CONSTRAINT FK_BidPackageEvaluators_Users_Assigner FOREIGN KEY (AssignedBy) REFERENCES Users(Id) ON DELETE SET NULL
+                    );
+                    CREATE NONCLUSTERED INDEX IX_BidPackageEvaluators_EvaluatorId ON BidPackageEvaluators (EvaluatorId);
+                END
+            ");
+
             // 1. Seed Roles
             var roleNames = new[] { "Admin", "Procurement", "Evaluator", "Contractor" };
             var roleDescriptions = new Dictionary<string, string>
@@ -108,6 +126,52 @@ namespace ProcurementSystem.Infrastructure.Seeders
                 await context.UserRoles.AddAsync(new UserRole
                 {
                     UserId = evalUser.Id,
+                    RoleId = evalRole.Id
+                });
+                await context.SaveChangesAsync();
+            }
+
+            // 2.4 Evaluator 2 (Theo quy định Luật Đấu thầu: tối thiểu 3 thành viên)
+            var evalUser2 = await context.Users.FirstOrDefaultAsync(u => u.Email == "evaluator2@procurement.com");
+            if (evalUser2 == null)
+            {
+                evalUser2 = new User
+                {
+                    FullName = "Le Thi Giam Khao Ky Thuat",
+                    Email = "evaluator2@procurement.com",
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123"),
+                    Phone = "0903333333",
+                    IsActive = true
+                };
+                await context.Users.AddAsync(evalUser2);
+                await context.SaveChangesAsync();
+
+                await context.UserRoles.AddAsync(new UserRole
+                {
+                    UserId = evalUser2.Id,
+                    RoleId = evalRole.Id
+                });
+                await context.SaveChangesAsync();
+            }
+
+            // 2.5 Evaluator 3
+            var evalUser3 = await context.Users.FirstOrDefaultAsync(u => u.Email == "evaluator3@procurement.com");
+            if (evalUser3 == null)
+            {
+                evalUser3 = new User
+                {
+                    FullName = "Pham Minh Tai - Giam Khao Tai Chinh",
+                    Email = "evaluator3@procurement.com",
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123"),
+                    Phone = "0904444444",
+                    IsActive = true
+                };
+                await context.Users.AddAsync(evalUser3);
+                await context.SaveChangesAsync();
+
+                await context.UserRoles.AddAsync(new UserRole
+                {
+                    UserId = evalUser3.Id,
                     RoleId = evalRole.Id
                 });
                 await context.SaveChangesAsync();

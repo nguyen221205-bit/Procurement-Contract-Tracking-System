@@ -228,6 +228,24 @@ BEGIN
 END
 GO
 
+-- Bảng 8.1: BidPackageEvaluators (Phân công Tổ chuyên gia / Ban giám khảo theo Luật Đấu thầu 2023)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'BidPackageEvaluators')
+BEGIN
+    CREATE TABLE BidPackageEvaluators (
+        BidPackageId INT NOT NULL,
+        EvaluatorId INT NOT NULL,
+        AssignedAt DATETIME2 NOT NULL CONSTRAINT DF_BidPackageEvaluators_AssignedAt DEFAULT SYSUTCDATETIME(),
+        AssignedBy INT NULL,
+        CONSTRAINT PK_BidPackageEvaluators PRIMARY KEY CLUSTERED (BidPackageId, EvaluatorId),
+        CONSTRAINT FK_BidPackageEvaluators_BidPackages FOREIGN KEY (BidPackageId) REFERENCES BidPackages(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_BidPackageEvaluators_Users_Evaluator FOREIGN KEY (EvaluatorId) REFERENCES Users(Id) ON DELETE NO ACTION,
+        CONSTRAINT FK_BidPackageEvaluators_Users_Assigner FOREIGN KEY (AssignedBy) REFERENCES Users(Id) ON DELETE SET NULL
+    );
+    CREATE NONCLUSTERED INDEX IX_BidPackageEvaluators_EvaluatorId ON BidPackageEvaluators (EvaluatorId);
+    PRINT N'Đã tạo bảng BidPackageEvaluators.';
+END
+GO
+
 -- =====================================================================================
 -- PHÂN HỆ 4: HỢP ĐỒNG, TIẾN ĐỘ & NGHIỆM THU
 -- =====================================================================================
@@ -404,6 +422,43 @@ BEGIN
     VALUES (@AdminUserId, @AdminRoleId);
 
     PRINT N'Đã tạo tài khoản quản trị mặc định: admin@procurement.com / Admin@123';
+END
+GO
+
+-- 3. Seed 3 Evaluator Users (Tối thiểu 3 thành viên theo Luật Đấu thầu 2023 - Mật khẩu: Admin@123)
+-- Evaluator 1: evaluator@procurement.com
+IF NOT EXISTS (SELECT 1 FROM Users WHERE Email = N'evaluator@procurement.com')
+BEGIN
+    INSERT INTO Users (FullName, Email, PasswordHash, Phone, IsActive, CreatedAt)
+    VALUES (N'Tran Van Giam Khao Cham Thau', N'evaluator@procurement.com', N'$2a$11$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', N'0902222222', 1, SYSUTCDATETIME());
+    DECLARE @Eval1Id INT = SCOPE_IDENTITY();
+    DECLARE @EvalRoleId INT = (SELECT Id FROM Roles WHERE Name = N'Evaluator');
+    INSERT INTO UserRoles (UserId, RoleId) VALUES (@Eval1Id, @EvalRoleId);
+    PRINT N'Đã tạo tài khoản Giám khảo 1: evaluator@procurement.com';
+END
+GO
+
+-- Evaluator 2: evaluator2@procurement.com
+IF NOT EXISTS (SELECT 1 FROM Users WHERE Email = N'evaluator2@procurement.com')
+BEGIN
+    INSERT INTO Users (FullName, Email, PasswordHash, Phone, IsActive, CreatedAt)
+    VALUES (N'Le Thi Giam Khao Ky Thuat', N'evaluator2@procurement.com', N'$2a$11$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', N'0903333333', 1, SYSUTCDATETIME());
+    DECLARE @Eval2Id INT = SCOPE_IDENTITY();
+    DECLARE @EvalRoleId2 INT = (SELECT Id FROM Roles WHERE Name = N'Evaluator');
+    INSERT INTO UserRoles (UserId, RoleId) VALUES (@Eval2Id, @EvalRoleId2);
+    PRINT N'Đã tạo tài khoản Giám khảo 2: evaluator2@procurement.com';
+END
+GO
+
+-- Evaluator 3: evaluator3@procurement.com
+IF NOT EXISTS (SELECT 1 FROM Users WHERE Email = N'evaluator3@procurement.com')
+BEGIN
+    INSERT INTO Users (FullName, Email, PasswordHash, Phone, IsActive, CreatedAt)
+    VALUES (N'Pham Minh Tai - Giam Khao Tai Chinh', N'evaluator3@procurement.com', N'$2a$11$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', N'0904444444', 1, SYSUTCDATETIME());
+    DECLARE @Eval3Id INT = SCOPE_IDENTITY();
+    DECLARE @EvalRoleId3 INT = (SELECT Id FROM Roles WHERE Name = N'Evaluator');
+    INSERT INTO UserRoles (UserId, RoleId) VALUES (@Eval3Id, @EvalRoleId3);
+    PRINT N'Đã tạo tài khoản Giám khảo 3: evaluator3@procurement.com';
 END
 GO
 
