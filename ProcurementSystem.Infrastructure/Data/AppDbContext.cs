@@ -18,6 +18,7 @@ namespace ProcurementSystem.Infrastructure.Data
         public DbSet<SubmissionFile> SubmissionFiles => Set<SubmissionFile>();
         public DbSet<EvaluationCriteria> EvaluationCriteria => Set<EvaluationCriteria>();
         public DbSet<EvaluationScore> EvaluationScores => Set<EvaluationScore>();
+        public DbSet<BidPackageEvaluator> BidPackageEvaluators => Set<BidPackageEvaluator>();
         public DbSet<Contract> Contracts => Set<Contract>();
         public DbSet<ContractMilestone> ContractMilestones => Set<ContractMilestone>();
         public DbSet<ProgressUpdate> ProgressUpdates => Set<ProgressUpdate>();
@@ -130,6 +131,28 @@ namespace ProcurementSystem.Infrastructure.Data
             modelBuilder.Entity<EvaluationScore>()
                 .HasIndex(es => new { es.BidSubmissionId, es.CriteriaId, es.EvaluatorId })
                 .IsUnique();
+
+            // BidPackageEvaluator - composite key (N-N)
+            modelBuilder.Entity<BidPackageEvaluator>()
+                .HasKey(pe => new { pe.BidPackageId, pe.EvaluatorId });
+
+            modelBuilder.Entity<BidPackageEvaluator>()
+                .HasOne(pe => pe.BidPackage)
+                .WithMany(bp => bp.PackageEvaluators)
+                .HasForeignKey(pe => pe.BidPackageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<BidPackageEvaluator>()
+                .HasOne(pe => pe.Evaluator)
+                .WithMany()
+                .HasForeignKey(pe => pe.EvaluatorId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<BidPackageEvaluator>()
+                .HasOne(pe => pe.Assigner)
+                .WithMany()
+                .HasForeignKey(pe => pe.AssignedBy)
+                .OnDelete(DeleteBehavior.SetNull);
 
             // Contract
             modelBuilder.Entity<Contract>()

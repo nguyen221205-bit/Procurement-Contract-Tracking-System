@@ -37,6 +37,7 @@ namespace ProcurementSystem.Infrastructure.Entities
         public virtual ICollection<BidDocument> BidDocuments { get; set; } = new List<BidDocument>();
         public virtual ICollection<BidSubmission> BidSubmissions { get; set; } = new List<BidSubmission>();
         public virtual ICollection<EvaluationCriteria> EvaluationCriteria { get; set; } = new List<EvaluationCriteria>();
+        public virtual ICollection<BidPackageEvaluator> PackageEvaluators { get; set; } = new List<BidPackageEvaluator>();
         public virtual Contract? Contract { get; set; }
     }
 }

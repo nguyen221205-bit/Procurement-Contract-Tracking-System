@@ -13,5 +13,8 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<BidPackageDto>> ChangeStatusAsync(int id, ChangeBidPackageStatusRequest request, int userId, bool isAdmin);
         Task<ApiResponse<List<BidDocumentDto>>> UploadDocumentsAsync(int bidPackageId, List<IFormFile> files, int userId, bool isAdmin);
         Task<ApiResponse<bool>> DeleteDocumentAsync(int bidPackageId, int documentId, int userId, bool isAdmin);
+        Task<ApiResponse<List<PackageEvaluatorDto>>> GetPackageEvaluatorsAsync(int packageId);
+        Task<ApiResponse<PackageEvaluatorDto>> AssignEvaluatorAsync(int packageId, AssignEvaluatorRequest request, int currentUserId);
+        Task<ApiResponse<bool>> RemoveEvaluatorAsync(int packageId, int evaluatorId, int currentUserId, bool isAdmin);
     }
 }

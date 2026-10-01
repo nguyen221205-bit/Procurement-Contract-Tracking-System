@@ -23,6 +23,9 @@ import {
   Upload,
   Edit2,
   Layers,
+  Users,
+  UserCheck,
+  UserMinus,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -34,6 +37,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import ConfirmModal from '../components/common/ConfirmModal';
 import CriteriaModal from '../components/packages/CriteriaModal';
 import CriteriaTemplateModal from '../components/packages/CriteriaTemplateModal';
+import AssignEvaluatorModal from '../components/packages/AssignEvaluatorModal';
 import SubmitBidModal from '../components/submissions/SubmitBidModal';
 import { PACKAGE_TYPES, ROLES } from '../utils/constants';
 import { formatVND, formatDate, formatDateTime } from '../utils/formatters';
@@ -86,6 +90,16 @@ export const PackageDetailPage = () => {
   });
   const [deleteCriteriaLoading, setDeleteCriteriaLoading] = useState(false);
 
+  // Committee / Evaluator Management States
+  const [evaluators, setEvaluators] = useState([]);
+  const [evaluatorsLoading, setEvaluatorsLoading] = useState(false);
+  const [isAssignEvaluatorModalOpen, setIsAssignEvaluatorModalOpen] = useState(false);
+  const [deleteEvaluatorModalState, setDeleteEvaluatorModalState] = useState({
+    isOpen: false,
+    evaluator: null,
+  });
+  const [deleteEvaluatorLoading, setDeleteEvaluatorLoading] = useState(false);
+
   // Vai trò người dùng (sử dụng hasRole chuẩn từ AuthContext)
   const isAdmin = hasRole(ROLES.ADMIN);
   const isProcurement = hasRole(ROLES.PROCUREMENT);
@@ -93,6 +107,11 @@ export const PackageDetailPage = () => {
   const isContractor = hasRole(ROLES.CONTRACTOR);
   const canManageStatus = isAdmin || isProcurement;
   const canViewSubmissions = isAdmin || isProcurement || isEvaluator;
+
+  // Kiểm tra tính hợp lệ của Tổ chuyên gia theo Luật Đấu thầu: Tối thiểu 3 thành viên và là số lẻ
+  const isCommitteeValid = evaluators.length >= 3 && evaluators.length % 2 === 1;
+  const isAssignedEvaluator = evaluators.some((e) => e.evaluatorId === user?.id);
+  const canManageCommittee = (isAdmin || isProcurement) && String(pkg?.status) !== 'Contracted' && String(pkg?.status) !== '3';
 
   // Tải dữ liệu ban đầu
   const loadPackageData = async () => {
@@ -136,6 +155,21 @@ export const PackageDetailPage = () => {
           console.warn('Lỗi kiểm tra hồ sơ nhà thầu:', err);
         }
       }
+
+      // 4. Tải danh sách Tổ chuyên gia (Admin, Procurement, Evaluator)
+      if (hasRole([ROLES.ADMIN, ROLES.PROCUREMENT, ROLES.EVALUATOR])) {
+        try {
+          setEvaluatorsLoading(true);
+          const resEval = await bidPackageApi.getEvaluators(id);
+          if (resEval?.data) {
+            setEvaluators(resEval.data);
+          }
+        } catch (err) {
+          console.warn('Lỗi tải danh sách giám khảo:', err);
+        } finally {
+          setEvaluatorsLoading(false);
+        }
+      }
     } catch (error) {
       toast.error(error.message || 'Không thể tải thông tin gói thầu');
     } finally {
@@ -166,12 +200,18 @@ export const PackageDetailPage = () => {
         toast.error(`Không thể chuyển sang Chấm điểm: Tổng trọng số bộ tiêu chí phải đạt đúng 100% (Hiện tại: ${totalWeight}%).`);
         return;
       }
+      if (!isCommitteeValid) {
+        toast.error(
+          `Không thể chuyển sang Chấm điểm: Tổ chuyên gia phải có tối thiểu 3 thành viên và là số lẻ (3, 5, 7,...) theo quy định của Luật Đấu thầu (Hiện tại: ${evaluators.length} thành viên). Vui lòng phân công đủ giám khảo trước.`
+        );
+        return;
+      }
       setStatusModal({
         isOpen: true,
         targetStatus: 'Evaluating',
         title: 'Xác nhận chuyển sang giai đoạn chấm điểm',
         message:
-          'Bạn có chắc chắn muốn chuyển gói thầu sang giai đoạn Chấm điểm? Hội đồng giám khảo (Evaluator) sẽ có quyền truy cập vào phòng chấm điểm để đánh giá các hồ sơ.',
+          'Bạn có chắc chắn muốn chuyển gói thầu sang giai đoạn Chấm điểm? Tổ chuyên gia gồm các giám khảo được chỉ định sẽ có quyền truy cập vào phòng chấm điểm để đánh giá các hồ sơ.',
         confirmVariant: 'primary',
       });
     }
@@ -225,6 +265,29 @@ export const PackageDetailPage = () => {
       toast.error(err.message || 'Không thể xóa tiêu chí đánh giá.');
     } finally {
       setDeleteCriteriaLoading(false);
+    }
+  };
+
+  // Quản lý Tổ chuyên gia (Admin & Procurement)
+  const handleOpenDeleteEvaluator = (evaluator) => {
+    setDeleteEvaluatorModalState({
+      isOpen: true,
+      evaluator,
+    });
+  };
+
+  const handleConfirmDeleteEvaluator = async () => {
+    if (!deleteEvaluatorModalState.evaluator) return;
+    try {
+      setDeleteEvaluatorLoading(true);
+      await bidPackageApi.removeEvaluator(pkg.id, deleteEvaluatorModalState.evaluator.evaluatorId);
+      toast.success('Đã xóa giám khảo khỏi Tổ chuyên gia.');
+      setDeleteEvaluatorModalState({ isOpen: false, evaluator: null });
+      loadPackageData();
+    } catch (err) {
+      toast.error(err.message || 'Không thể xóa giám khảo khỏi Tổ chuyên gia.');
+    } finally {
+      setDeleteEvaluatorLoading(false);
     }
   };
 
@@ -404,8 +467,33 @@ export const PackageDetailPage = () => {
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <FileCheck className="w-4 h-4" />
-                <span>Hồ sơ đã nộp ({submissions.length})</span>
+                {isOpen ? <Lock className="w-4 h-4 text-amber-500" /> : <FileCheck className="w-4 h-4" />}
+                <span>
+                  Hồ sơ đã nộp {isOpen ? '(Niêm phong)' : `(${submissions.length})`}
+                </span>
+              </button>
+            )}
+
+            {/* Tab 4: TỔ CHUYÊN GIA / BAN GIÁM KHẢO (Admin, Procurement, Evaluator) */}
+            {canViewSubmissions && (
+              <button
+                onClick={() => setActiveTab('committee')}
+                className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center space-x-1.5 ${
+                  activeTab === 'committee'
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Tổ chuyên gia ({evaluators.length})</span>
+                {evaluators.length > 0 && (
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      isCommitteeValid ? 'bg-emerald-400' : 'bg-amber-400'
+                    }`}
+                    title={isCommitteeValid ? 'Đủ điều kiện pháp lý' : 'Chưa đủ điều kiện'}
+                  />
+                )}
               </button>
             )}
           </div>
@@ -635,12 +723,59 @@ export const PackageDetailPage = () => {
                     Hồ sơ kỹ thuật và tài chính do các nhà thầu gửi lên hệ thống.
                   </p>
                 </div>
-                <span className="text-xs font-bold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg">
-                  {submissions.length} hồ sơ
-                </span>
+                {isOpen ? (
+                  <span className="text-xs font-bold px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg flex items-center space-x-1">
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Đang niêm phong</span>
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg">
+                    {submissions.length} hồ sơ
+                  </span>
+                )}
               </div>
 
-              {submissions.length > 0 ? (
+              {isOpen ? (
+                <div className="p-6 bg-gradient-to-br from-amber-50/80 via-amber-50/40 to-white rounded-2xl border border-amber-200/90 text-amber-900 space-y-4">
+                  <div className="flex items-start space-x-3.5">
+                    <div className="p-2.5 bg-amber-100 text-amber-700 rounded-xl mt-0.5 shrink-0 shadow-xs">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex items-center space-x-2">
+                        <h4 className="text-sm font-bold text-amber-900">
+                          Hồ sơ dự thầu đang trong trạng thái niêm phong bảo mật
+                        </h4>
+                        <span className="text-[10px] px-2 py-0.5 bg-amber-200/70 text-amber-800 rounded-full font-bold">
+                          Sealed Bids
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-800 leading-relaxed">
+                        Theo quy định tại <strong>Luật Đấu thầu</strong> và nguyên tắc bảo mật thông tin, khi gói thầu đang trong giai đoạn tiếp nhận hồ sơ (<strong>Đang mở</strong>), toàn bộ hồ sơ do các nhà thầu gửi lên được <strong>niêm phong điện tử tự động</strong>. Bên mời thầu, Giám khảo hay Quản trị viên đều không được phép mở xem trước danh sách nhằm chống lộ giá thầu và đảm bảo tính công bằng, minh bạch.
+                      </p>
+                      <p className="text-xs text-amber-900/90 font-medium">
+                        Hệ thống đã ghi nhận hồ sơ nộp thành công vào cơ sở dữ liệu. Sau khi kết thúc thời gian nhận hồ sơ, Bên mời thầu thực hiện thao tác <strong>"Đóng nhận hồ sơ thầu"</strong> để mở niêm phong và truy cập danh sách chấm điểm.
+                      </p>
+                    </div>
+                  </div>
+
+                  {canManageStatus && (
+                    <div className="pt-3 border-t border-amber-200/60 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center space-x-1.5 text-xs text-amber-700">
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Hạn nộp thầu: <strong>{formatDate(pkg.bidClosingDate)}</strong></span>
+                      </div>
+                      <button
+                        onClick={handleOpenStatusModal}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center space-x-2"
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Đóng nhận hồ sơ thầu (Mở niêm phong ngay)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : submissions.length > 0 ? (
                 <div className="border border-slate-100 rounded-xl overflow-hidden">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 text-slate-600 border-b border-slate-100 font-semibold">
@@ -701,6 +836,176 @@ export const PackageDetailPage = () => {
               ) : (
                 <div className="py-8 text-center text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
                   Chưa có nhà thầu nào nộp hồ sơ cho gói thầu này.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: TỔ CHUYÊN GIA / BAN GIÁM KHẢO */}
+          {activeTab === 'committee' && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                    <Users className="w-4 h-4 text-sky-600" />
+                    <span>Tổ chuyên gia chấm thầu</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Hội đồng giám khảo được phân công trách nhiệm đánh giá hồ sơ dự thầu
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Badge điều kiện pháp lý */}
+                  <span
+                    className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${
+                      isCommitteeValid
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}
+                  >
+                    {isCommitteeValid ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Đủ điều kiện pháp lý ({evaluators.length} thành viên)</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Chưa đủ điều kiện ({evaluators.length} thành viên)</span>
+                      </>
+                    )}
+                  </span>
+
+                  {/* Nút Phân công Giám khảo (Admin / Procurement) */}
+                  {canManageCommittee && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAssignEvaluatorModalOpen(true)}
+                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Phân công Giám khảo</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Dải thông tin quy định pháp luật */}
+              <div
+                className={`p-3.5 rounded-xl border text-xs flex items-start space-x-2.5 ${
+                  isCommitteeValid
+                    ? 'bg-emerald-50/60 border-emerald-200/80 text-emerald-800'
+                    : 'bg-amber-50 border-amber-200 text-amber-800'
+                }`}
+              >
+                {isCommitteeValid ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-0.5 leading-relaxed">
+                  <p className="font-bold">Quy định theo Luật Đấu thầu 2023:</p>
+                  <p className={isCommitteeValid ? 'text-emerald-700' : 'text-amber-700'}>
+                    Tổ chuyên gia phải có tối thiểu <strong>3 thành viên</strong> và số lượng thành viên bắt buộc phải là <strong>số lẻ (3, 5, 7,...)</strong> nhằm tránh tình trạng bất phân thắng bại khi biểu quyết hoặc tổng hợp điểm. Gói thầu chỉ được phép chuyển sang giai đoạn Chấm điểm khi đáp ứng đủ tiêu chuẩn này.
+                  </p>
+                </div>
+              </div>
+
+              {/* Danh sách thành viên tổ chuyên gia */}
+              {evaluatorsLoading ? (
+                <div className="py-12 flex justify-center">
+                  <LoadingSpinner />
+                </div>
+              ) : evaluators.length > 0 ? (
+                <div className="border border-slate-100 rounded-xl overflow-hidden divide-y divide-slate-100">
+                  {evaluators.map((evaluator, index) => (
+                    <div
+                      key={evaluator.evaluatorId}
+                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/50 transition"
+                    >
+                      <div className="flex items-center space-x-3 truncate">
+                        <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 font-black text-xs flex items-center justify-center flex-shrink-0">
+                          {evaluator.fullName ? evaluator.fullName.charAt(0).toUpperCase() : `#${index + 1}`}
+                        </div>
+                        <div className="truncate">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-bold text-slate-800 truncate">
+                              {evaluator.fullName}
+                            </span>
+                            {evaluator.evaluatorId === user?.id && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                                Bạn
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                            <span>{evaluator.email}</span>
+                            {evaluator.phone && <span>• {evaluator.phone}</span>}
+                            <span>• Phân công: {formatDate(evaluator.assignedAt)}</span>
+                            {evaluator.assignedByName && <span>bởi {evaluator.assignedByName}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-3 self-end sm:self-center flex-shrink-0">
+                        {/* Trạng thái chấm điểm */}
+                        {evaluator.hasSubmittedScores ? (
+                          <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center space-x-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Đã chấm điểm</span>
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            Chưa chấm điểm
+                          </span>
+                        )}
+
+                        {/* Nút xóa (Admin & Procurement) */}
+                        {canManageCommittee && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDeleteEvaluator(evaluator)}
+                            disabled={isEvaluating && evaluator.hasSubmittedScores}
+                            className={`p-1.5 rounded-lg border transition ${
+                              isEvaluating && evaluator.hasSubmittedScores
+                                ? 'text-slate-300 border-slate-200 cursor-not-allowed bg-slate-50'
+                                : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 border-slate-200 cursor-pointer'
+                            }`}
+                            title={
+                              isEvaluating && evaluator.hasSubmittedScores
+                                ? 'Giám khảo đã nộp điểm, không thể xóa'
+                                : 'Xóa giám khảo khỏi tổ chuyên gia'
+                            }
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-10 text-center space-y-3 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 p-6">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-700">Chưa có giám khảo nào được phân công</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Bên mời thầu cần phân công tối thiểu 3 giám khảo (và là số lẻ) trước khi chuyển sang giai đoạn Chấm điểm.
+                    </p>
+                  </div>
+                  {canManageCommittee && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAssignEvaluatorModalOpen(true)}
+                      className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Phân công Giám khảo ngay</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -784,7 +1089,7 @@ export const PackageDetailPage = () => {
                   <div className="space-y-2">
                     <button
                       onClick={handleOpenStatusModal}
-                      className="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center space-x-2"
+                      className="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center space-x-2 cursor-pointer"
                     >
                       <Scale className="w-4 h-4" />
                       <span>Chuyển sang Chấm điểm</span>
@@ -793,9 +1098,13 @@ export const PackageDetailPage = () => {
                       <p className="text-[11px] text-amber-600 font-medium text-center">
                         Cần hoàn thiện tiêu chí đúng 100% trước khi mở chấm thầu (Hiện tại: {totalWeight}%).
                       </p>
+                    ) : !isCommitteeValid ? (
+                      <p className="text-[11px] text-amber-600 font-medium text-center">
+                        Tổ chuyên gia chưa đủ điều kiện: cần tối thiểu 3 thành viên và là số lẻ (Hiện tại: {evaluators.length} thành viên).
+                      </p>
                     ) : (
                       <p className="text-[11px] text-slate-400 text-center">
-                        Mở quyền truy cập phòng chấm thầu cho Hội đồng Giám khảo.
+                        Mở quyền truy cập phòng chấm thầu cho Tổ chuyên gia đã phân công ({evaluators.length} thành viên).
                       </p>
                     )}
                   </div>
@@ -840,18 +1149,27 @@ export const PackageDetailPage = () => {
             {isEvaluator && (
               <div className="space-y-3">
                 {isEvaluating ? (
-                  <div className="space-y-2">
-                    <Link
-                      to={`/evaluation/${pkg.id}`}
-                      className="w-full py-3 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center space-x-2"
-                    >
-                      <Scale className="w-4 h-4" />
-                      <span>Vào phòng chấm điểm gói thầu</span>
-                    </Link>
-                    <p className="text-[11px] text-slate-400 text-center">
-                      Bạn có quyền đánh giá điểm cho từng tiêu chí của các hồ sơ.
-                    </p>
-                  </div>
+                  isAssignedEvaluator || isAdmin ? (
+                    <div className="space-y-2">
+                      <Link
+                        to={`/evaluation/${pkg.id}`}
+                        className="w-full py-3 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center space-x-2"
+                      >
+                        <Scale className="w-4 h-4" />
+                        <span>Vào phòng chấm điểm gói thầu</span>
+                      </Link>
+                      <p className="text-[11px] text-emerald-600 font-medium text-center">
+                        Bạn là thành viên trong Tổ chuyên gia chấm điểm gói thầu này.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 text-center">
+                      <p className="font-semibold">Bạn không thuộc Tổ chuyên gia</p>
+                      <p className="text-[11px] text-amber-700 mt-1">
+                        Chỉ các giám khảo được chỉ định trong Tổ chuyên gia mới có quyền chấm điểm gói thầu này.
+                      </p>
+                    </div>
+                  )
                 ) : (
                   <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 text-center">
                     Gói thầu hiện chưa ở giai đoạn chấm điểm (Trạng thái: <strong>{pkg.status}</strong>).
@@ -1048,6 +1366,27 @@ export const PackageDetailPage = () => {
         cancelText="Hủy bỏ"
         confirmVariant="danger"
         isLoading={deleteCriteriaLoading}
+      />
+
+      {/* Committee Evaluator Management Modals */}
+      <AssignEvaluatorModal
+        isOpen={isAssignEvaluatorModalOpen}
+        onClose={() => setIsAssignEvaluatorModalOpen(false)}
+        packageId={pkg?.id}
+        existingEvaluators={evaluators}
+        onSuccess={loadPackageData}
+      />
+
+      <ConfirmModal
+        isOpen={deleteEvaluatorModalState.isOpen}
+        onClose={() => setDeleteEvaluatorModalState({ isOpen: false, evaluator: null })}
+        onConfirm={handleConfirmDeleteEvaluator}
+        title="Xác nhận xóa giám khảo khỏi Tổ chuyên gia"
+        message={`Bạn có chắc chắn muốn xóa giám khảo "${deleteEvaluatorModalState.evaluator?.fullName}" khỏi Tổ chuyên gia của gói thầu này?`}
+        confirmText="Xóa thành viên"
+        cancelText="Hủy bỏ"
+        confirmVariant="danger"
+        isLoading={deleteEvaluatorLoading}
       />
 
       {/* Contractor Submit Bid Modal */}

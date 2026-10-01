@@ -38,6 +38,7 @@ export const EvaluationPage = () => {
   const [criteriaList, setCriteriaList] = useState([]);
   const [summary, setSummary] = useState(null);
   const [rankings, setRankings] = useState([]);
+  const [evaluators, setEvaluators] = useState([]);
 
   const [activeTab, setActiveTab] = useState('scorecard'); // 'scorecard' | 'leaderboard'
 
@@ -49,6 +50,9 @@ export const EvaluationPage = () => {
 
   const isAdminOrProcurement = hasRole(['Admin', 'Procurement']);
   const isEvaluatorOrAdmin = hasRole(['Admin', 'Evaluator']);
+  const isAdmin = hasRole('Admin');
+  const isAssignedEvaluator = evaluators.some((e) => e.evaluatorId === user?.id);
+  const canScore = isAdmin || isAssignedEvaluator;
 
   // Fetch all necessary evaluation data
   const fetchData = async (isBackground = false) => {
@@ -57,11 +61,12 @@ export const EvaluationPage = () => {
     setError(null);
 
     try {
-      const [resPkg, resCriteria, resSummary, resRankings] = await Promise.all([
+      const [resPkg, resCriteria, resSummary, resRankings, resEvaluators] = await Promise.all([
         bidPackageApi.getPackageById(packageId),
         evaluationApi.getCriteriaByPackage(packageId),
         evaluationApi.getSummary(packageId),
         evaluationApi.getRankings(packageId),
+        bidPackageApi.getEvaluators(packageId).catch(() => ({ data: [] })),
       ]);
 
       if (resPkg?.data) {
@@ -78,6 +83,10 @@ export const EvaluationPage = () => {
 
       if (resRankings?.data) {
         setRankings(resRankings.data || []);
+      }
+
+      if (resEvaluators?.data) {
+        setEvaluators(resEvaluators.data || []);
       }
     } catch (err) {
       console.error('Error fetching evaluation data:', err);
@@ -348,6 +357,19 @@ export const EvaluationPage = () => {
         </button>
       </div>
 
+      {/* Cảnh báo quyền truy cập khi Giám khảo không nằm trong Tổ chuyên gia */}
+      {!canScore && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-3 text-amber-800 text-xs">
+          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <div>
+            <p className="font-bold">Chế độ xem (Chỉ đọc)</p>
+            <p className="mt-0.5 text-amber-700">
+              Bạn không thuộc Tổ chuyên gia được bên mời thầu phân công chấm điểm cho gói thầu này. Bạn chỉ có thể xem tiêu chí và bảng xếp hạng tổng hợp theo Luật Đấu thầu.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* TAB CONTENT */}
       {activeTab === 'scorecard' && (
         <ScorecardForm
@@ -355,7 +377,7 @@ export const EvaluationPage = () => {
           criteriaList={criteriaList}
           submissions={rankings}
           onScoreSaved={() => fetchData(true)}
-          readOnly={isAwarded || !isEvaluatorOrAdmin}
+          readOnly={isAwarded || !canScore}
         />
       )}
 
