@@ -15,6 +15,7 @@ import {
   Info,
   Lock
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { evaluationApi } from '../../api/evaluationApi';
 import { bidSubmissionApi } from '../../api/bidSubmissionApi';
 import { formatCurrency, formatDate, formatNumber } from '../../utils/formatters';
@@ -26,14 +27,26 @@ export const ScorecardForm = ({
   onScoreSaved,
   readOnly = false,
 }) => {
+  const { user, hasRole } = useAuth();
+  const isAdminOrProcurement = hasRole(['Admin', 'Procurement']);
+
   const [selectedSubmissionId, setSelectedSubmissionId] = useState(
     submissions.length > 0 ? submissions[0].submissionId : null
   );
+  // Evaluator selection: default to currently logged-in user
+  const [viewEvaluatorId, setViewEvaluatorId] = useState(user?.id);
   const [scoresMap, setScoresMap] = useState({}); // { [criteriaId]: { score: number, comment: string } }
   const [saving, setSaving] = useState(false);
   const [submissionFiles, setSubmissionFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [showFilesModal, setShowFilesModal] = useState(false);
+
+  // Sync viewEvaluatorId with user.id when user loads
+  useEffect(() => {
+    if (user?.id && !viewEvaluatorId) {
+      setViewEvaluatorId(user.id);
+    }
+  }, [user?.id]);
 
   // Sync selected submission when submissions list changes
   useEffect(() => {
@@ -47,21 +60,40 @@ export const ScorecardForm = ({
     (s) => s.submissionId === selectedSubmissionId
   );
 
-  // When switching submission, load existing scores if any
+  // Distinct evaluators who have scored this current submission
+  const distinctEvaluators = [];
+  const seenEvaluatorIds = new Set();
+  (currentSubmission?.scores || []).forEach((s) => {
+    if (!seenEvaluatorIds.has(s.evaluatorId)) {
+      seenEvaluatorIds.add(s.evaluatorId);
+      distinctEvaluators.push({
+        id: s.evaluatorId,
+        name: s.evaluatorName || `Giám khảo #${s.evaluatorId}`,
+      });
+    }
+  });
+
+  const targetEvaluatorId = viewEvaluatorId || user?.id;
+  const isViewingOwnScorecard = Number(targetEvaluatorId) === Number(user?.id);
+  const isFormReadOnly = readOnly || !isViewingOwnScorecard;
+
+  // When switching submission or target evaluator, load existing scores if any for THAT evaluator
   useEffect(() => {
     if (!currentSubmission || !criteriaList.length) return;
 
     const initialScores = {};
     criteriaList.forEach((c) => {
-      // Find existing score from currentSubmission.scores
-      const existing = currentSubmission.scores?.find((es) => es.criteriaId === c.id);
+      // Find existing score strictly for targetEvaluatorId
+      const existing = currentSubmission.scores?.find(
+        (es) => es.criteriaId === c.id && es.evaluatorId === Number(targetEvaluatorId)
+      );
       initialScores[c.id] = {
         score: existing ? existing.score : '',
         comment: existing ? existing.comment || '' : '',
       };
     });
     setScoresMap(initialScores);
-  }, [selectedSubmissionId, currentSubmission, criteriaList]);
+  }, [selectedSubmissionId, currentSubmission, criteriaList, targetEvaluatorId]);
 
   // Fetch files for current submission
   useEffect(() => {
@@ -85,7 +117,7 @@ export const ScorecardForm = ({
 
   // Handle score change
   const handleScoreChange = (criteriaId, val, maxScore) => {
-    if (readOnly) return;
+    if (isFormReadOnly) return;
     const num = val === '' ? '' : parseFloat(val);
     if (num !== '' && (isNaN(num) || num < 0 || num > maxScore)) {
       return; // Out of bounds
@@ -101,7 +133,7 @@ export const ScorecardForm = ({
 
   // Handle comment change
   const handleCommentChange = (criteriaId, text) => {
-    if (readOnly) return;
+    if (isFormReadOnly) return;
     setScoresMap((prev) => ({
       ...prev,
       [criteriaId]: {
@@ -132,7 +164,7 @@ export const ScorecardForm = ({
 
   // Submit Scorecard
   const handleSaveScorecard = async () => {
-    if (readOnly || !currentSubmission) return;
+    if (readOnly || !isViewingOwnScorecard || !currentSubmission) return;
 
     if (!isComplete) {
       toast.error(`Vui lòng nhập điểm đầy đủ cho toàn bộ ${criteriaList.length} tiêu chí.`);
@@ -224,6 +256,16 @@ export const ScorecardForm = ({
             const isSelected = sub.submissionId === selectedSubmissionId;
             const hasScore = sub.totalScore !== null && sub.totalScore !== undefined;
 
+            // Kiểm tra trạng thái chấm điểm của chính người đang đăng nhập
+            const myScores = sub.scores?.filter((es) => es.evaluatorId === user?.id) || [];
+            const isScoredByMe = criteriaList.length > 0 && myScores.length === criteriaList.length;
+            const myTotalScore = myScores.reduce((sum, s) => {
+              const crit = criteriaList.find((c) => c.id === s.criteriaId);
+              const w = crit ? crit.weight : 0;
+              return sum + (s.score * w) / 100;
+            }, 0);
+            const uniqueEvaluatorsCount = new Set(sub.scores?.map((s) => s.evaluatorId)).size;
+
             return (
               <button
                 key={sub.submissionId}
@@ -259,10 +301,24 @@ export const ScorecardForm = ({
                 </div>
 
                 <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs pl-6">
-                  <div>{getStatusBadge(sub.status, sub.totalScore)}</div>
+                  <div>
+                    {isScoredByMe ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" />
+                        Bạn đã chấm ({formatNumber(myTotalScore)} đ)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+                        <Clock className="w-3 h-3 mr-1 text-amber-600" />
+                        Bạn chưa chấm
+                      </span>
+                    )}
+                  </div>
                   {hasScore && (
                     <div className="text-right">
-                      <span className="text-[10px] text-slate-400 block uppercase font-medium">Điểm tổng</span>
+                      <span className="text-[10px] text-slate-400 block uppercase font-medium">
+                        Điểm TB ({uniqueEvaluatorsCount} GK)
+                      </span>
                       <span className="text-sm font-extrabold text-blue-700">
                         {formatNumber(sub.totalScore)}
                         <span className="text-[10px] font-normal text-slate-400">/100</span>
@@ -283,16 +339,42 @@ export const ScorecardForm = ({
             {/* Header thông tin nhà thầu được chọn */}
             <div className="p-5 bg-gradient-to-r from-slate-50 to-blue-50/40 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md">
-                    Phiếu chấm thẩm định
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-2xs">
+                    <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                    <span>
+                      {isViewingOwnScorecard
+                        ? `Phiếu chấm của bạn: ${user?.fullName || 'Giám khảo'}`
+                        : `Phiếu chấm của: ${distinctEvaluators.find((e) => e.id === Number(targetEvaluatorId))?.name || 'Giám khảo'}`}
+                    </span>
                   </span>
-                  <span className="text-xs text-slate-400">Mã hồ sơ: #{currentSubmission.submissionId}</span>
+                  <span className="text-xs text-slate-400 font-mono">Mã hồ sơ: #{currentSubmission.submissionId}</span>
                 </div>
-                <h3 className="text-base font-bold text-slate-800 mt-1">
+                <h3 className="text-base font-bold text-slate-800 mt-1.5">
                   {currentSubmission.companyName}
                 </h3>
                 <p className="text-xs text-slate-500">Mã số thuế: {currentSubmission.taxCode || 'Chưa cung cấp'}</p>
+
+                {/* Dropdown xem phiếu giám khảo khác dành cho Admin / Procurement */}
+                {isAdminOrProcurement && distinctEvaluators.length > 0 && (
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200/60">
+                    <span className="text-[11px] text-slate-600 font-semibold">Xem phiếu chấm của:</span>
+                    <select
+                      value={targetEvaluatorId}
+                      onChange={(e) => setViewEvaluatorId(Number(e.target.value))}
+                      className="text-xs bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-semibold text-slate-800 shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                    >
+                      <option value={user?.id}>Phiếu của tôi ({user?.fullName})</option>
+                      {distinctEvaluators
+                        .filter((e) => e.id !== user?.id)
+                        .map((e) => (
+                          <option key={e.id} value={e.id}>
+                            Phiếu của: {e.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Nút xem tài liệu hồ sơ */}
@@ -310,7 +392,14 @@ export const ScorecardForm = ({
 
             {/* Bảng nhập điểm tiêu chí */}
             <div className="p-5 space-y-4">
-              {readOnly ? (
+              {!isViewingOwnScorecard ? (
+                <div className="bg-sky-50 border border-sky-200 rounded-xl p-3.5 text-xs text-sky-900 flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-sky-600 flex-shrink-0 mt-0.5" />
+                  <div className="leading-relaxed">
+                    <strong>Chế độ xem phiếu chấm:</strong> Bạn đang xem phiếu điểm do giám khảo <strong>{distinctEvaluators.find((e) => e.id === Number(targetEvaluatorId))?.name}</strong> thực hiện. Chế độ này là chỉ đọc để đảm bảo tính độc lập.
+                  </div>
+                </div>
+              ) : readOnly ? (
                 <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 flex items-start gap-2.5">
                   <Lock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div className="leading-relaxed">
@@ -370,7 +459,7 @@ export const ScorecardForm = ({
                                   max={crit.maxScore}
                                   step="0.5"
                                   placeholder="0.0"
-                                  disabled={readOnly}
+                                  disabled={isFormReadOnly}
                                   value={item.score}
                                   onChange={(e) => handleScoreChange(crit.id, e.target.value, crit.maxScore)}
                                   className="w-full px-3 py-1.5 text-center text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
@@ -388,7 +477,7 @@ export const ScorecardForm = ({
                                 <input
                                   type="text"
                                   placeholder="Ghi chú / Nhận xét chuyên môn cho tiêu chí này (tùy chọn)..."
-                                  disabled={readOnly}
+                                  disabled={isFormReadOnly}
                                   value={item.comment}
                                   onChange={(e) => handleCommentChange(crit.id, e.target.value)}
                                   className="w-full px-3 py-1 text-[11px] text-slate-600 bg-white/70 border border-slate-200 rounded-md focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-400 disabled:bg-transparent disabled:border-transparent"
@@ -408,13 +497,15 @@ export const ScorecardForm = ({
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <Calculator className="w-4 h-4 text-slate-500" />
-                    <span className="text-xs font-semibold text-slate-700">Tổng điểm quy đổi dự kiến:</span>
+                    <span className="text-xs font-semibold text-slate-700">
+                      {isViewingOwnScorecard ? 'Tổng điểm quy đổi dự kiến của bạn:' : 'Tổng điểm quy đổi của phiếu này:'}
+                    </span>
                     <span className="text-xs text-slate-400">
                       ({criteriaFilledCount}/{criteriaList.length} tiêu chí đã nhập)
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Điểm tổng sẽ được hệ thống tính toán chính xác và xếp hạng tự động sau khi lưu phiếu.
+                    Điểm tổng hợp chung của gói thầu sẽ được hệ thống tính bình quân các giám khảo và tự động xếp hạng.
                   </p>
                 </div>
 
@@ -427,7 +518,7 @@ export const ScorecardForm = ({
               </div>
 
               {/* Nút Hành động */}
-              {!readOnly && (
+              {!readOnly && isViewingOwnScorecard && (
                 <div className="flex items-center justify-end gap-3 pt-2">
                   <button
                     type="button"
