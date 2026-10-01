@@ -6,6 +6,29 @@ export const ROLES = {
   CONTRACTOR: 'Contractor',
 };
 
+export const ROLE_CONFIG = {
+  [ROLES.ADMIN]: {
+    label: 'Quản trị viên',
+    badgeColor: 'bg-rose-50 text-rose-700 border-rose-200',
+    description: 'Toàn quyền cấu hình, quản trị người dùng & phê duyệt hệ thống',
+  },
+  [ROLES.PROCUREMENT]: {
+    label: 'Bên mời thầu',
+    badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    description: 'Lập gói thầu, cấu hình tiêu chí & nghiệm thu mốc giải ngân',
+  },
+  [ROLES.EVALUATOR]: {
+    label: 'Giám khảo',
+    badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
+    description: 'Chấm điểm hồ sơ dự thầu độc lập theo các tiêu chí',
+  },
+  [ROLES.CONTRACTOR]: {
+    label: 'Nhà thầu',
+    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    description: 'Nộp hồ sơ dự thầu, ký kết hợp đồng & cập nhật tiến độ mốc',
+  },
+};
+
 
 // Bid Package Lifecycle Status khớp 100% Enum Backend (BidPackageStatus.cs)
 export const PACKAGE_STATUS = {

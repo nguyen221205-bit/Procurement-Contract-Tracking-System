@@ -13,7 +13,7 @@ const axiosClient = axios.create({
 // Request interceptor: Attach JWT token
 axiosClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -38,6 +38,9 @@ axiosClient.interceptors.response.use(
 
     // Handle 401 Unauthorized
     if (status === 401 && !originalRequest._retry) {
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+      sessionStorage.removeItem('refreshToken');
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       localStorage.removeItem('refreshToken');

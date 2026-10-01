@@ -247,13 +247,29 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Kiểm tra tài khoản giám khảo
-            var evaluator = await _unitOfWork.Repository<User>().GetByIdAsync(evaluatorId);
+            var evaluator = await _unitOfWork.Repository<User>()
+                .Query()
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.Id == evaluatorId);
+
             if (evaluator == null || !evaluator.IsActive)
             {
                 return ApiResponse<List<EvaluationScoreDto>>.Fail("Tài khoản giám khảo không tồn tại hoặc đã bị vô hiệu hóa.");
             }
 
             var package = submission.BidPackage;
+
+            // Ràng buộc bảo mật & nghiệp vụ: Chỉ giám khảo thuộc Tổ chuyên gia (hoặc Admin) mới có quyền chấm điểm gói thầu này
+            var isAssigned = await _unitOfWork.Repository<BidPackageEvaluator>()
+                .ExistsAsync(pe => pe.BidPackageId == package.Id && pe.EvaluatorId == evaluatorId);
+            var isAdmin = evaluator.UserRoles.Any(ur => ur.Role.Name == "Admin");
+
+            if (!isAssigned && !isAdmin)
+            {
+                return ApiResponse<List<EvaluationScoreDto>>.Fail(
+                    "Bạn không thuộc Tổ chuyên gia được chỉ định chấm điểm cho gói thầu này.");
+            }
 
             // Ràng buộc nghiệp vụ: Không được chấm điểm khi gói thầu vẫn đang Open (chưa hết hạn/chưa đóng thầu)
             if (package.Status == BidPackageStatus.Open)
@@ -266,9 +282,28 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<List<EvaluationScoreDto>>.Fail("Gói thầu đã ký kết hợp đồng, không thể sửa đổi điểm đánh giá.");
             }
 
-            // Tự động chuyển gói thầu sang Evaluating nếu đang Closed
+            // Tự động chuyển gói thầu sang Evaluating nếu đang Closed (phải đủ điều kiện tiêu chí và tổ chuyên gia)
             if (package.Status == BidPackageStatus.Closed)
             {
+                var criteriaListCheck = await _unitOfWork.Repository<EvaluationCriteria>()
+                    .Query()
+                    .Where(c => c.BidPackageId == package.Id)
+                    .ToListAsync();
+                var totalWeight = criteriaListCheck.Sum(c => c.Weight);
+                if (totalWeight != 100)
+                {
+                    return ApiResponse<List<EvaluationScoreDto>>.Fail(
+                        $"Không thể bắt đầu chấm điểm. Tổng trọng số bộ tiêu chí phải đạt 100% (Hiện tại: {totalWeight}%).");
+                }
+
+                var evaluatorsCount = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .CountAsync(pe => pe.BidPackageId == package.Id);
+                if (evaluatorsCount < 3 || evaluatorsCount % 2 == 0)
+                {
+                    return ApiResponse<List<EvaluationScoreDto>>.Fail(
+                        $"Không thể bắt đầu chấm điểm. Tổ chuyên gia phải có tối thiểu 3 thành viên và là số lẻ (3, 5, 7,...) theo Luật Đấu thầu (Hiện tại: {evaluatorsCount} thành viên).");
+                }
+
                 package.Status = BidPackageStatus.Evaluating;
                 package.UpdatedAt = DateTime.UtcNow;
                 _unitOfWork.Repository<BidPackage>().Update(package);

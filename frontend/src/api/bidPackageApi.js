@@ -32,6 +32,18 @@ export const bidPackageApi = {
   deleteDocument: async (packageId, documentId) => {
     return await axiosClient.delete(`/bid-packages/${packageId}/documents/${documentId}`);
   },
+
+  getEvaluators: async (id) => {
+    return await axiosClient.get(`/bid-packages/${id}/evaluators`);
+  },
+
+  assignEvaluator: async (id, data) => {
+    return await axiosClient.post(`/bid-packages/${id}/evaluators`, data);
+  },
+
+  removeEvaluator: async (packageId, evaluatorId) => {
+    return await axiosClient.delete(`/bid-packages/${packageId}/evaluators/${evaluatorId}`);
+  },
 };
 
 export default bidPackageApi;

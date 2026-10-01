@@ -301,7 +301,7 @@ export const LeaderboardView = ({
               Bảng Tổng Hợp So Sánh Điểm Số
             </h3>
             <p className="text-xs text-slate-500">
-              Chi tiết điểm số từng tiêu chí và thao tác trao thầu trực tiếp cho từng nhà thầu
+              Chi tiết điểm số từng tiêu chí (tính trung bình cộng các giám khảo) và thao tác trao thầu trực tiếp
             </p>
           </div>
           <span className="text-xs font-semibold text-slate-500">
@@ -316,7 +316,11 @@ export const LeaderboardView = ({
                 <th className="py-3 px-4 w-16 text-center">Hạng</th>
                 <th className="py-3 px-4 min-w-[200px]">Nhà thầu</th>
                 {criteriaList.map((crit) => (
-                  <th key={crit.id} className="py-3 px-3 text-center min-w-[110px]" title={crit.name}>
+                  <th
+                    key={crit.id}
+                    className="py-3 px-3 text-center min-w-[110px]"
+                    title={`${crit.name} (Điểm bình quân các giám khảo)`}
+                  >
                     <span className="block truncate">{crit.name}</span>
                     <span className="text-[10px] text-slate-400 font-normal">({crit.weight}%)</span>
                   </th>
@@ -380,17 +384,33 @@ export const LeaderboardView = ({
                       <span className="text-[11px] text-slate-400">MST: {sub.taxCode || 'N/A'}</span>
                     </td>
 
-                    {/* Điểm từng tiêu chí */}
+                    {/* Điểm từng tiêu chí (Điểm bình quân các giám khảo) */}
                     {criteriaList.map((crit) => {
-                      const scoreItem = sub.scores?.find((s) => s.criteriaId === crit.id);
+                      const critScores = sub.scores?.filter((s) => s.criteriaId === crit.id) || [];
+                      const avgScore = critScores.length > 0
+                        ? critScores.reduce((sum, item) => sum + item.score, 0) / critScores.length
+                        : null;
+                      const breakdownTooltip = critScores.length > 0
+                        ? critScores.map((s) => `${s.evaluatorName || 'Giám khảo'}: ${formatNumber(s.score)}đ`).join(' | ')
+                        : '';
+
                       return (
-                        <td key={crit.id} className="py-3.5 px-3 text-center">
-                          {scoreItem ? (
-                            <div>
-                              <span className="font-bold text-slate-700">{formatNumber(scoreItem.score)}</span>
-                              <span className="text-[10px] text-slate-400 block">
-                                ({( (scoreItem.score * crit.weight) / 100 ).toFixed(1)})
+                        <td
+                          key={crit.id}
+                          className="py-3.5 px-3 text-center"
+                          title={breakdownTooltip ? `Chi tiết điểm: ${breakdownTooltip}` : ''}
+                        >
+                          {avgScore !== null ? (
+                            <div className="cursor-help inline-block">
+                              <span className="font-bold text-slate-700">{formatNumber(avgScore)}</span>
+                              <span className="text-[10px] text-slate-400 block font-mono">
+                                ({((avgScore * crit.weight) / 100).toFixed(1)})
                               </span>
+                              {critScores.length > 1 && (
+                                <span className="text-[9px] text-sky-600 font-semibold block">
+                                  ({critScores.length} GK)
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <span className="text-slate-300">—</span>

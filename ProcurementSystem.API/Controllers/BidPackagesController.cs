@@ -222,6 +222,50 @@ namespace ProcurementSystem.API.Controllers
             return Ok(result);
         }
 
+        /// <summary>
+        /// Lấy danh sách thành viên Tổ chuyên gia (Ban giám khảo) được phân công cho gói thầu
+        /// </summary>
+        [HttpGet("{id:int}/evaluators")]
+        [Authorize]
+        [ProducesResponseType(typeof(ApiResponse<List<PackageEvaluatorDto>>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<ApiResponse<List<PackageEvaluatorDto>>>> GetPackageEvaluators(int id)
+        {
+            var result = await _bidPackageService.GetPackageEvaluatorsAsync(id);
+            if (!result.Success) return BadRequest(result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Phân công giám khảo vào Tổ chuyên gia của gói thầu
+        /// </summary>
+        [HttpPost("{id:int}/evaluators")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<PackageEvaluatorDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<PackageEvaluatorDto>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<PackageEvaluatorDto>>> AssignEvaluator(int id, [FromBody] AssignEvaluatorRequest request)
+        {
+            var currentUserId = GetCurrentUserId();
+            var result = await _bidPackageService.AssignEvaluatorAsync(id, request, currentUserId);
+            if (!result.Success) return BadRequest(result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Xóa giám khảo khỏi Tổ chuyên gia của gói thầu
+        /// </summary>
+        [HttpDelete("{id:int}/evaluators/{evaluatorId:int}")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<bool>>> RemoveEvaluator(int id, int evaluatorId)
+        {
+            var currentUserId = GetCurrentUserId();
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _bidPackageService.RemoveEvaluatorAsync(id, evaluatorId, currentUserId, isAdmin);
+            if (!result.Success) return BadRequest(result);
+            return Ok(result);
+        }
+
         private int GetCurrentUserId()
         {
             var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

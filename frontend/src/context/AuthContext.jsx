@@ -6,10 +6,10 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
-    const savedUser = localStorage.getItem('user');
+    const savedUser = sessionStorage.getItem('user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
-  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
+  const [token, setToken] = useState(() => sessionStorage.getItem('token') || null);
   const [loading, setLoading] = useState(false);
 
   const login = async (email, password) => {
@@ -19,9 +19,14 @@ export const AuthProvider = ({ children }) => {
       if (response && response.success && response.data) {
         const { token: jwtToken, refreshToken, user: userData } = response.data;
         
-        localStorage.setItem('token', jwtToken);
-        localStorage.setItem('refreshToken', refreshToken);
-        localStorage.setItem('user', JSON.stringify(userData));
+        sessionStorage.setItem('token', jwtToken);
+        sessionStorage.setItem('refreshToken', refreshToken);
+        sessionStorage.setItem('user', JSON.stringify(userData));
+
+        // Clean up legacy localStorage tokens to prevent stale fallback
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
         
         setToken(jwtToken);
         setUser(userData);
@@ -41,6 +46,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('refreshToken');
+    sessionStorage.removeItem('user');
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
