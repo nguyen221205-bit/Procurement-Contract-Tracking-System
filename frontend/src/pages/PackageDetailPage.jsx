@@ -201,9 +201,7 @@ export const PackageDetailPage = () => {
         return;
       }
       if (!isCommitteeValid) {
-        toast.error(
-          `Không thể chuyển sang Chấm điểm: Tổ chuyên gia phải có tối thiểu 3 thành viên và là số lẻ (3, 5, 7,...) theo quy định của Luật Đấu thầu (Hiện tại: ${evaluators.length} thành viên). Vui lòng phân công đủ giám khảo trước.`
-        );
+        toast.error(`Cần tối thiểu 3 giám khảo và là số lẻ (3, 5, 7...) để mở chấm thầu (Hiện có: ${evaluators.length} người).`);
         return;
       }
       setStatusModal({
@@ -851,12 +849,12 @@ export const PackageDetailPage = () => {
                     <span>Tổ chuyên gia chấm thầu</span>
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Hội đồng giám khảo được phân công trách nhiệm đánh giá hồ sơ dự thầu
+                    Giám khảo tham gia chấm điểm gói thầu
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* Badge điều kiện pháp lý */}
+                  {/* Badge điều kiện */}
                   <span
                     className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${
                       isCommitteeValid
@@ -867,7 +865,7 @@ export const PackageDetailPage = () => {
                     {isCommitteeValid ? (
                       <>
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Đủ điều kiện pháp lý ({evaluators.length} thành viên)</span>
+                        <span>Đủ điều kiện ({evaluators.length} thành viên)</span>
                       </>
                     ) : (
                       <>
@@ -891,25 +889,30 @@ export const PackageDetailPage = () => {
                 </div>
               </div>
 
-              {/* Dải thông tin quy định pháp luật */}
+              {/* Dải thông tin quy định */}
               <div
-                className={`p-3.5 rounded-xl border text-xs flex items-start space-x-2.5 ${
+                className={`p-3 rounded-xl border text-xs flex items-center space-x-2.5 ${
                   isCommitteeValid
-                    ? 'bg-emerald-50/60 border-emerald-200/80 text-emerald-800'
+                    ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-800'
                     : 'bg-amber-50 border-amber-200 text-amber-800'
                 }`}
               >
                 {isCommitteeValid ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                 )}
-                <div className="space-y-0.5 leading-relaxed">
-                  <p className="font-bold">Quy định theo Luật Đấu thầu 2023:</p>
-                  <p className={isCommitteeValid ? 'text-emerald-700' : 'text-amber-700'}>
-                    Tổ chuyên gia phải có tối thiểu <strong>3 thành viên</strong> và số lượng thành viên bắt buộc phải là <strong>số lẻ (3, 5, 7,...)</strong> nhằm tránh tình trạng bất phân thắng bại khi biểu quyết hoặc tổng hợp điểm. Gói thầu chỉ được phép chuyển sang giai đoạn Chấm điểm khi đáp ứng đủ tiêu chuẩn này.
-                  </p>
-                </div>
+                <p className="leading-normal">
+                  {isCommitteeValid ? (
+                    <>
+                      <strong>Đạt yêu cầu:</strong> Tối thiểu <strong>3 thành viên</strong> và là <strong>số lẻ (3, 5, 7...)</strong> để mở chấm thầu.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Chưa đủ điều kiện:</strong> Cần tối thiểu <strong>3 thành viên</strong> và là <strong>số lẻ (3, 5, 7...)</strong> để mở chấm thầu.
+                    </>
+                  )}
+                </p>
               </div>
 
               {/* Danh sách thành viên tổ chuyên gia */}
@@ -991,9 +994,9 @@ export const PackageDetailPage = () => {
                     <Users className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-700">Chưa có giám khảo nào được phân công</p>
+                    <p className="text-xs font-bold text-slate-700">Chưa có giám khảo nào</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Bên mời thầu cần phân công tối thiểu 3 giám khảo (và là số lẻ) trước khi chuyển sang giai đoạn Chấm điểm.
+                      Cần tối thiểu 3 giám khảo (số lẻ) để mở chấm thầu.
                     </p>
                   </div>
                   {canManageCommittee && (
@@ -1297,30 +1300,68 @@ export const PackageDetailPage = () => {
 
               {/* Danh sách tệp đính kèm trong hồ sơ */}
               <div className="space-y-2">
-                <span className="font-bold text-slate-800">Tệp tài liệu đính kèm ({selectedSubmission.submissionFiles?.length || 0}):</span>
-                {selectedSubmission.submissionFiles && selectedSubmission.submissionFiles.length > 0 ? (
-                  <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                    {selectedSubmission.submissionFiles.map((file) => (
-                      <div key={file.id} className="p-2.5 flex items-center justify-between hover:bg-slate-50">
-                        <div className="truncate pr-2">
-                          <p className="font-medium text-slate-800 truncate" title={file.fileName}>{file.fileName}</p>
-                          <span className="text-[10px] text-slate-400">Loại: {file.fileType}</span>
+                {(() => {
+                  const submissionFiles = selectedSubmission.files || selectedSubmission.submissionFiles || [];
+                  return (
+                    <>
+                      <span className="font-bold text-slate-800">
+                        Tệp tài liệu đính kèm ({submissionFiles.length}):
+                      </span>
+                      {submissionFiles.length > 0 ? (
+                        <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                          {submissionFiles.map((file) => {
+                            const fileTypeLabel =
+                              file.fileTypeName === 'Quotation' || file.fileType === 0
+                                ? 'Báo giá tài chính'
+                                : file.fileTypeName === 'Capability' || file.fileType === 1
+                                ? 'Hồ sơ năng lực'
+                                : file.fileTypeName === 'Schedule' || file.fileType === 2
+                                ? 'Tiến độ thực hiện'
+                                : file.fileTypeName || (file.fileType !== undefined ? `Loại #${file.fileType}` : 'Tài liệu');
+
+                            return (
+                              <div
+                                key={file.id}
+                                className="p-3 flex items-center justify-between hover:bg-slate-50 transition"
+                              >
+                                <div className="truncate pr-3">
+                                  <p
+                                    className="font-medium text-slate-800 truncate"
+                                    title={file.fileName}
+                                  >
+                                    {file.fileName}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-100">
+                                      {fileTypeLabel}
+                                    </span>
+                                    {file.uploadedAt && (
+                                      <span className="text-[10px] text-slate-400 font-mono">
+                                        {formatDateTime(file.uploadedAt)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <a
+                                  href={`${API_BASE_URL}${file.filePath}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  download={file.fileName}
+                                  className="px-3 py-1.5 bg-slate-100 hover:bg-sky-600 text-slate-700 hover:text-white rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 shrink-0"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Tải</span>
+                                </a>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <a
-                          href={`${API_BASE_URL}${file.filePath}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-sky-600 text-slate-700 hover:text-white rounded-lg text-xs font-semibold transition flex items-center space-x-1"
-                        >
-                          <Download className="w-3 h-3" />
-                          <span>Tải</span>
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-slate-400 italic">Không có tệp đính kèm.</p>
-                )}
+                      ) : (
+                        <p className="text-slate-400 italic py-2">Không có tệp đính kèm.</p>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
 

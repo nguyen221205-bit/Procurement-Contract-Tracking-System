@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Scale,
@@ -11,25 +11,35 @@ import {
   AlertCircle,
   Clock,
   Award,
-  CheckCircle2
+  CheckCircle2,
+  ShieldCheck,
+  UserCheck,
+  RefreshCw
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { ROLES } from '../utils/constants';
 import { bidPackageApi } from '../api/bidPackageApi';
 import StatusBadge from '../components/common/StatusBadge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { formatCurrency, formatDate } from '../utils/formatters';
 
 const FILTER_TABS = [
-  { id: 'ALL', label: 'Tất cả thẩm định' },
+  { id: 'ALL', label: 'Tất cả trạng thái' },
   { id: 'Evaluating', label: 'Đang chấm điểm' },
   { id: 'Closed', label: 'Chờ mở chấm' },
   { id: 'Awarded', label: 'Đã trao thầu' },
 ];
 
 export const EvaluationListPage = () => {
+  const { user, hasRole } = useAuth();
+  const isEvaluator = hasRole([ROLES.EVALUATOR]);
+
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [scopeFilter, setScopeFilter] = useState('ALL'); // 'ALL' or 'ASSIGNED'
 
   const getPackageStatus = (pkg) => {
     if (pkg.status === 'Contracted' || pkg.status === 3) return 'Contracted';
@@ -37,28 +47,31 @@ export const EvaluationListPage = () => {
     return pkg.status;
   };
 
-  useEffect(() => {
-    const fetchPackages = async () => {
-      try {
-        setLoading(true);
-        const res = await bidPackageApi.getPackages({ pageSize: 100 });
-        if (res?.data) {
-          const rawItems = res.data.items || res.data || [];
-          // Phân hệ thẩm định hiển thị các gói thầu: Đã đóng nhận thầu, Đang chấm điểm, Đã trao thầu, Đã ký hợp đồng
-          const items = rawItems.filter(
-            (p) => p.status !== 'Open' && p.status !== 0
-          );
-          setPackages(items);
-        }
-      } catch (err) {
-        console.error('Failed to load evaluation packages:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchPackages = useCallback(async (isBackground = false) => {
+    try {
+      if (!isBackground) setLoading(true);
+      else setRefreshing(true);
 
-    fetchPackages();
+      const res = await bidPackageApi.getPackages({ pageSize: 100 });
+      if (res?.data) {
+        const rawItems = res.data.items || res.data || [];
+        // Phân hệ thẩm định hiển thị các gói thầu: Đã đóng nhận thầu, Đang chấm điểm, Đã trao thầu, Đã ký hợp đồng
+        const items = rawItems.filter(
+          (p) => p.status !== 'Open' && p.status !== 0
+        );
+        setPackages(items);
+      }
+    } catch (err) {
+      console.error('Failed to load evaluation packages:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchPackages();
+  }, [fetchPackages]);
 
   const filteredPackages = packages.filter((pkg) => {
     const matchesSearch =
@@ -73,13 +86,19 @@ export const EvaluationListPage = () => {
         ? displayStatus === 'Awarded' || displayStatus === 'Contracted'
         : displayStatus === selectedStatus;
 
-    return matchesSearch && matchesStatus;
+    const matchesScope =
+      scopeFilter === 'ASSIGNED'
+        ? pkg.evaluatorIds && pkg.evaluatorIds.includes(user?.id)
+        : true;
+
+    return matchesSearch && matchesStatus && matchesScope;
   });
 
   // Count by status
   const evaluatingCount = packages.filter((p) => getPackageStatus(p) === 'Evaluating').length;
   const closedCount = packages.filter((p) => getPackageStatus(p) === 'Closed').length;
   const awardedCount = packages.filter((p) => ['Awarded', 'Contracted'].includes(getPackageStatus(p))).length;
+  const assignedCount = packages.filter((p) => p.evaluatorIds && p.evaluatorIds.includes(user?.id)).length;
 
   return (
     <div className="space-y-6 pb-12">
@@ -88,55 +107,122 @@ export const EvaluationListPage = () => {
         <div>
           <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
             <Scale className="w-6 h-6 text-blue-600" />
-            Trung Tâm Thẩm Định & Chấm Điểm Thầu
+            <span>Trung Tâm Thẩm Định & Chấm Điểm Thầu</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             Quản lý và thực hiện chấm điểm hồ sơ dự thầu, xem bảng xếp hạng tự động và phê duyệt trao thầu
           </p>
         </div>
+
+        <button
+          type="button"
+          onClick={() => fetchPackages(true)}
+          disabled={refreshing}
+          className="p-2.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-slate-600 hover:text-slate-900 shadow-2xs transition-colors cursor-pointer self-start sm:self-auto"
+          title="Làm mới dữ liệu"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-blue-600' : ''}`} />
+        </button>
       </div>
 
-      {/* KPI Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl p-4 border border-blue-100 shadow-2xs flex items-center gap-3.5">
+      {/* KPI Stats (Clickable Filter Cards) */}
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${isEvaluator ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
+        {isEvaluator && (
+          <div
+            onClick={() => {
+              setScopeFilter(scopeFilter === 'ASSIGNED' ? 'ALL' : 'ASSIGNED');
+            }}
+            className={`rounded-2xl p-4 border transition-all cursor-pointer flex items-center gap-3.5 ${
+              scopeFilter === 'ASSIGNED'
+                ? 'bg-purple-50/80 border-purple-300 ring-2 ring-purple-400/30 shadow-xs'
+                : 'bg-white border-slate-200 hover:border-purple-200 hover:shadow-2xs'
+            }`}
+            title="Lọc các gói thầu bạn được phân công vào Tổ chuyên gia"
+          >
+            <div className="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[11px] font-medium text-slate-500 block">
+                Phân công cho tôi
+              </span>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xl font-black text-purple-700">{assignedCount}</span>
+                <span className="text-xs text-slate-500">gói thầu</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div
+          onClick={() => {
+            setSelectedStatus(selectedStatus === 'Evaluating' ? 'ALL' : 'Evaluating');
+          }}
+          className={`rounded-2xl p-4 border transition-all cursor-pointer flex items-center gap-3.5 ${
+            selectedStatus === 'Evaluating'
+              ? 'bg-blue-50/80 border-blue-300 ring-2 ring-blue-400/30 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-blue-200 hover:shadow-2xs'
+          }`}
+          title="Lọc gói thầu đang chấm điểm"
+        >
           <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
             <Clock className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] font-medium text-slate-400 block uppercase tracking-wider">
+            <span className="text-[11px] font-medium text-slate-500 block">
               Đang chấm điểm
             </span>
-            <div className="flex items-baseline gap-1.5">
+            <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-xl font-black text-blue-700">{evaluatingCount}</span>
               <span className="text-xs text-slate-500">gói thầu</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-2xs flex items-center gap-3.5">
+        <div
+          onClick={() => {
+            setSelectedStatus(selectedStatus === 'Closed' ? 'ALL' : 'Closed');
+          }}
+          className={`rounded-2xl p-4 border transition-all cursor-pointer flex items-center gap-3.5 ${
+            selectedStatus === 'Closed'
+              ? 'bg-amber-50/80 border-amber-300 ring-2 ring-amber-400/30 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-amber-200 hover:shadow-2xs'
+          }`}
+          title="Lọc gói thầu chờ mở chấm"
+        >
           <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
             <Layers className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] font-medium text-slate-400 block uppercase tracking-wider">
-              Chờ mở chấm (Đã đóng)
+            <span className="text-[11px] font-medium text-slate-500 block">
+              Chờ mở chấm
             </span>
-            <div className="flex items-baseline gap-1.5">
+            <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-xl font-black text-amber-700">{closedCount}</span>
               <span className="text-xs text-slate-500">gói thầu</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-emerald-100 shadow-2xs flex items-center gap-3.5">
+        <div
+          onClick={() => {
+            setSelectedStatus(selectedStatus === 'Awarded' ? 'ALL' : 'Awarded');
+          }}
+          className={`rounded-2xl p-4 border transition-all cursor-pointer flex items-center gap-3.5 ${
+            selectedStatus === 'Awarded'
+              ? 'bg-emerald-50/80 border-emerald-300 ring-2 ring-emerald-400/30 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-emerald-200 hover:shadow-2xs'
+          }`}
+          title="Lọc gói thầu đã trao thầu"
+        >
           <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
             <Award className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] font-medium text-slate-400 block uppercase tracking-wider">
+            <span className="text-[11px] font-medium text-slate-500 block">
               Đã trao thầu
             </span>
-            <div className="flex items-baseline gap-1.5">
+            <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-xl font-black text-emerald-700">{awardedCount}</span>
               <span className="text-xs text-slate-500">gói thầu</span>
             </div>
@@ -148,7 +234,22 @@ export const EvaluationListPage = () => {
       <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-2xs space-y-3">
         <div className="flex flex-col md:flex-row items-center justify-between gap-3">
           {/* Status Tabs */}
-          <div className="flex items-center space-x-1 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+          <div className="flex items-center space-x-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+            {isEvaluator && (
+              <button
+                type="button"
+                onClick={() => setScopeFilter(scopeFilter === 'ASSIGNED' ? 'ALL' : 'ASSIGNED')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                  scopeFilter === 'ASSIGNED'
+                    ? 'bg-purple-600 text-white shadow-2xs'
+                    : 'text-purple-700 bg-purple-50 hover:bg-purple-100'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Phân công cho tôi ({assignedCount})</span>
+              </button>
+            )}
+
             {FILTER_TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -197,17 +298,30 @@ export const EvaluationListPage = () => {
           {filteredPackages.map((pkg) => {
             const displayStatus = getPackageStatus(pkg);
             const isFinished = displayStatus === 'Awarded' || displayStatus === 'Contracted';
+            const isAssigned = pkg.evaluatorIds && pkg.evaluatorIds.includes(user?.id);
 
             return (
               <div
                 key={pkg.id}
-                className="bg-white rounded-2xl border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all p-5 flex flex-col justify-between space-y-4"
+                className={`bg-white rounded-2xl border transition-all p-5 flex flex-col justify-between space-y-4 ${
+                  isAssigned
+                    ? 'border-purple-200/90 shadow-2xs hover:border-purple-300 hover:shadow-xs'
+                    : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
+                }`}
               >
                 <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                      {pkg.code}
-                    </span>
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                        {pkg.code}
+                      </span>
+                      {isAssigned && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                          <ShieldCheck className="w-3 h-3 text-purple-600" />
+                          <span>Tổ chuyên gia</span>
+                        </span>
+                      )}
+                    </div>
                     <StatusBadge status={displayStatus} />
                   </div>
 
@@ -243,10 +357,18 @@ export const EvaluationListPage = () => {
                     className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white rounded-xl shadow-2xs transition-colors cursor-pointer ${
                       isFinished
                         ? 'bg-slate-800 hover:bg-slate-900'
+                        : isAssigned && displayStatus === 'Evaluating'
+                        ? 'bg-indigo-600 hover:bg-indigo-700 ring-2 ring-indigo-400/20'
                         : 'bg-blue-600 hover:bg-blue-700'
                     }`}
                   >
-                    <span>{isFinished ? 'Xem kết quả' : 'Mở bảng chấm'}</span>
+                    <span>
+                      {isFinished
+                        ? 'Xem kết quả'
+                        : isAssigned && displayStatus === 'Evaluating'
+                        ? 'Vào chấm điểm'
+                        : 'Mở bảng chấm'}
+                    </span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>

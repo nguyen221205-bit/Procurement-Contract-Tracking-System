@@ -9,7 +9,7 @@ namespace ProcurementSystem.API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "Admin")]
+    [Authorize]
     public class UsersController : ControllerBase
     {
         private readonly IUserService _userService;
@@ -23,6 +23,7 @@ namespace ProcurementSystem.API.Controllers
         /// Lấy danh sách người dùng (Phân trang, tìm kiếm từ khóa, lọc theo vai trò và trạng thái hoạt động)
         /// </summary>
         [HttpGet]
+        [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(ApiResponse<PaginatedList<UserDto>>), StatusCodes.Status200OK)]
         public async Task<ActionResult<ApiResponse<PaginatedList<UserDto>>>> GetUsers([FromQuery] UserFilterParams filter)
         {
@@ -34,6 +35,7 @@ namespace ProcurementSystem.API.Controllers
         /// Xem chi tiết thông tin tài khoản người dùng theo ID
         /// </summary>
         [HttpGet("{id:int}")]
+        [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(ApiResponse<UserDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<UserDto>), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<ApiResponse<UserDto>>> GetUserById(int id)
@@ -47,6 +49,7 @@ namespace ProcurementSystem.API.Controllers
         /// Cập nhật thông tin cơ bản của người dùng (Họ tên, Số điện thoại)
         /// </summary>
         [HttpPut("{id:int}")]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(ApiResponse<UserDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<UserDto>), StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<ApiResponse<UserDto>>> UpdateUser(int id, [FromBody] UpdateUserRequest request)
@@ -66,6 +69,7 @@ namespace ProcurementSystem.API.Controllers
         /// Khóa hoặc Kích hoạt tài khoản người dùng (Không cho phép Admin tự khóa tài khoản của mình)
         /// </summary>
         [HttpPatch("{id:int}/status")]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<ApiResponse<bool>>> ToggleUserStatus(int id)
@@ -82,6 +86,7 @@ namespace ProcurementSystem.API.Controllers
         /// Phân quyền / Gán danh sách vai trò cho người dùng (Ví dụ: Procurement, Evaluator)
         /// </summary>
         [HttpPost("{id:int}/roles")]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(ApiResponse<UserDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<UserDto>), StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<ApiResponse<UserDto>>> AssignRoles(int id, [FromBody] AssignRolesRequest request)

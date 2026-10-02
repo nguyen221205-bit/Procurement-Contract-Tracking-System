@@ -13,6 +13,10 @@ export const StatCard = ({
     emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
     indigo: 'bg-indigo-50 text-indigo-700 border-indigo-100',
     amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    violet: 'bg-purple-50 text-purple-700 border-purple-100',
+    teal: 'bg-teal-50 text-teal-700 border-teal-100',
+    rose: 'bg-rose-50 text-rose-700 border-rose-100',
+    blue: 'bg-blue-50 text-blue-700 border-blue-100',
   };
 
   const iconBgStyles = {
@@ -20,6 +24,10 @@ export const StatCard = ({
     emerald: 'bg-emerald-100 text-emerald-700',
     indigo: 'bg-indigo-100 text-indigo-700',
     amber: 'bg-amber-100 text-amber-700',
+    violet: 'bg-purple-100 text-purple-700',
+    teal: 'bg-teal-100 text-teal-700',
+    rose: 'bg-rose-100 text-rose-700',
+    blue: 'bg-blue-100 text-blue-700',
   };
 
   return (

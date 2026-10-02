@@ -149,70 +149,98 @@ export const ContractsPage = () => {
         </div>
       </div>
 
-      {/* KPI METRICS CARDS */}
+      {/* KPI METRICS CARDS (Clickable Filter Cards) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         {/* Total Contracts */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+        <div
+          onClick={() => {
+            setSelectedStatus('');
+            setPage(1);
+          }}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-1 ${
+            selectedStatus === ''
+              ? 'bg-blue-50/70 border-blue-300 ring-2 ring-blue-400/30 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-blue-200 hover:shadow-2xs'
+          }`}
+          title="Xem tất cả hợp đồng"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tổng hợp đồng</span>
+            <span className="text-xs font-medium text-slate-500">Tổng hợp đồng</span>
             <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
               <FileText className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-2xl font-black text-slate-900">{contractsData.totalCount || items.length}</p>
-          <span className="text-[10px] text-slate-400 block">Hợp đồng đã thiết lập</span>
+          <p className="text-2xl font-black text-slate-900 mt-0.5">{contractsData.totalCount || items.length}</p>
         </div>
 
         {/* Active Contracts */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+        <div
+          onClick={() => {
+            setSelectedStatus(selectedStatus === 'Active' ? '' : 'Active');
+            setPage(1);
+          }}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-1 ${
+            selectedStatus === 'Active'
+              ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-400/30 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-emerald-200 hover:shadow-2xs'
+          }`}
+          title="Lọc hợp đồng đang thực hiện"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Đang thực hiện</span>
+            <span className="text-xs font-medium text-slate-500">Đang thực hiện</span>
             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
               <Clock className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-2xl font-black text-emerald-600">{activeCount}</p>
-          <span className="text-[10px] text-slate-400 block">Đang có hiệu lực (Active)</span>
+          <p className="text-2xl font-black text-emerald-600 mt-0.5">{activeCount}</p>
         </div>
 
         {/* Draft Contracts */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+        <div
+          onClick={() => {
+            setSelectedStatus(selectedStatus === 'Draft' ? '' : 'Draft');
+            setPage(1);
+          }}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-1 ${
+            selectedStatus === 'Draft'
+              ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/30 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-amber-200 hover:shadow-2xs'
+          }`}
+          title="Lọc hợp đồng bản thảo"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Bản thảo (Draft)</span>
+            <span className="text-xs font-medium text-slate-500">Bản thảo (Draft)</span>
             <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
               <Layers className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-2xl font-black text-amber-600">{draftCount}</p>
-          <span className="text-[10px] text-slate-400 block">Chờ kích hoạt ký kết</span>
+          <p className="text-2xl font-black text-amber-600 mt-0.5">{draftCount}</p>
         </div>
 
         {/* Total Contracted Value */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tổng giá trị ký kết</span>
+            <span className="text-xs font-medium text-slate-500">Tổng giá trị</span>
             <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-lg font-black text-slate-900 truncate" title={formatCurrency(totalValue)}>
+          <p className="text-lg font-black text-slate-900 truncate mt-0.5" title={formatCurrency(totalValue)}>
             {formatCurrency(totalValue)}
           </p>
-          <span className="text-[10px] text-slate-400 block">Giá trị các hợp đồng</span>
         </div>
 
         {/* Total Disbursed */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Đã giải ngân</span>
+            <span className="text-xs font-medium text-slate-500">Đã giải ngân</span>
             <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
               {overallRate}%
             </span>
           </div>
-          <p className="text-lg font-black text-emerald-600 truncate" title={formatCurrency(totalDisbursed)}>
+          <p className="text-lg font-black text-emerald-600 truncate mt-0.5" title={formatCurrency(totalDisbursed)}>
             {formatCurrency(totalDisbursed)}
           </p>
-          <span className="text-[10px] text-slate-400 block">Nghiệm thu thực tế</span>
         </div>
       </div>
 

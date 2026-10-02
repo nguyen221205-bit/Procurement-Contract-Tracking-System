@@ -16,5 +16,6 @@ namespace ProcurementSystem.Core.DTOs.BidPackage
         public int DocumentsCount { get; set; }
         public int SubmissionsCount { get; set; }
         public bool IsAwarded { get; set; }
+        public List<int> EvaluatorIds { get; set; } = new();
     }
 }
