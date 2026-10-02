@@ -86,10 +86,10 @@ export const AssignEvaluatorModal = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900">
-                Phân công Tổ chuyên gia (Giám khảo)
+                Phân công Giám khảo chấm thầu
               </h3>
               <p className="text-xs text-slate-500">
-                Chỉ định giám khảo có thẩm quyền tham gia chấm điểm gói thầu
+                Chọn giám khảo tham gia chấm điểm gói thầu
               </p>
             </div>
           </div>
@@ -199,7 +199,7 @@ export const AssignEvaluatorModal = ({
           <div className="flex items-center space-x-2 text-[11px] text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-200/60">
             <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-600" />
             <span>
-              Theo <strong>Luật Đấu thầu 2023</strong>, Tổ chuyên gia phải có tối thiểu <strong>3 thành viên</strong> và số lượng thành viên phải là <strong>số lẻ</strong> (3, 5, 7,...) để tránh trường hợp số phiếu biểu quyết ngang nhau.
+              Yêu cầu: Tổ chuyên gia cần tối thiểu <strong>3 thành viên</strong> và là <strong>số lẻ (3, 5, 7...)</strong> để mở chấm thầu.
             </span>
           </div>
 

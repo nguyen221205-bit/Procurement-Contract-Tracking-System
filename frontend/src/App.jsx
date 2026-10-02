@@ -14,6 +14,7 @@ import ContractDetailPage from './pages/ContractDetailPage';
 import UsersPage from './pages/UsersPage';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/common/ProtectedRoute';
+import { ROLES } from './utils/constants';
 
 function App() {
   return (
@@ -28,14 +29,28 @@ function App() {
           {/* Protected App Routes */}
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                    <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/packages" element={<PackagesPage />} />
               <Route path="/packages/:id" element={<PackageDetailPage />} />
               <Route path="/contracts" element={<ContractsPage />} />
               <Route path="/contracts/:id" element={<ContractDetailPage />} />
               <Route path="/evaluation" element={<EvaluationListPage />} />
               <Route path="/evaluation/:packageId" element={<EvaluationPage />} />
-              <Route path="/users" element={<UsersPage />} />
+              <Route
+                path="/users"
+                element={
+                  <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                    <UsersPage />
+                  </ProtectedRoute>
+                }
+              />
             </Route>
           </Route>
 

@@ -26,7 +26,7 @@ export const LoginPage = () => {
     const result = await login(email, password);
     if (result.success) {
       const userRoles = result.user.roles || [];
-      if (userRoles.includes(ROLES.ADMIN) || userRoles.includes(ROLES.PROCUREMENT)) {
+      if (userRoles.includes(ROLES.ADMIN)) {
         navigate('/dashboard');
       } else {
         navigate('/packages');

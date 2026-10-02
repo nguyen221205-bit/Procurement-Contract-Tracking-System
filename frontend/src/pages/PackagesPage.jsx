@@ -2,10 +2,12 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { bidPackageApi } from '../api/bidPackageApi';
+import { reportApi } from '../api/reportApi';
 import PackageCard from '../components/packages/PackageCard';
 import CreatePackageModal from '../components/packages/CreatePackageModal';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { ROLES, PACKAGE_STATUS } from '../utils/constants';
+import { formatVND } from '../utils/formatters';
 import toast from 'react-hot-toast';
 import {
   Search,
@@ -14,7 +16,12 @@ import {
   FolderSearch,
   ChevronLeft,
   ChevronRight,
-  RotateCcw
+  RotateCcw,
+  Clock,
+  Layers,
+  FileCheck,
+  Coins,
+  RefreshCw
 } from 'lucide-react';
 
 const FILTER_TABS = [
@@ -31,6 +38,7 @@ export const PackagesPage = () => {
   const canCreate = hasRole([ROLES.ADMIN, ROLES.PROCUREMENT]);
 
   const [packages, setPackages] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -82,9 +90,26 @@ export const PackagesPage = () => {
     }
   }, [pageIndex, pageSize, activeTab, searchTerm, selectedType]);
 
+  const fetchStats = useCallback(async () => {
+    if (canCreate) {
+      try {
+        const response = await reportApi.getDashboard();
+        if (response && response.success && response.data) {
+          setStats(response.data);
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải chỉ số thống kê:', err);
+      }
+    }
+  }, [canCreate]);
+
   useEffect(() => {
     fetchPackages();
   }, [fetchPackages]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   const handleTabChange = (tabValue) => {
     setActiveTab(tabValue);
@@ -126,19 +151,117 @@ export const PackagesPage = () => {
             Gói thầu
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Danh sách hồ sơ mời thầu
+            Danh sách hồ sơ mời thầu & tiến độ thẩm định
           </p>
         </div>
 
-        {canCreate && (
+        <div className="flex items-center space-x-2 self-start sm:self-center">
           <button
-            onClick={handleCreateClick}
-            className="inline-flex items-center space-x-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition"
+            type="button"
+            onClick={() => {
+              fetchPackages();
+              fetchStats();
+            }}
+            disabled={loading}
+            className="p-2.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-slate-600 hover:text-slate-900 shadow-2xs transition-colors cursor-pointer"
+            title="Làm mới dữ liệu"
           >
-            <Plus className="w-4 h-4" />
-            <span>Tạo gói thầu mới</span>
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-sky-600' : ''}`} />
           </button>
-        )}
+
+          {canCreate && (
+            <button
+              onClick={handleCreateClick}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tạo gói thầu mới</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Thanh KPI Nghiệp vụ (Clickable Filter Cards) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div
+          onClick={() => handleTabChange(PACKAGE_STATUS.OPEN)}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+            activeTab === PACKAGE_STATUS.OPEN
+              ? 'bg-sky-50/70 border-sky-300 ring-2 ring-sky-400/30 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-sky-200 hover:shadow-2xs'
+          }`}
+          title="Lọc gói thầu đang mở"
+        >
+          <div>
+            <p className="text-xs font-medium text-slate-500">Đang mở thầu</p>
+            <h4 className="text-xl font-bold text-slate-900 mt-0.5">
+              {stats ? stats.openPackages : packages.filter((p) => p.status === 'Open').length} gói
+            </h4>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+            <Clock className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div
+          onClick={() => handleTabChange(PACKAGE_STATUS.EVALUATING)}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+            activeTab === PACKAGE_STATUS.EVALUATING
+              ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/30 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-amber-200 hover:shadow-2xs'
+          }`}
+          title="Lọc gói thầu đang chấm điểm"
+        >
+          <div>
+            <p className="text-xs font-medium text-slate-500">Đang chấm điểm</p>
+            <h4 className="text-xl font-bold text-slate-900 mt-0.5">
+              {stats ? stats.evaluatingPackages : packages.filter((p) => p.status === 'Evaluating').length} gói
+            </h4>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+            <Layers className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div
+          onClick={() => handleTabChange(PACKAGE_STATUS.CONTRACTED)}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+            activeTab === PACKAGE_STATUS.CONTRACTED
+              ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-400/30 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-emerald-200 hover:shadow-2xs'
+          }`}
+          title="Lọc gói thầu đã ký hợp đồng"
+        >
+          <div>
+            <p className="text-xs font-medium text-slate-500">Đã ký hợp đồng</p>
+            <h4 className="text-xl font-bold text-slate-900 mt-0.5">
+              {stats ? stats.contractedPackages : packages.filter((p) => p.status === 'Contracted').length} gói
+            </h4>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+            <FileCheck className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div
+          onClick={() => handleTabChange('')}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+            activeTab === ''
+              ? 'bg-indigo-50/70 border-indigo-300 ring-2 ring-indigo-400/30 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-indigo-200 hover:shadow-2xs'
+          }`}
+          title="Xem tất cả gói thầu"
+        >
+          <div>
+            <p className="text-xs font-medium text-slate-500">Ngân sách dự toán</p>
+            <h4 className="text-lg font-bold text-slate-900 mt-0.5">
+              {stats?.totalEstimatedBudget ? formatVND(stats.totalEstimatedBudget) : `${paginationInfo.totalCount || packages.length} gói`}
+            </h4>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+            <Coins className="w-5 h-5" />
+          </div>
+        </div>
       </div>
 
       {/* Dải Tabs trạng thái */}

@@ -70,6 +70,12 @@ namespace ProcurementSystem.Infrastructure.Services
                 query = query.Where(bp => bp.Deadline <= filter.ToDeadline.Value);
             }
 
+            // 6. Lọc theo Giám khảo được phân công vào Tổ chuyên gia
+            if (filter.EvaluatorId.HasValue)
+            {
+                query = query.Where(bp => bp.PackageEvaluators.Any(pe => pe.EvaluatorId == filter.EvaluatorId.Value));
+            }
+
             // Mặc định sắp xếp gói thầu mới tạo lên đầu
             query = query.OrderByDescending(bp => bp.CreatedAt);
 
@@ -92,7 +98,8 @@ namespace ProcurementSystem.Infrastructure.Services
                                        CreatedAt = bp.CreatedAt,
                                        DocumentsCount = bp.BidDocuments.Count,
                                        SubmissionsCount = bp.BidSubmissions.Count,
-                                       IsAwarded = bp.BidSubmissions.Any(s => s.Status == "Selected")
+                                       IsAwarded = bp.BidSubmissions.Any(s => s.Status == "Selected"),
+                                       EvaluatorIds = bp.PackageEvaluators.Select(pe => pe.EvaluatorId).ToList()
                                    })
                                    .ToListAsync();
 
