@@ -14,6 +14,7 @@ namespace ProcurementSystem.Core.DTOs.Contract
             get => _pageSize;
             set => _pageSize = value > MaxPageSize ? MaxPageSize : (value < 1 ? 10 : value);
         }
+        public string? Search { get; set; }
         public string? ContractNumber { get; set; }
         public ContractStatus? Status { get; set; }
         public DateTime? StartDateFrom { get; set; }

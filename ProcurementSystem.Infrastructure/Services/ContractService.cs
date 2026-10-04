@@ -48,6 +48,17 @@ namespace ProcurementSystem.Infrastructure.Services
                 query = query.Where(c => c.ContractorId == contractor.Id);
             }
 
+            // Tìm kiếm đa năng theo từ khóa (Số hợp đồng, tên nhà thầu, mã hoặc tên gói thầu)
+            if (!string.IsNullOrWhiteSpace(filter.Search))
+            {
+                var searchLower = filter.Search.Trim().ToLower();
+                query = query.Where(c =>
+                    c.ContractNumber.ToLower().Contains(searchLower) ||
+                    (c.Contractor != null && c.Contractor.CompanyName.ToLower().Contains(searchLower)) ||
+                    (c.BidPackage != null && c.BidPackage.Code.ToLower().Contains(searchLower)) ||
+                    (c.BidPackage != null && c.BidPackage.Name.ToLower().Contains(searchLower)));
+            }
+
             // Lọc theo số hợp đồng
             if (!string.IsNullOrWhiteSpace(filter.ContractNumber))
             {
