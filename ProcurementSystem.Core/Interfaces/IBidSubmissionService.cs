@@ -8,9 +8,9 @@ namespace ProcurementSystem.Core.Interfaces
     public interface IBidSubmissionService
     {
         /// <summary>
-        /// Nhà thầu nộp hồ sơ dự thầu kèm file đính kèm
+        /// Nhà thầu nộp hồ sơ dự thầu kèm giá dự thầu và file đính kèm
         /// </summary>
-        Task<ApiResponse<BidSubmissionDto>> SubmitBidAsync(int bidPackageId, int userId, List<IFormFile> files, List<SubmissionFileType> fileTypes);
+        Task<ApiResponse<BidSubmissionDto>> SubmitBidAsync(int bidPackageId, int userId, decimal bidPrice, List<IFormFile> files, List<SubmissionFileType> fileTypes);
 
         /// <summary>
         /// Xem chi tiết hồ sơ dự thầu (phân quyền: chủ sở hữu hoặc nhân sự nội bộ)

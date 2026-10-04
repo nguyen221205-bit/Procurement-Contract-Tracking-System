@@ -441,6 +441,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     ContractorId = s.ContractorId,
                     CompanyName = s.Contractor.CompanyName,
                     TaxCode = s.Contractor.TaxCode,
+                    BidPrice = s.BidPrice,
                     TotalScore = s.TotalScore,
                     Rank = s.Rank,
                     Status = s.Status,
@@ -599,6 +600,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     s.ContractorId,
                     CompanyName = s.Contractor.CompanyName,
                     TaxCode = s.Contractor.TaxCode,
+                    s.BidPrice,
                     s.TotalScore
                 })
                 .FirstOrDefaultAsync();
@@ -623,7 +625,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 WinningContractorId = winningSub?.ContractorId,
                 WinningContractorName = winningSub?.CompanyName,
                 WinningContractorTaxCode = winningSub?.TaxCode,
-                WinningScore = winningSub?.TotalScore
+                WinningScore = winningSub?.TotalScore,
+                WinningBidPrice = winningSub?.BidPrice
             };
 
             return ApiResponse<EvaluationSummaryDto>.Ok(summary);
@@ -697,6 +700,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 Address = contractor?.Address,
 
                 SubmissionId = awardedSubmission.Id,
+                WinningBidPrice = awardedSubmission.BidPrice,
                 TotalScore = awardedSubmission.TotalScore,
                 Rank = awardedSubmission.Rank,
                 AwardedAt = awardedSubmission.SubmittedAt,

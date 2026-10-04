@@ -11,6 +11,7 @@ namespace ProcurementSystem.Core.DTOs.BidSubmission
         public string CompanyName { get; set; } = string.Empty;
 
         public DateTime SubmittedAt { get; set; }
+        public decimal? BidPrice { get; set; }
         public decimal? TotalScore { get; set; }
         public int? Rank { get; set; }
         public string Status { get; set; } = string.Empty;

@@ -195,9 +195,12 @@ namespace ProcurementSystem.Infrastructure.Services
                 Address         = contractor.Address,
 
                 SubmissionId            = awardedSubmission.Id,
+                WinningBidPrice         = awardedSubmission.BidPrice,
                 TotalScore              = awardedSubmission.TotalScore,
                 Rank                    = awardedSubmission.Rank,
-                SuggestedContractValue  = bidPackage.Budget,
+                SuggestedContractValue  = (awardedSubmission.BidPrice.HasValue && awardedSubmission.BidPrice.Value > 0)
+                                            ? awardedSubmission.BidPrice.Value
+                                            : bidPackage.Budget,
 
                 IsAwarded              = true,
                 HasContract            = existingContract != null,

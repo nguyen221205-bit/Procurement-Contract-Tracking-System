@@ -12,9 +12,13 @@ import {
   Send,
   Clock,
   ShieldCheck,
+  DollarSign,
+  TrendingDown,
+  Lock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { bidSubmissionApi } from '../../api/bidSubmissionApi';
+import { formatCurrency } from '../../utils/formatters';
 
 // Danh mục loại tài liệu theo enum SubmissionFileType của Backend
 const SUBMISSION_FILE_TYPES = [
@@ -25,6 +29,7 @@ const SUBMISSION_FILE_TYPES = [
 ];
 
 export const SubmitBidModal = ({ isOpen, onClose, pkg, onSuccess }) => {
+  const [bidPrice, setBidPrice] = useState('');
   const [filesList, setFilesList] = useState([]);
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -177,9 +182,24 @@ export const SubmitBidModal = ({ isOpen, onClose, pkg, onSuccess }) => {
     .filter(Boolean)
     .join(', ');
 
+  const budget = pkg.budget || 0;
+  const isOverBudget = bidPrice && budget > 0 && Number(bidPrice) > budget;
+  const costSaving = bidPrice && budget > 0 && Number(bidPrice) <= budget ? budget - Number(bidPrice) : 0;
+  const costSavingPercent = budget > 0 && costSaving > 0 ? ((costSaving / budget) * 100).toFixed(1) : 0;
+
   // Submit Form nộp hồ sơ
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!bidPrice || Number(bidPrice) <= 0) {
+      toast.error('Vui lòng nhập Giá dự thầu hợp lệ lớn hơn 0.');
+      return;
+    }
+
+    if (budget > 0 && Number(bidPrice) > budget) {
+      toast.error(`Giá chào thầu không được vượt quá Ngân sách dự toán (${formatCurrency(budget)}).`);
+      return;
+    }
 
     if (filesList.length === 0) {
       toast.error('Vui lòng đính kèm ít nhất 1 tệp hồ sơ dự thầu.');
@@ -195,6 +215,7 @@ export const SubmitBidModal = ({ isOpen, onClose, pkg, onSuccess }) => {
       setLoading(true);
 
       const formData = new FormData();
+      formData.append('bidPrice', bidPrice);
       filesList.forEach((item) => {
         formData.append('files', item.file);
         formData.append('fileTypes', item.fileType);
@@ -249,6 +270,64 @@ export const SubmitBidModal = ({ isOpen, onClose, pkg, onSuccess }) => {
               <Clock className="w-3.5 h-3.5 text-sky-600" />
               <span>{new Date(pkg.deadline).toLocaleDateString('vi-VN')}</span>
             </span>
+          </div>
+
+          {/* Khối Nhập Giá dự thầu (VNĐ) */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="font-bold text-slate-800 flex items-center space-x-1.5">
+                <DollarSign className="w-4 h-4 text-emerald-600" />
+                <span>Giá dự thầu đề xuất (VNĐ) <span className="text-rose-500">*</span></span>
+              </label>
+              <div className="text-right">
+                <span className="text-[11px] text-slate-500">Ngân sách dự toán: </span>
+                <span className="text-xs font-bold text-slate-800">{formatCurrency(pkg.budget || 0)}</span>
+              </div>
+            </div>
+
+            <div className="relative">
+              <input
+                type="text"
+                value={bidPrice ? Number(bidPrice).toLocaleString('vi-VN') : ''}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, '');
+                  setBidPrice(raw ? Number(raw) : '');
+                }}
+                placeholder="Nhập số tiền dự thầu (ví dụ: 4.800.000.000)..."
+                className={`w-full px-4 py-2.5 bg-white border rounded-xl text-sm font-bold text-slate-900 transition outline-none ${
+                  isOverBudget
+                    ? 'border-rose-400 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 bg-rose-50/20'
+                    : 'border-slate-300 focus:border-sky-500 focus:ring-1 focus:ring-sky-500'
+                }`}
+              />
+              <span className="absolute right-3.5 top-2.5 text-xs font-bold text-slate-400">VNĐ</span>
+            </div>
+
+            {/* Phân tích & Cảnh báo Giá thầu */}
+            {isOverBudget ? (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center space-x-2 text-rose-700 text-[11px]">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>
+                  <strong>Cảnh báo:</strong> Giá chào thầu ({formatCurrency(bidPrice)}) đang vượt quá Ngân sách dự toán ({formatCurrency(pkg.budget)}). Theo quy định, giá chào không được vượt giá gói thầu!
+                </span>
+              </div>
+            ) : bidPrice && pkg.budget && Number(bidPrice) <= pkg.budget ? (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-emerald-800 text-[11px]">
+                <span className="flex items-center space-x-1.5">
+                  <TrendingDown className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Tiết kiệm dự kiến: <strong>{formatCurrency(costSaving)}</strong> ({costSavingPercent}%) so với dự toán</span>
+                </span>
+                <span className="text-[10px] text-emerald-600 font-semibold flex items-center space-x-1">
+                  <Lock className="w-3 h-3" />
+                  <span>Niêm phong bảo mật</span>
+                </span>
+              </div>
+            ) : (
+              <p className="text-[10.5px] text-slate-500 flex items-center space-x-1">
+                <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>Giá dự thầu sẽ được niêm phong điện tử tự động và bảo mật tuyệt đối cho đến giai đoạn thẩm định.</span>
+              </p>
+            )}
           </div>
 
           {/* Hướng dẫn 4 nhóm tệp */}
@@ -399,7 +478,7 @@ export const SubmitBidModal = ({ isOpen, onClose, pkg, onSuccess }) => {
             </button>
             <button
               type="submit"
-              disabled={loading || filesList.length === 0 || !agreed}
+              disabled={loading || !bidPrice || isOverBudget || filesList.length === 0 || !agreed}
               className="px-5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl shadow-xs transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5"
             >
               {loading && (

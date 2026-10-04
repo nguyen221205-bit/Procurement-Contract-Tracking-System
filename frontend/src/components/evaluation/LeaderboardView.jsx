@@ -85,8 +85,10 @@ export const LeaderboardView = ({
                 <h3 className="text-xl font-black tracking-tight">
                   {summary?.winningContractorName || rank1?.companyName}
                 </h3>
-                <p className="text-xs text-emerald-100 flex items-center gap-3">
+                <p className="text-xs text-emerald-100 flex flex-wrap items-center gap-3">
                   <span>Điểm trúng thầu: <strong>{formatNumber(summary?.winningScore || rank1?.totalScore)}/100</strong></span>
+                  <span>•</span>
+                  <span>Giá trúng thầu: <strong className="text-amber-300 font-mono text-sm">{formatCurrency(summary?.winningBidPrice || rank1?.bidPrice || packageData?.budget || 0)}</strong></span>
                   <span>•</span>
                   <span>Ngân sách dự toán: <strong>{formatCurrency(packageData?.budget || 0)}</strong></span>
                 </p>
@@ -315,6 +317,7 @@ export const LeaderboardView = ({
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
                 <th className="py-3 px-4 w-16 text-center">Hạng</th>
                 <th className="py-3 px-4 min-w-[200px]">Nhà thầu</th>
+                <th className="py-3 px-4 text-right min-w-[130px]">Giá dự thầu</th>
                 {criteriaList.map((crit) => (
                   <th
                     key={crit.id}
@@ -382,6 +385,30 @@ export const LeaderboardView = ({
                         )}
                       </p>
                       <span className="text-[11px] text-slate-400">MST: {sub.taxCode || 'N/A'}</span>
+                    </td>
+
+                    {/* Giá dự thầu */}
+                    <td className="py-3.5 px-4 text-right font-mono">
+                      {sub.bidPrice ? (
+                        <div>
+                          <span className="font-bold text-emerald-700 text-xs block">
+                            {formatCurrency(sub.bidPrice)}
+                          </span>
+                          {packageData?.budget > 0 && (
+                            <span className="text-[10px] text-slate-400 block">
+                              {sub.bidPrice < packageData.budget ? (
+                                <span className="text-emerald-600 font-semibold">
+                                  Tiết kiệm {formatCurrency(packageData.budget - sub.bidPrice)}
+                                </span>
+                              ) : (
+                                <span>Bằng dự toán</span>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 font-mono text-[11px]">-</span>
+                      )}
                     </td>
 
                     {/* Điểm từng tiêu chí (Điểm bình quân các giám khảo) */}
