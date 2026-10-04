@@ -100,7 +100,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 });
 
             var paginatedResult = await PaginatedList<ContractSummaryDto>.CreateAsync(
-                projectedQuery, filter.PageNumber, filter.PageSize);
+                projectedQuery, filter.PageIndex, filter.PageSize);
 
             return ApiResponse<PaginatedList<ContractSummaryDto>>.Ok(paginatedResult);
         }
