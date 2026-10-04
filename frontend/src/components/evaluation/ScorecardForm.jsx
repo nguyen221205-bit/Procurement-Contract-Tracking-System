@@ -287,10 +287,12 @@ export const ScorecardForm = ({
                         {sub.companyName}
                       </h4>
                     </div>
-                    <div className="text-[11px] text-slate-500 flex items-center gap-2 pl-6">
+                    <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-2 pl-6">
                       <span>MST: {sub.taxCode || 'N/A'}</span>
                       <span>•</span>
-                      <span>Nộp: {formatDate(sub.submittedAt)}</span>
+                      <span className="font-semibold text-emerald-700 font-mono">
+                        {sub.bidPrice ? formatCurrency(sub.bidPrice) : '-'}
+                      </span>
                     </div>
                   </div>
                   <ChevronRight
@@ -353,7 +355,18 @@ export const ScorecardForm = ({
                 <h3 className="text-base font-bold text-slate-800 mt-1.5">
                   {currentSubmission.companyName}
                 </h3>
-                <p className="text-xs text-slate-500">Mã số thuế: {currentSubmission.taxCode || 'Chưa cung cấp'}</p>
+                <div className="flex flex-wrap items-center gap-2.5 mt-1 text-xs">
+                  <span className="text-slate-500">MST: {currentSubmission.taxCode || 'Chưa cung cấp'}</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-slate-700 font-medium">
+                    Giá dự thầu: <strong className="text-emerald-700 font-mono text-xs">{currentSubmission.bidPrice ? formatCurrency(currentSubmission.bidPrice) : 'Chưa cập nhật'}</strong>
+                  </span>
+                  {packageData?.budget > 0 && currentSubmission.bidPrice && (
+                    <span className="text-[10.5px] px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                      Tiết kiệm {formatCurrency(packageData.budget - currentSubmission.bidPrice)} ({(((packageData.budget - currentSubmission.bidPrice) / packageData.budget) * 100).toFixed(1)}%)
+                    </span>
+                  )}
+                </div>
 
                 {/* Dropdown xem phiếu giám khảo khác dành cho Admin / Procurement */}
                 {isAdminOrProcurement && distinctEvaluators.length > 0 && (

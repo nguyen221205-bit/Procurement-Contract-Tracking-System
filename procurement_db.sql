@@ -152,6 +152,7 @@ BEGIN
         BidPackageId INT NOT NULL,
         ContractorId INT NOT NULL,
         SubmittedAt DATETIME2 NOT NULL CONSTRAINT DF_BidSubmissions_SubmittedAt DEFAULT SYSUTCDATETIME(),
+        BidPrice DECIMAL(18,2) NULL,
         TotalScore DECIMAL(10,2) NULL,
         Rank INT NULL,
         Status NVARCHAR(50) NOT NULL CONSTRAINT DF_BidSubmissions_Status DEFAULT 'Submitted',

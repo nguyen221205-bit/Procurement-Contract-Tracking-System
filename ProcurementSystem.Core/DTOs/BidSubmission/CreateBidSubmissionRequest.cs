@@ -9,6 +9,11 @@ namespace ProcurementSystem.Core.DTOs.BidSubmission
     /// </summary>
     public class CreateBidSubmissionRequest
     {
+        /// <summary>Giá dự thầu do nhà thầu chào (VNĐ).</summary>
+        [Required(ErrorMessage = "Giá dự thầu là bắt buộc.")]
+        [Range(1, double.MaxValue, ErrorMessage = "Giá dự thầu phải lớn hơn 0.")]
+        public decimal BidPrice { get; set; }
+
         /// <summary>Danh sách file hồ sơ dự thầu.</summary>
         [Required(ErrorMessage = "Phải đính kèm ít nhất 1 file hồ sơ dự thầu.")]
         public List<IFormFile> Files { get; set; } = new();

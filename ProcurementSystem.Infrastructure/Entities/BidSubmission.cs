@@ -14,6 +14,9 @@ namespace ProcurementSystem.Infrastructure.Entities
 
         public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
 
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? BidPrice { get; set; }
+
         [Column(TypeName = "decimal(10,2)")]
         public decimal? TotalScore { get; set; }
 

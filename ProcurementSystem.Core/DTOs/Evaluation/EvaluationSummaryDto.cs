@@ -29,5 +29,6 @@ namespace ProcurementSystem.Core.DTOs.Evaluation
         public string? WinningContractorName { get; set; }
         public string? WinningContractorTaxCode { get; set; }
         public decimal? WinningScore { get; set; }
+        public decimal? WinningBidPrice { get; set; }
     }
 }

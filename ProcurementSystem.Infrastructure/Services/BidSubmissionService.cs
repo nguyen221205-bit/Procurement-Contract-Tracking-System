@@ -22,7 +22,7 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<BidSubmissionDto>> SubmitBidAsync(
-            int bidPackageId, int userId, List<IFormFile> files, List<SubmissionFileType> fileTypes)
+            int bidPackageId, int userId, decimal bidPrice, List<IFormFile> files, List<SubmissionFileType> fileTypes)
         {
             // 1. Kiểm tra gói thầu tồn tại
             var bidPackage = await _unitOfWork.Repository<BidPackage>()
@@ -45,6 +45,18 @@ namespace ProcurementSystem.Infrastructure.Services
             if (DateTime.UtcNow > bidPackage.Deadline)
             {
                 return ApiResponse<BidSubmissionDto>.Fail("Đã hết thời hạn nộp hồ sơ dự thầu.");
+            }
+
+            // 3.1 Kiểm tra tính hợp lệ của Giá dự thầu (Không được vượt giá gói thầu)
+            if (bidPrice <= 0)
+            {
+                return ApiResponse<BidSubmissionDto>.Fail("Giá dự thầu phải lớn hơn 0.");
+            }
+
+            if (bidPrice > bidPackage.Budget)
+            {
+                return ApiResponse<BidSubmissionDto>.Fail(
+                    $"Giá dự thầu ({bidPrice:N0} VNĐ) không được vượt quá Ngân sách dự toán của gói thầu ({bidPackage.Budget:N0} VNĐ) theo quy định.");
             }
 
             // 4. Kiểm tra tư cách nhà thầu
@@ -87,6 +99,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     BidPackageId = bidPackageId,
                     ContractorId = contractor.Id,
                     SubmittedAt = DateTime.UtcNow,
+                    BidPrice = bidPrice,
                     Status = "Submitted"
                 };
 
@@ -127,6 +140,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     CompanyName = contractor.CompanyName,
                     TaxCode = contractor.TaxCode,
                     SubmittedAt = submission.SubmittedAt,
+                    BidPrice = submission.BidPrice,
                     TotalScore = submission.TotalScore,
                     Rank = submission.Rank,
                     Status = submission.Status,
@@ -258,6 +272,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     ContractorId = bs.ContractorId,
                     CompanyName = bs.Contractor.CompanyName,
                     SubmittedAt = bs.SubmittedAt,
+                    BidPrice = bs.BidPrice,
                     TotalScore = bs.TotalScore,
                     Rank = bs.Rank,
                     Status = bs.Status,
@@ -341,6 +356,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 CompanyName = submission.Contractor?.CompanyName ?? string.Empty,
                 TaxCode = submission.Contractor?.TaxCode,
                 SubmittedAt = submission.SubmittedAt,
+                BidPrice = submission.BidPrice,
                 TotalScore = submission.TotalScore,
                 Rank = submission.Rank,
                 Status = submission.Status,
@@ -359,6 +375,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 ContractorId = submission.ContractorId,
                 CompanyName = submission.Contractor?.CompanyName ?? string.Empty,
                 SubmittedAt = submission.SubmittedAt,
+                BidPrice = submission.BidPrice,
                 TotalScore = submission.TotalScore,
                 Rank = submission.Rank,
                 Status = submission.Status,

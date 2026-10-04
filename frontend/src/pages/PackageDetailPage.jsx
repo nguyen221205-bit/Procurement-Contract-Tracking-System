@@ -781,6 +781,7 @@ export const PackageDetailPage = () => {
                         <th className="py-3 px-4 w-12 text-center">STT</th>
                         <th className="py-3 px-4">Doanh nghiệp / Nhà thầu</th>
                         <th className="py-3 px-4">Thời gian nộp</th>
+                        <th className="py-3 px-4 text-right">Giá dự thầu</th>
                         <th className="py-3 px-4 text-center">Số tệp</th>
                         <th className="py-3 px-4 text-center">Trạng thái</th>
                         <th className="py-3 px-4 text-center">Điểm / Hạng</th>
@@ -796,6 +797,32 @@ export const PackageDetailPage = () => {
                           </td>
                           <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
                             {formatDateTime(sub.submittedAt)}
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono">
+                            {(() => {
+                              const isPublic = pkg?.status === 'Awarded' || pkg?.status === 'Contracted' || String(pkg?.status) === '3';
+                              const canEvaluatorView = pkg?.status === 'Evaluating' && (isEvaluator || isAssignedEvaluator || isAdmin || isProcurement);
+                              if (isPublic) {
+                                return (
+                                  <span className="font-bold text-emerald-700">
+                                    {sub.bidPrice ? formatCurrency(sub.bidPrice) : '-'}
+                                  </span>
+                                );
+                              }
+                              if (canEvaluatorView) {
+                                return (
+                                  <span className="font-bold text-sky-700">
+                                    {sub.bidPrice ? formatCurrency(sub.bidPrice) : '-'}
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="text-amber-600 font-medium text-[11px] inline-flex items-center space-x-1">
+                                  <Lock className="w-3 h-3" />
+                                  <span>Niêm phong</span>
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="py-3 px-4 text-center font-mono font-medium">
                             {sub.fileCount} tệp
@@ -1287,7 +1314,7 @@ export const PackageDetailPage = () => {
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-xl">
+              <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 rounded-xl">
                 <div>
                   <span className="text-slate-400">Thời gian nộp:</span>
                   <p className="font-semibold text-slate-800">{formatDateTime(selectedSubmission.submittedAt)}</p>
@@ -1295,6 +1322,18 @@ export const PackageDetailPage = () => {
                 <div>
                   <span className="text-slate-400">Trạng thái:</span>
                   <p className="font-semibold text-slate-800">{selectedSubmission.status}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Giá dự thầu:</span>
+                  <p className="font-semibold text-slate-900 font-mono">
+                    {(() => {
+                      const isPublic = pkg?.status === 'Awarded' || pkg?.status === 'Contracted' || String(pkg?.status) === '3';
+                      const canEvaluatorView = pkg?.status === 'Evaluating' && (isEvaluator || isAssignedEvaluator || isAdmin || isProcurement);
+                      if (isPublic) return <span className="text-emerald-700 font-bold">{selectedSubmission.bidPrice ? formatCurrency(selectedSubmission.bidPrice) : '-'}</span>;
+                      if (canEvaluatorView) return <span className="text-sky-700 font-bold">{selectedSubmission.bidPrice ? formatCurrency(selectedSubmission.bidPrice) : '-'}</span>;
+                      return <span className="text-amber-600 text-[11px]">Niêm phong</span>;
+                    })()}
+                  </p>
                 </div>
               </div>
 

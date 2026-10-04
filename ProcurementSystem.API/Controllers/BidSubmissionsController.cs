@@ -54,7 +54,7 @@ namespace ProcurementSystem.API.Controllers
             }
 
             var result = await _bidSubmissionService.SubmitBidAsync(
-                bidPackageId, userId.Value, request.Files, request.FileTypes);
+                bidPackageId, userId.Value, request.BidPrice, request.Files, request.FileTypes);
 
             if (!result.Success)
             {

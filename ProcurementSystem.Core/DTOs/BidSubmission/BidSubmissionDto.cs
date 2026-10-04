@@ -23,6 +23,8 @@ namespace ProcurementSystem.Core.DTOs.BidSubmission
 
         /// <summary>Thời điểm nộp hồ sơ.</summary>
         public DateTime SubmittedAt { get; set; }
+        /// <summary>Giá dự thầu do nhà thầu chào (VNĐ).</summary>
+        public decimal? BidPrice { get; set; }
         /// <summary>Tổng điểm sau đánh giá.</summary>
         public decimal? TotalScore { get; set; }
         /// <summary>Thứ hạng hồ sơ sau đánh giá.</summary>

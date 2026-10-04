@@ -19,6 +19,7 @@ namespace ProcurementSystem.Core.DTOs.Evaluation
 
         // Thông tin hồ sơ trúng thầu
         public int SubmissionId { get; set; }
+        public decimal? WinningBidPrice { get; set; }
         public decimal? TotalScore { get; set; }
         public int? Rank { get; set; }
         public DateTime AwardedAt { get; set; }

@@ -24,12 +24,15 @@ namespace ProcurementSystem.Core.DTOs.Contract
         // ==== Thông tin Hồ sơ trúng thầu ====
         public int SubmissionId { get; set; }
 
+        /// <summary>Giá dự thầu do nhà thầu trúng thầu chào</summary>
+        public decimal? WinningBidPrice { get; set; }
+
         /// <summary>Điểm tổng hợp theo trọng số của hồ sơ trúng thầu</summary>
         public decimal? TotalScore { get; set; }
 
         public int? Rank { get; set; }
 
-        /// <summary>Giá trị đề xuất điền vào hợp đồng = Bằng với dự toán gói thầu nếu không có giá thầu riêng</summary>
+        /// <summary>Giá trị đề xuất điền vào hợp đồng = Bằng với giá dự thầu trúng thầu (hoặc dự toán gói thầu nếu null)</summary>
         public decimal SuggestedContractValue { get; set; }
 
         // ==== Trạng thái liên thông ====
