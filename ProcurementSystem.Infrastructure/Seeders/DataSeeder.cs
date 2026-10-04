@@ -31,6 +31,12 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     );
                     CREATE NONCLUSTERED INDEX IX_BidPackageEvaluators_EvaluatorId ON BidPackageEvaluators (EvaluatorId);
                 END
+
+                -- Bảo đảm cột BidPrice luôn tồn tại trên bảng BidSubmissions
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[BidSubmissions]') AND name = 'BidPrice')
+                BEGIN
+                    ALTER TABLE [BidSubmissions] ADD [BidPrice] DECIMAL(18,2) NULL;
+                END
             ");
 
             // 1. Seed Roles
@@ -335,6 +341,7 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     BidPackageId = pkgEval.Id,
                     ContractorId = contractor1.Id,
                     SubmittedAt = DateTime.UtcNow.AddDays(-4),
+                    BidPrice = 1850000000m,
                     Status = "Submitted"
                 };
                 var sub2 = new BidSubmission
@@ -342,6 +349,7 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     BidPackageId = pkgEval.Id,
                     ContractorId = contractor2.Id,
                     SubmittedAt = DateTime.UtcNow.AddDays(-3),
+                    BidPrice = 1920000000m,
                     Status = "Submitted"
                 };
                 await context.BidSubmissions.AddRangeAsync(sub1, sub2);
@@ -390,6 +398,7 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     BidPackageId = pkgContracted.Id,
                     ContractorId = contractor1.Id,
                     SubmittedAt = DateTime.UtcNow.AddDays(-22),
+                    BidPrice = 1150000000m,
                     TotalScore = 92.50m,
                     Rank = 1,
                     Status = "Selected"
