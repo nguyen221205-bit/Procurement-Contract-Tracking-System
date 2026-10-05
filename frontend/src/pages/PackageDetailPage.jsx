@@ -41,6 +41,7 @@ import AssignEvaluatorModal from '../components/packages/AssignEvaluatorModal';
 import SubmitBidModal from '../components/submissions/SubmitBidModal';
 import { PACKAGE_TYPES, ROLES } from '../utils/constants';
 import { formatVND, formatDate, formatDateTime } from '../utils/formatters';
+import { downloadSecureFile } from '../utils/fileDownload';
 
 const API_BASE_URL = 'http://localhost:5225';
 
@@ -543,15 +544,14 @@ export const PackageDetailPage = () => {
                           </div>
                         </div>
 
-                        <a
-                          href={`${API_BASE_URL}${doc.filePath}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-sky-600 text-slate-700 hover:text-white rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 flex-shrink-0"
+                        <button
+                          type="button"
+                          onClick={() => downloadSecureFile(`/api/bid-packages/documents/${doc.id}/download`, doc.fileName)}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-sky-600 text-slate-700 hover:text-white rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 flex-shrink-0 cursor-pointer"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>Tải về</span>
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1381,16 +1381,14 @@ export const PackageDetailPage = () => {
                                     )}
                                   </div>
                                 </div>
-                                <a
-                                  href={`${API_BASE_URL}${file.filePath}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  download={file.fileName}
-                                  className="px-3 py-1.5 bg-slate-100 hover:bg-sky-600 text-slate-700 hover:text-white rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 shrink-0"
+                                <button
+                                  type="button"
+                                  onClick={() => downloadSecureFile(`/api/submissions/files/${file.id}/download`, file.fileName)}
+                                  className="px-3 py-1.5 bg-slate-100 hover:bg-sky-600 text-slate-700 hover:text-white rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 shrink-0 cursor-pointer"
                                 >
                                   <Download className="w-3.5 h-3.5" />
                                   <span>Tải</span>
-                                </a>
+                                </button>
                               </div>
                             );
                           })}

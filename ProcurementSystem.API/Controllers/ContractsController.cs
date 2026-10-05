@@ -1,9 +1,11 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Contract;
 using ProcurementSystem.Core.Interfaces;
+using ProcurementSystem.Infrastructure.Entities;
 
 namespace ProcurementSystem.API.Controllers
 {
@@ -14,10 +16,12 @@ namespace ProcurementSystem.API.Controllers
     public class ContractsController : ControllerBase
     {
         private readonly IContractService _contractService;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public ContractsController(IContractService contractService)
+        public ContractsController(IContractService contractService, IUnitOfWork unitOfWork)
         {
             _contractService = contractService;
+            _unitOfWork = unitOfWork;
         }
 
         /// <summary>
@@ -546,6 +550,65 @@ namespace ProcurementSystem.API.Controllers
             }
 
             return Ok(result);
+        }
+
+        /// <summary>
+        /// Tải tệp PDF scan hợp đồng kinh tế an toàn (kiểm soát IDOR)
+        /// </summary>
+        /// <param name="id">Định danh hợp đồng</param>
+        [HttpGet("api/contracts/{id:int}/scanned-file/download")]
+        [Authorize]
+        [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DownloadScannedContract(int id)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+
+            var contract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.Contractor)
+                .FirstOrDefaultAsync(c => c.Id == id);
+
+            if (contract == null)
+            {
+                return NotFound(ApiResponse<string>.Fail("Không tìm thấy hợp đồng."));
+            }
+
+            if (string.IsNullOrWhiteSpace(contract.ScannedFilePath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Hợp đồng chưa có tệp scan đính kèm."));
+            }
+
+            // Kiểm soát quyền IDOR: Chỉ nhân sự nội bộ hoặc chính nhà thầu sở hữu hợp đồng mới được tải
+            if (!isInternalStaff)
+            {
+                var contractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.UserId == userId.Value);
+
+                if (contractor == null || contractor.Id != contract.ContractorId)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<string>.Fail("Bạn không có quyền tải tệp scan của hợp đồng này."));
+                }
+            }
+
+            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), contract.ScannedFilePath.TrimStart('/'));
+            if (!System.IO.File.Exists(physicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu scan không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            var fileName = $"HopDong_{contract.ContractNumber}.pdf";
+            return PhysicalFile(physicalPath, "application/pdf", fileName);
         }
 
         private int? GetCurrentUserId()

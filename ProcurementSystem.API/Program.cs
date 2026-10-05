@@ -193,14 +193,9 @@ if (app.Environment.IsDevelopment())
 // Static files (cho Frontend)
 app.UseStaticFiles();
 
-// Phục vụ tĩnh cho thư mục uploads
+// Đảm bảo thư mục uploads tồn tại trong hệ thống lưu trữ (không phục vụ static công khai để bảo vệ Sealed-Bid)
 var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
 if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
-    RequestPath = "/uploads"
-});
 
 // CORS
 app.UseCors("AllowAll");
