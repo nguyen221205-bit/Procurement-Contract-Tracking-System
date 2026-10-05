@@ -28,6 +28,7 @@ const FILTER_TABS = [
   { label: 'Tất cả', value: '' },
   { label: 'Đang mở thầu', value: PACKAGE_STATUS.OPEN },
   { label: 'Đang chấm điểm', value: PACKAGE_STATUS.EVALUATING },
+  { label: 'Đã trao thầu', value: PACKAGE_STATUS.AWARDED },
   { label: 'Đã ký hợp đồng', value: PACKAGE_STATUS.CONTRACTED },
   { label: 'Đã đóng thầu', value: PACKAGE_STATUS.CLOSED },
 ];

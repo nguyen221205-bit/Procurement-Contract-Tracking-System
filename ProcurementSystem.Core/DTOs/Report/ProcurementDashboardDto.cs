@@ -7,6 +7,7 @@ namespace ProcurementSystem.Core.DTOs.Report
         public int OpenPackages { get; set; }
         public int ClosedPackages { get; set; }
         public int EvaluatingPackages { get; set; }
+        public int AwardedPackages { get; set; }
         public int ContractedPackages { get; set; }
 
         // ==== 2. THỐNG KÊ HỒ SƠ & DOANH NGHIỆP ====

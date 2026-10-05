@@ -42,13 +42,14 @@ export const PACKAGE_STATUS = {
 export const PACKAGE_STATUS_CONFIG = {
   Open: { label: 'Đang mở thầu', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   0: { label: 'Đang mở thầu', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  Evaluating: { label: 'Đang chấm điểm', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
-  2: { label: 'Đang chấm điểm', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
-  Awarded: { label: 'Đã trao thầu', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  Contracted: { label: 'Đã ký hợp đồng', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
-  3: { label: 'Đã ký hợp đồng', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
   Closed: { label: 'Đã đóng thầu', badgeColor: 'bg-slate-100 text-slate-700 border-slate-200' },
   1: { label: 'Đã đóng thầu', badgeColor: 'bg-slate-100 text-slate-700 border-slate-200' },
+  Evaluating: { label: 'Đang chấm điểm', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
+  2: { label: 'Đang chấm điểm', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
+  Awarded: { label: 'Đã trao thầu', badgeColor: 'bg-teal-50 text-teal-700 border-teal-200' },
+  3: { label: 'Đã trao thầu', badgeColor: 'bg-teal-50 text-teal-700 border-teal-200' },
+  Contracted: { label: 'Đã ký hợp đồng', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
+  4: { label: 'Đã ký hợp đồng', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
 };
 
 // Bid Package Types khớp Enum Backend (BidPackageType.cs)

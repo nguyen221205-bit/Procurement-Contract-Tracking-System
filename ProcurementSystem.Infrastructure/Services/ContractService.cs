@@ -449,6 +449,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 if (bidPackage != null && bidPackage.Status != BidPackageStatus.Contracted)
                 {
                     bidPackage.Status = BidPackageStatus.Contracted;
+                    bidPackage.UpdatedAt = DateTime.UtcNow;
                     _unitOfWork.Repository<BidPackage>().Update(bidPackage);
                 }
             }
