@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { contractApi } from '../api/contractApi';
+import { downloadSecureFile } from '../utils/fileDownload';
 import StatusBadge from '../components/common/StatusBadge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import MilestoneModal from '../components/contracts/MilestoneModal';
@@ -398,15 +399,14 @@ export const ContractDetailPage = () => {
                   </div>
                 </div>
 
-                <a
-                  href={`http://localhost:5225/${contract.scannedFilePath}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() => downloadSecureFile(`/api/contracts/${contract.id}/scanned-file/download`, `HopDong_${contract.contractNumber}.pdf`)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-blue-50 text-blue-600 hover:text-blue-800 border border-blue-200 text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-2xs"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Xem file</span>
-                </a>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Tải file scan</span>
+                </button>
               </div>
             ) : (
               <div className="p-5 border-2 border-dashed border-slate-200 rounded-xl text-center space-y-2">

@@ -513,6 +513,15 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Hồ sơ dự thầu được chọn chưa hoàn tất quá trình chấm điểm đánh giá.");
             }
 
+            // Căn cứ NĐ 24/2024/NĐ-CP: Toàn bộ hồ sơ dự thầu hợp lệ phải hoàn tất đánh giá đủ điều kiện
+            var activeSubmissions = submissions.Where(s => s.Status != "Withdrawn" && s.Status != "Disqualified").ToList();
+            var incompleteSubmissions = activeSubmissions.Where(s => s.Status != "Evaluated").ToList();
+            if (incompleteSubmissions.Any())
+            {
+                return ApiResponse<bool>.Fail(
+                    $"Căn cứ Nghị định 24/2024/NĐ-CP: Còn {incompleteSubmissions.Count} hồ sơ dự thầu hợp lệ chưa hoàn tất quá trình đánh giá của đầy đủ các thành viên Tổ chuyên gia. Không thể phê duyệt trao thầu trên kết quả chấm chưa hoàn tất.");
+            }
+
             // Đánh dấu hồ sơ trúng thầu và từ chối các hồ sơ còn lại
             foreach (var sub in submissions)
             {
@@ -527,9 +536,14 @@ namespace ProcurementSystem.Infrastructure.Services
                 _unitOfWork.Repository<BidSubmission>().Update(sub);
             }
 
+            // Cập nhật trạng thái gói thầu sang Awarded (Đã trao thầu theo Điều 61, 64 Luật Đấu thầu 2023)
+            package.Status = BidPackageStatus.Awarded;
+            package.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Repository<BidPackage>().Update(package);
+
             await _unitOfWork.SaveChangesAsync();
 
-            return ApiResponse<bool>.Ok(true, $"Đã phê duyệt nhà thầu (Mã hồ sơ: #{selectedSubmissionId}) trúng thầu thành công. Gói thầu sẵn sàng để ký hợp đồng.");
+            return ApiResponse<bool>.Ok(true, $"Đã phê duyệt nhà thầu (Mã hồ sơ: #{selectedSubmissionId}) trúng thầu thành công. Gói thầu đã chuyển sang trạng thái 'Awarded' và sẵn sàng để ký hợp đồng.");
         }
 
         public async Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId)
@@ -737,8 +751,19 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Where(s => s.BidPackageId == packageId)
                 .ToListAsync();
 
+            // Đếm số giám khảo được phân công cho gói thầu để xác định điều kiện hoàn tất chấm điểm
+            var assignedEvaluatorsCount = await _unitOfWork.Repository<BidPackageEvaluator>()
+                .Query()
+                .CountAsync(pe => pe.BidPackageId == packageId);
+
+            var criteriaCount = criteriaList.Count;
+            var requiredScoreCount = (assignedEvaluatorsCount > 0 ? assignedEvaluatorsCount : 1) * criteriaCount;
+
             foreach (var sub in submissions)
             {
+                // Bỏ qua nếu hồ sơ đã rút hoặc bị loại
+                if (sub.Status == "Withdrawn" || sub.Status == "Disqualified") continue;
+
                 if (!sub.EvaluationScores.Any()) continue;
 
                 // Tính điểm bình quân từng tiêu chí (nếu có nhiều giám khảo chấm cùng tiêu chí)
@@ -760,15 +785,17 @@ namespace ProcurementSystem.Infrastructure.Services
                 // Điểm tổng hợp theo trọng số = Tổng (Điểm bình quân tiêu chí * Trọng số) / Tổng trọng số
                 var finalTotalScore = weightedScoreSum / totalWeight;
                 sub.TotalScore = Math.Round(finalTotalScore, 2);
-                if (sub.Status != "Selected" && sub.Status != "Rejected")
+
+                // Căn cứ NĐ 24/2024/NĐ-CP: CHỈ gán trạng thái 'Evaluated' khi ĐỦ 100% giám khảo chấm đủ 100% tiêu chí
+                if (sub.EvaluationScores.Count >= requiredScoreCount && sub.Status != "Selected" && sub.Status != "Rejected")
                 {
                     sub.Status = "Evaluated";
                 }
             }
 
-            // Tự động sắp xếp phân hạng Rank 1, 2, 3...
+            // Tự động sắp xếp phân hạng Rank 1, 2, 3... cho các hồ sơ đã hoàn tất đánh giá
             var scoredSubmissions = submissions
-                .Where(s => s.TotalScore.HasValue)
+                .Where(s => s.TotalScore.HasValue && (s.Status == "Evaluated" || s.Status == "Selected"))
                 .OrderByDescending(s => s.TotalScore!.Value)
                 .ThenBy(s => s.SubmittedAt)
                 .ToList();

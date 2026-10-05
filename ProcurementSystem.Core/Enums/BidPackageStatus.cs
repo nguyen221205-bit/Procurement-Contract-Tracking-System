@@ -5,6 +5,7 @@ namespace ProcurementSystem.Core.Enums
         Open = 0,         // Đang mở thầu
         Closed = 1,       // Đã đóng thầu
         Evaluating = 2,   // Đang chấm điểm
-        Contracted = 3    // Đã ký hợp đồng
+        Awarded = 3,      // Đã trao thầu (Phê duyệt kết quả LCNT)
+        Contracted = 4    // Đã ký hợp đồng
     }
 }

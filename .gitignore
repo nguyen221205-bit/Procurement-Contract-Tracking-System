@@ -85,3 +85,8 @@ Procurement_API_v2_Postman_Collection.json
 ProcurementSystem_Postman_Collection_v2.json
 HUONG_DAN_CAI_DAT_VA_TICH_HOP_API.md
 HUONG_DAN_KIEM_THU_POSTMAN_V2.md
+e2e_test_report_01_10_2026.json
+e2e_test_report.json
+scripts/e2e_integration_suite.py
+scripts/test_e2e_procurement_lifecycle.py
+.codegraph
