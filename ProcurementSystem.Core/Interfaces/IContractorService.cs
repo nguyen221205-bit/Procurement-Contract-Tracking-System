@@ -29,5 +29,10 @@ namespace ProcurementSystem.Core.Interfaces
         /// Cập nhật điểm đánh giá năng lực nhà thầu
         /// </summary>
         Task<ApiResponse<ContractorDto>> UpdateContractorRatingAsync(int contractorId, UpdateContractorRatingRequest request);
+
+        /// <summary>
+        /// Tự động tính toán lại điểm đánh giá uy tín (Rating) nhà thầu dựa trên hợp đồng thực tế (P2-11)
+        /// </summary>
+        Task<ApiResponse<ContractorDto>> RecalculateContractorRatingAsync(int contractorId);
     }
 }

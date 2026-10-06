@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -80,6 +81,27 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings["Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
         ClockSkew = TimeSpan.Zero
+    };
+
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var userIdClaim = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (int.TryParse(userIdClaim, out int userId))
+            {
+                var dbContext = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var user = await dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+                if (user == null || !user.IsActive)
+                {
+                    context.Fail("Tài khoản người dùng đã bị khóa hoặc không còn tồn tại trên hệ thống.");
+                }
+            }
+            else
+            {
+                context.Fail("Token không chứa định danh người dùng hợp lệ.");
+            }
+        }
     };
 });
 

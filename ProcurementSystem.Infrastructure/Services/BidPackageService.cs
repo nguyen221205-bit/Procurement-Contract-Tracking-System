@@ -138,7 +138,17 @@ namespace ProcurementSystem.Infrastructure.Services
             string code;
             if (string.IsNullOrWhiteSpace(request.Code))
             {
-                code = $"PKG-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(1000, 9999)}";
+                var year = DateTime.UtcNow.Year;
+                var count = await _unitOfWork.Repository<BidPackage>()
+                    .Query()
+                    .CountAsync(p => p.CreatedAt.Year == year);
+
+                int seq = count + 1;
+                do
+                {
+                    code = $"PKG-{year}-{seq:D4}";
+                    seq++;
+                } while (await _unitOfWork.Repository<BidPackage>().ExistsAsync(bp => bp.Code == code));
             }
             else
             {
@@ -198,13 +208,29 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidPackageDto>.Fail("Bạn không có quyền chỉnh sửa gói thầu này.");
             }
 
-            // Không cho phép sửa nếu gói thầu đang chấm điểm hoặc đã ký hợp đồng
-            if (package.Status == BidPackageStatus.Evaluating || package.Status == BidPackageStatus.Contracted)
+            // P2-1: Chỉ cho phép chỉnh sửa thông tin khi gói thầu đang mở thầu (Open)
+            if (package.Status != BidPackageStatus.Open)
             {
-                return ApiResponse<BidPackageDto>.Fail("Không thể chỉnh sửa gói thầu đang trong giai đoạn chấm điểm hoặc đã ký hợp đồng.");
+                return ApiResponse<BidPackageDto>.Fail($"Không thể chỉnh sửa gói thầu khi đang ở trạng thái '{package.Status}'. Chỉ được phép chỉnh sửa khi gói thầu đang mở thầu (Open).");
             }
 
-            if (request.Deadline <= DateTime.UtcNow && package.Status == BidPackageStatus.Open)
+            // P2-1: Nếu đã có nhà thầu nộp hồ sơ, không cho phép giảm ngân sách xuống dưới giá dự thầu của các hồ sơ đã nộp
+            var existingSubmissions = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Where(s => s.BidPackageId == id && s.Status != "Withdrawn")
+                .ToListAsync();
+
+            if (existingSubmissions.Any())
+            {
+                var minBidPrice = existingSubmissions.Where(s => s.BidPrice.HasValue).Min(s => s.BidPrice!.Value);
+                if (request.Budget < minBidPrice)
+                {
+                    return ApiResponse<BidPackageDto>.Fail(
+                        $"Không thể điều chỉnh ngân sách xuống {request.Budget:N0} VNĐ vì đã có hồ sơ dự thầu tham gia với giá {minBidPrice:N0} VNĐ. Ngân sách mới không được thấp hơn giá dự thầu của các nhà thầu đã nộp.");
+                }
+            }
+
+            if (request.Deadline <= DateTime.UtcNow)
             {
                 return ApiResponse<BidPackageDto>.Fail("Thời hạn nộp thầu phải lớn hơn thời điểm hiện tại.");
             }
@@ -275,6 +301,16 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidPackageDto>.Fail($"Không thể chuyển trạng thái từ '{package.Status}' sang '{request.NewStatus}'. Quy trình hợp lệ: Mở thầu -> Đóng thầu -> Chấm điểm -> Ký hợp đồng.");
             }
 
+            // P2-3: Đóng thầu trước thời hạn (Deadline) bắt buộc phải có lý do
+            if (package.Status == BidPackageStatus.Open && request.NewStatus == BidPackageStatus.Closed)
+            {
+                if (package.Deadline > DateTime.UtcNow && string.IsNullOrWhiteSpace(request.Reason))
+                {
+                    return ApiResponse<BidPackageDto>.Fail(
+                        "Gói thầu chưa hết thời hạn nộp thầu. Nếu muốn đóng thầu trước thời hạn, bắt buộc phải cung cấp lý do/căn cứ pháp lý.");
+                }
+            }
+
             // Lựa chọn A: Bắt buộc tiêu chí phải đủ 100% trước khi bắt đầu giai đoạn Chấm điểm (Evaluating)
             if (request.NewStatus == BidPackageStatus.Evaluating)
             {
@@ -326,6 +362,13 @@ namespace ProcurementSystem.Infrastructure.Services
             if (!isAdmin && package.CreatedBy != userId)
             {
                 return ApiResponse<List<BidDocumentDto>>.Fail("Bạn không có quyền upload tài liệu cho gói thầu này.");
+            }
+
+            // P2-2: Căn cứ Luật Đấu thầu: Chỉ được phép phát hành hoặc bổ sung tài liệu HSMT khi gói thầu đang trong thời hạn mở thầu (Open)
+            if (package.Status != BidPackageStatus.Open)
+            {
+                return ApiResponse<List<BidDocumentDto>>.Fail(
+                    $"Không thể tải lên tài liệu HSMT khi gói thầu đang ở trạng thái '{package.Status}'. Chỉ được phép thêm tài liệu khi gói thầu đang mở thầu (Open).");
             }
 
             if (files == null || files.Count == 0)

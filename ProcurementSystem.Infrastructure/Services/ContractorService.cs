@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Contractor;
+using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
 
@@ -178,6 +179,38 @@ namespace ProcurementSystem.Infrastructure.Services
             await _unitOfWork.SaveChangesAsync();
 
             return ApiResponse<ContractorDto>.Ok(MapToDto(contractor), "Cập nhật điểm đánh giá uy tín nhà thầu thành công.");
+        }
+
+        public async Task<ApiResponse<ContractorDto>> RecalculateContractorRatingAsync(int contractorId)
+        {
+            var contractor = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .Include(c => c.User)
+                .FirstOrDefaultAsync(c => c.Id == contractorId);
+
+            if (contractor == null)
+            {
+                return ApiResponse<ContractorDto>.Fail("Không tìm thấy nhà thầu.");
+            }
+
+            var contracts = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.Acceptances)
+                .Where(c => c.ContractorId == contractorId)
+                .ToListAsync();
+
+            decimal baseScore = 5.0m;
+            int terminatedCount = contracts.Count(c => c.Status == ContractStatus.Terminated);
+            int rejectedAcceptanceCount = contracts.SelectMany(c => c.Acceptances).Count(a => a.Status == AcceptanceStatus.Rejected);
+
+            decimal calculatedScore = baseScore - (terminatedCount * 1.5m) - (rejectedAcceptanceCount * 0.2m);
+            calculatedScore = Math.Clamp(calculatedScore, 1.0m, 5.0m);
+
+            contractor.Rating = Math.Round(calculatedScore, 2);
+            _unitOfWork.Repository<Contractor>().Update(contractor);
+            await _unitOfWork.SaveChangesAsync();
+
+            return ApiResponse<ContractorDto>.Ok(MapToDto(contractor), "Đã tự động tính toán lại điểm uy tín nhà thầu thành công.");
         }
 
         private static ContractorDto MapToDto(Contractor contractor)
