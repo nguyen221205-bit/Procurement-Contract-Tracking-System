@@ -226,10 +226,10 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách thành viên Tổ chuyên gia (Ban giám khảo) được phân công cho gói thầu
+        /// Lấy danh sách thành viên Tổ chuyên gia (Ban giám khảo) được phân công cho gói thầu (Chỉ nội bộ)
         /// </summary>
         [HttpGet("{id:int}/evaluators")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Procurement,Evaluator")]
         [ProducesResponseType(typeof(ApiResponse<List<PackageEvaluatorDto>>), StatusCodes.Status200OK)]
         public async Task<ActionResult<ApiResponse<List<PackageEvaluatorDto>>>> GetPackageEvaluators(int id)
         {

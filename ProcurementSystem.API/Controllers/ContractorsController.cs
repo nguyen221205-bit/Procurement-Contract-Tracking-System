@@ -179,6 +179,45 @@ namespace ProcurementSystem.API.Controllers
             return Ok(result);
         }
 
+        /// <summary>
+        /// Thẩm định và phê duyệt hoặc từ chối hồ sơ năng lực nhà thầu
+        /// </summary>
+        /// <param name="id">Mã định danh duy nhất của nhà thầu.</param>
+        /// <param name="request">Thông tin thẩm định (True: Duyệt, False: Từ chối kèm ghi chú).</param>
+        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        /// <response code="200">Thẩm định hồ sơ nhà thầu thành công.</response>
+        /// <response code="400">Dữ liệu yêu cầu không hợp lệ.</response>
+        /// <response code="401">Chưa xác thực danh tính.</response>
+        /// <response code="403">Từ chối truy cập (Yêu cầu vai trò Admin hoặc Procurement).</response>
+        /// <response code="404">Không tìm thấy nhà thầu tương ứng.</response>
+        [HttpPatch("{id:int}/verify")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<ApiResponse<ContractorDto>>> VerifyContractor(
+            int id,
+            [FromBody] VerifyContractorRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(ApiResponse<ContractorDto>.Fail(errors));
+            }
+
+            var reviewerId = GetCurrentUserId() ?? 0;
+            var result = await _contractorService.VerifyContractorAsync(id, request, reviewerId);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+
         private int? GetCurrentUserId()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

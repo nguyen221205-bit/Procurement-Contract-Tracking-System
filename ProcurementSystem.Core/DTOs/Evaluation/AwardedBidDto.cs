@@ -22,6 +22,7 @@ namespace ProcurementSystem.Core.DTOs.Evaluation
         public decimal? WinningBidPrice { get; set; }
         public decimal? TotalScore { get; set; }
         public int? Rank { get; set; }
+        public string? SelectionReason { get; set; }
         public DateTime AwardedAt { get; set; }
 
         // Trạng thái hợp đồng liên thông

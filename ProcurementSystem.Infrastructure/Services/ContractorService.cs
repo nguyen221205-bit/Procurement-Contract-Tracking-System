@@ -45,7 +45,14 @@ namespace ProcurementSystem.Infrastructure.Services
                 query = query.Where(c => c.Rating <= filter.MaxRating.Value);
             }
 
-            // 3. Sắp xếp
+            // 3. Lọc theo trạng thái thẩm định
+            if (!string.IsNullOrWhiteSpace(filter.VerificationStatus))
+            {
+                var vStatus = filter.VerificationStatus.Trim().ToLower();
+                query = query.Where(c => c.VerificationStatus.ToLower() == vStatus);
+            }
+
+            // 4. Sắp xếp
             query = (filter.SortBy?.ToLower()) switch
             {
                 "name" or "companyname" => filter.SortDescending
@@ -59,7 +66,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     : query.OrderBy(c => c.Rating)
             };
 
-            // 4. Ánh xạ sang DTO và phân trang
+            // 5. Ánh xạ sang DTO và phân trang
             var dtoQuery = query.Select(c => new ContractorDto
             {
                 Id = c.Id,
@@ -69,6 +76,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 Address = c.Address,
                 BusinessLicenseFile = c.BusinessLicenseFile,
                 Rating = c.Rating,
+                VerificationStatus = c.VerificationStatus,
                 CreatedAt = c.CreatedAt,
                 FullName = c.User.FullName,
                 Email = c.User.Email,
@@ -180,6 +188,60 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<ContractorDto>.Ok(MapToDto(contractor), "Cập nhật điểm đánh giá uy tín nhà thầu thành công.");
         }
 
+        public async Task<ApiResponse<ContractorDto>> VerifyContractorAsync(int contractorId, VerifyContractorRequest request, int reviewerUserId)
+        {
+            var contractor = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .Include(c => c.User)
+                .FirstOrDefaultAsync(c => c.Id == contractorId);
+
+            if (contractor == null)
+            {
+                return ApiResponse<ContractorDto>.Fail("Không tìm thấy thông tin nhà thầu.");
+            }
+
+            var oldStatus = contractor.VerificationStatus;
+            var newStatus = request.IsApproved ? "Approved" : "Rejected";
+            contractor.VerificationStatus = newStatus;
+
+            _unitOfWork.Repository<Contractor>().Update(contractor);
+
+            // Ghi nhận AuditLog
+            var auditLog = new AuditLog
+            {
+                UserId = reviewerUserId,
+                Action = "VERIFY_CONTRACTOR",
+                EntityType = "Contractor",
+                EntityId = contractor.Id,
+                OldValues = System.Text.Json.JsonSerializer.Serialize(new { VerificationStatus = oldStatus }),
+                NewValues = System.Text.Json.JsonSerializer.Serialize(new { VerificationStatus = newStatus, request.Notes }),
+                Timestamp = DateTime.UtcNow
+            };
+            await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+
+            // Gửi thông báo đến tài khoản nhà thầu
+            var notif = new Notification
+            {
+                UserId = contractor.UserId,
+                Title = request.IsApproved ? "Hồ sơ năng lực nhà thầu đã được phê duyệt" : "Hồ sơ năng lực nhà thầu bị từ chối",
+                Message = request.IsApproved
+                    ? $"Hồ sơ năng lực của doanh nghiệp {contractor.CompanyName} đã được thẩm định phê duyệt thành công. Bạn đã có thể nộp hồ sơ tham gia các gói thầu."
+                    : $"Hồ sơ năng lực của doanh nghiệp {contractor.CompanyName} đã bị từ chối phê duyệt. Lý do: {request.Notes ?? "Chưa đáp ứng đủ tiêu chuẩn hồ sơ năng lực theo quy định."}",
+                Type = request.IsApproved ? Core.Enums.NotificationType.Info : Core.Enums.NotificationType.Warning,
+                CreatedAt = DateTime.UtcNow,
+                IsRead = false
+            };
+            await _unitOfWork.Repository<Notification>().AddAsync(notif);
+
+            await _unitOfWork.SaveChangesAsync();
+
+            var message = request.IsApproved 
+                ? "Phê duyệt hồ sơ năng lực nhà thầu thành công." 
+                : "Đã từ chối phê duyệt hồ sơ năng lực nhà thầu.";
+
+            return ApiResponse<ContractorDto>.Ok(MapToDto(contractor), message);
+        }
+
         private static ContractorDto MapToDto(Contractor contractor)
         {
             return new ContractorDto
@@ -191,6 +253,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 Address = contractor.Address,
                 BusinessLicenseFile = contractor.BusinessLicenseFile,
                 Rating = contractor.Rating,
+                VerificationStatus = contractor.VerificationStatus,
                 CreatedAt = contractor.CreatedAt,
                 FullName = contractor.User?.FullName ?? string.Empty,
                 Email = contractor.User?.Email ?? string.Empty,

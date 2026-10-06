@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Evaluation;
@@ -260,15 +261,14 @@ namespace ProcurementSystem.Infrastructure.Services
 
             var package = submission.BidPackage;
 
-            // Ràng buộc bảo mật & nghiệp vụ: Chỉ giám khảo thuộc Tổ chuyên gia (hoặc Admin) mới có quyền chấm điểm gói thầu này
+            // Ràng buộc bảo mật & nghiệp vụ: Chỉ giám khảo thuộc Tổ chuyên gia mới có quyền chấm điểm gói thầu này (Căn cứ Điều 19 NĐ 24/2024)
             var isAssigned = await _unitOfWork.Repository<BidPackageEvaluator>()
                 .ExistsAsync(pe => pe.BidPackageId == package.Id && pe.EvaluatorId == evaluatorId);
-            var isAdmin = evaluator.UserRoles.Any(ur => ur.Role.Name == "Admin");
 
-            if (!isAssigned && !isAdmin)
+            if (!isAssigned)
             {
                 return ApiResponse<List<EvaluationScoreDto>>.Fail(
-                    "Bạn không thuộc Tổ chuyên gia được chỉ định chấm điểm cho gói thầu này.");
+                    "Căn cứ Điều 19 Nghị định 24/2024/NĐ-CP: Bạn không thuộc Tổ chuyên gia được phân công chính thức cho gói thầu này. Chỉ thành viên Tổ chuyên gia mới có quyền chấm điểm.");
             }
 
             // Ràng buộc nghiệp vụ: Không được chấm điểm khi gói thầu vẫn đang Open (chưa hết hạn/chưa đóng thầu)
@@ -395,17 +395,36 @@ namespace ProcurementSystem.Infrastructure.Services
             await CalculateRankingsForPackageAsync(package.Id);
 
             // Trả về danh sách điểm chấm chi tiết vừa lưu
-            return await GetScoresBySubmissionAsync(submissionId);
+            return await GetScoresBySubmissionAsync(submissionId, evaluatorId, false);
         }
 
-        public async Task<ApiResponse<List<EvaluationScoreDto>>> GetScoresBySubmissionAsync(int submissionId)
+        public async Task<ApiResponse<List<EvaluationScoreDto>>> GetScoresBySubmissionAsync(int submissionId, int currentUserId, bool isInternalStaff)
         {
-            var scores = await _unitOfWork.Repository<EvaluationScore>()
+            var submission = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Include(s => s.BidPackage)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == submissionId);
+
+            if (submission == null)
+            {
+                return ApiResponse<List<EvaluationScoreDto>>.Fail("Không tìm thấy hồ sơ dự thầu.");
+            }
+
+            var query = _unitOfWork.Repository<EvaluationScore>()
                 .Query()
                 .Include(s => s.Criteria)
                 .Include(s => s.Evaluator)
                 .Where(s => s.BidSubmissionId == submissionId)
-                .AsNoTracking()
+                .AsNoTracking();
+
+            // Nguyên tắc độc lập chấm điểm (NĐ 24/2024/NĐ-CP): Trong giai đoạn Evaluating, giám khảo chỉ được xem điểm của chính mình
+            if (submission.BidPackage.Status == BidPackageStatus.Evaluating && !isInternalStaff)
+            {
+                query = query.Where(s => s.EvaluatorId == currentUserId);
+            }
+
+            var scores = await query
                 .Select(s => new EvaluationScoreDto
                 {
                     Id = s.Id,
@@ -466,7 +485,7 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<List<SubmissionRankingDto>>.Ok(result);
         }
 
-        public async Task<ApiResponse<bool>> FinalizeEvaluationAsync(int packageId, int selectedSubmissionId, int userId, bool isAdmin)
+        public async Task<ApiResponse<bool>> FinalizeEvaluationAsync(int packageId, FinalizeEvaluationRequest request, int userId, bool isAdmin)
         {
             var package = await _unitOfWork.Repository<BidPackage>()
                 .Query()
@@ -502,7 +521,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Gói thầu không có hồ sơ dự thầu nào để phê duyệt.");
             }
 
-            var selectedSubmission = submissions.FirstOrDefault(s => s.Id == selectedSubmissionId);
+            var selectedSubmission = submissions.FirstOrDefault(s => s.Id == request.SelectedSubmissionId);
             if (selectedSubmission == null)
             {
                 return ApiResponse<bool>.Fail("Hồ sơ dự thầu được chọn không thuộc gói thầu này.");
@@ -522,12 +541,23 @@ namespace ProcurementSystem.Infrastructure.Services
                     $"Căn cứ Nghị định 24/2024/NĐ-CP: Còn {incompleteSubmissions.Count} hồ sơ dự thầu hợp lệ chưa hoàn tất quá trình đánh giá của đầy đủ các thành viên Tổ chuyên gia. Không thể phê duyệt trao thầu trên kết quả chấm chưa hoàn tất.");
             }
 
+            // Căn cứ Điều 61 Luật Đấu thầu 2023: Nếu chọn nhà thầu không xếp hạng 1, bắt buộc phải có lý do giải trình
+            if (selectedSubmission.Rank.HasValue && selectedSubmission.Rank.Value > 1)
+            {
+                if (string.IsNullOrWhiteSpace(request.DecisionReason))
+                {
+                    return ApiResponse<bool>.Fail(
+                        $"Căn cứ Điều 61 Luật Đấu thầu 2023: Bạn đang phê duyệt trao thầu cho hồ sơ xếp thứ hạng #{selectedSubmission.Rank.Value} (không phải xếp Hạng 1). Bắt buộc phải cung cấp lý do / căn cứ giải trình pháp lý để lưu hồ sơ kiểm toán.");
+                }
+            }
+
             // Đánh dấu hồ sơ trúng thầu và từ chối các hồ sơ còn lại
             foreach (var sub in submissions)
             {
-                if (sub.Id == selectedSubmissionId)
+                if (sub.Id == request.SelectedSubmissionId)
                 {
                     sub.Status = "Selected";
+                    sub.SelectionReason = request.DecisionReason;
                 }
                 else
                 {
@@ -537,13 +567,33 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Cập nhật trạng thái gói thầu sang Awarded (Đã trao thầu theo Điều 61, 64 Luật Đấu thầu 2023)
+            var oldStatus = package.Status;
             package.Status = BidPackageStatus.Awarded;
             package.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.Repository<BidPackage>().Update(package);
 
+            // Ghi vết nhật ký kiểm toán (Audit Log)
+            var auditLog = new AuditLog
+            {
+                UserId = userId,
+                Action = "FINALIZE_AWARD",
+                EntityType = "BidPackage",
+                EntityId = packageId,
+                OldValues = JsonSerializer.Serialize(new { Status = oldStatus.ToString() }),
+                NewValues = JsonSerializer.Serialize(new
+                {
+                    Status = BidPackageStatus.Awarded.ToString(),
+                    WinningSubmissionId = request.SelectedSubmissionId,
+                    Rank = selectedSubmission.Rank,
+                    DecisionReason = request.DecisionReason
+                }),
+                Timestamp = DateTime.UtcNow
+            };
+            await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+
             await _unitOfWork.SaveChangesAsync();
 
-            return ApiResponse<bool>.Ok(true, $"Đã phê duyệt nhà thầu (Mã hồ sơ: #{selectedSubmissionId}) trúng thầu thành công. Gói thầu đã chuyển sang trạng thái 'Awarded' và sẵn sàng để ký hợp đồng.");
+            return ApiResponse<bool>.Ok(true, $"Đã phê duyệt nhà thầu (Mã hồ sơ: #{request.SelectedSubmissionId}) trúng thầu thành công. Gói thầu đã chuyển sang trạng thái 'Awarded' và sẵn sàng để ký hợp đồng.");
         }
 
         public async Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId)
@@ -717,6 +767,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 WinningBidPrice = awardedSubmission.BidPrice,
                 TotalScore = awardedSubmission.TotalScore,
                 Rank = awardedSubmission.Rank,
+                SelectionReason = awardedSubmission.SelectionReason,
                 AwardedAt = awardedSubmission.SubmittedAt,
 
                 HasContract = existingContract != null,
@@ -735,15 +786,13 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Query()
                 .Where(c => c.BidPackageId == packageId)
                 .AsNoTracking()
-                .Select(c => new { c.Id, c.Weight })
+                .Select(c => new { c.Id, c.Name, c.Weight, c.MaxScore })
                 .ToListAsync();
 
             if (!criteriaList.Any()) return;
 
             var totalWeight = criteriaList.Sum(c => c.Weight);
             if (totalWeight <= 0) return;
-
-            var criteriaWeights = criteriaList.ToDictionary(c => c.Id, c => c.Weight);
 
             var submissions = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
@@ -759,6 +808,20 @@ namespace ProcurementSystem.Infrastructure.Services
             var criteriaCount = criteriaList.Count;
             var requiredScoreCount = (assignedEvaluatorsCount > 0 ? assignedEvaluatorsCount : 1) * criteriaCount;
 
+            // Tìm giá dự thầu thấp nhất giữa các hồ sơ hợp lệ có giá dự thầu để áp dụng công thức chấm điểm Giá (Điều 29 NĐ 24/2024/NĐ-CP)
+            var activeSubmissionsWithPrice = submissions
+                .Where(s => s.Status != "Withdrawn" && s.Status != "Disqualified" && s.BidPrice.HasValue && s.BidPrice.Value > 0)
+                .ToList();
+            decimal? minBidPrice = activeSubmissionsWithPrice.Any()
+                ? activeSubmissionsWithPrice.Min(s => s.BidPrice!.Value)
+                : null;
+
+            bool IsPriceCriteria(string name)
+            {
+                var lower = name.ToLowerInvariant();
+                return lower.Contains("giá") || lower.Contains("tài chính") || lower.Contains("chi phí") || lower.Contains("price");
+            }
+
             foreach (var sub in submissions)
             {
                 // Bỏ qua nếu hồ sơ đã rút hoặc bị loại
@@ -766,23 +829,35 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 if (!sub.EvaluationScores.Any()) continue;
 
-                // Tính điểm bình quân từng tiêu chí (nếu có nhiều giám khảo chấm cùng tiêu chí)
+                // Tính điểm chuẩn hóa từng tiêu chí về thang 100 theo MaxScore (P1-1)
                 decimal weightedScoreSum = 0;
-                foreach (var (criteriaId, weight) in criteriaWeights)
+                foreach (var criteria in criteriaList)
                 {
-                    var scoresForCriteria = sub.EvaluationScores
-                        .Where(es => es.CriteriaId == criteriaId)
-                        .Select(es => es.Score)
-                        .ToList();
-
-                    if (scoresForCriteria.Any())
+                    decimal criteriaScore;
+                    // Nếu là tiêu chí Giá: Tự động tính điểm tỷ lệ nghịch theo Luật Đấu thầu
+                    if (IsPriceCriteria(criteria.Name) && minBidPrice.HasValue && sub.BidPrice.HasValue && sub.BidPrice.Value > 0)
                     {
-                        var avgScore = scoresForCriteria.Average();
-                        weightedScoreSum += avgScore * weight;
+                        criteriaScore = Math.Round((minBidPrice.Value / sub.BidPrice.Value) * criteria.MaxScore, 2);
                     }
+                    else
+                    {
+                        var scoresForCriteria = sub.EvaluationScores
+                            .Where(es => es.CriteriaId == criteria.Id)
+                            .Select(es => es.Score)
+                            .ToList();
+
+                        criteriaScore = scoresForCriteria.Any() ? (decimal)scoresForCriteria.Average() : 0m;
+                    }
+
+                    // Chuẩn hóa điểm từng tiêu chí về thang 100%: (criteriaScore / maxScore) * 100
+                    var normalizedScore = criteria.MaxScore > 0
+                        ? (criteriaScore / criteria.MaxScore) * 100m
+                        : criteriaScore;
+
+                    weightedScoreSum += normalizedScore * criteria.Weight;
                 }
 
-                // Điểm tổng hợp theo trọng số = Tổng (Điểm bình quân tiêu chí * Trọng số) / Tổng trọng số
+                // Điểm tổng hợp theo trọng số (thang 100)
                 var finalTotalScore = weightedScoreSum / totalWeight;
                 sub.TotalScore = Math.Round(finalTotalScore, 2);
 
@@ -794,9 +869,11 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Tự động sắp xếp phân hạng Rank 1, 2, 3... cho các hồ sơ đã hoàn tất đánh giá
+            // Tiêu chuẩn xếp hạng: Điểm tổng cao nhất -> Giá dự thầu thấp nhất -> Thời gian nộp sớm nhất
             var scoredSubmissions = submissions
                 .Where(s => s.TotalScore.HasValue && (s.Status == "Evaluated" || s.Status == "Selected"))
                 .OrderByDescending(s => s.TotalScore!.Value)
+                .ThenBy(s => s.BidPrice ?? decimal.MaxValue)
                 .ThenBy(s => s.SubmittedAt)
                 .ToList();
 

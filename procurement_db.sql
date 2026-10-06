@@ -88,6 +88,7 @@ BEGIN
         Address NVARCHAR(500) NULL,
         BusinessLicenseFile NVARCHAR(500) NULL,
         Rating DECIMAL(5,2) NOT NULL CONSTRAINT DF_Contractors_Rating DEFAULT 0.00,
+        VerificationStatus NVARCHAR(50) NOT NULL CONSTRAINT DF_Contractors_VerificationStatus DEFAULT N'Approved',
         CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_Contractors_CreatedAt DEFAULT SYSUTCDATETIME(),
         CONSTRAINT PK_Contractors PRIMARY KEY CLUSTERED (Id),
         CONSTRAINT FK_Contractors_Users FOREIGN KEY (UserId) REFERENCES Users(Id) ON DELETE CASCADE
@@ -156,6 +157,7 @@ BEGIN
         TotalScore DECIMAL(10,2) NULL,
         Rank INT NULL,
         Status NVARCHAR(50) NOT NULL CONSTRAINT DF_BidSubmissions_Status DEFAULT 'Submitted',
+        SelectionReason NVARCHAR(1000) NULL,
         CONSTRAINT PK_BidSubmissions PRIMARY KEY CLUSTERED (Id),
         CONSTRAINT FK_BidSubmissions_BidPackages FOREIGN KEY (BidPackageId) REFERENCES BidPackages(Id) ON DELETE NO ACTION,
         CONSTRAINT FK_BidSubmissions_Contractors FOREIGN KEY (ContractorId) REFERENCES Contractors(Id) ON DELETE NO ACTION

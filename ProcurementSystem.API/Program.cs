@@ -9,6 +9,7 @@ using ProcurementSystem.Infrastructure.Data;
 using ProcurementSystem.Infrastructure.Repositories;
 using ProcurementSystem.Infrastructure.Seeders;
 using ProcurementSystem.Infrastructure.Services;
+using ProcurementSystem.API.BackgroundServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,6 +56,13 @@ builder.Services.AddScoped<IContractService, ContractService>();
 
 // Management & Reporting Services
 builder.Services.AddScoped<IReportService, ReportService>();
+
+// Audit & Notification Services
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// Background Workers (Cronjob cảnh báo hạn 1 giờ/lần + startup)
+builder.Services.AddHostedService<ContractExpiryNotificationWorker>();
 
 // ==========================================
 // 3. AUTHENTICATION - JWT

@@ -19,10 +19,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Download
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { contractApi } from '../api/contractApi';
+import { reportApi } from '../api/reportApi';
 import StatusBadge from '../components/common/StatusBadge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import CreateContractModal from '../components/contracts/CreateContractModal';
@@ -51,6 +53,29 @@ export const ContractsPage = () => {
 
   // Create Contract Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportContracts = async () => {
+    try {
+      setExporting(true);
+      toast.loading('Đang xuất danh sách hợp đồng ra file CSV...', { id: 'export-contracts' });
+      const response = await reportApi.exportContractsCsv();
+      const blob = new Blob([response], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Danh_sach_hop_dong_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('Xuất danh sách hợp đồng thành công!', { id: 'export-contracts' });
+    } catch (err) {
+      toast.error('Lỗi khi xuất danh sách hợp đồng: ' + (err.message || 'Lỗi kết nối'), { id: 'export-contracts' });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Fetch contracts
   const fetchContracts = async (isBackground = false) => {
@@ -137,14 +162,27 @@ export const ContractsPage = () => {
           </button>
 
           {isAdminOrProcurement && (
-            <button
-              type="button"
-              onClick={() => setIsCreateModalOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-transform hover:scale-[1.02] cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Lập Hợp Đồng Mới</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleExportContracts}
+                disabled={exporting}
+                className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                title="Xuất danh sách hợp đồng ra file CSV (Excel tiếng Việt)"
+              >
+                <Download className={`w-4 h-4 ${exporting ? 'animate-bounce' : ''}`} />
+                <span>Xuất Excel</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-transform hover:scale-[1.02] cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Lập Hợp Đồng Mới</span>
+              </button>
+            </>
           )}
         </div>
       </div>

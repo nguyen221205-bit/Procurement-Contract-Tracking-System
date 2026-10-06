@@ -29,6 +29,9 @@ namespace ProcurementSystem.Core.DTOs.Contractor
         /// <summary>Thời điểm nhà thầu đăng ký trên hệ thống (UTC)</summary>
         public DateTime CreatedAt { get; set; }
 
+        /// <summary>Trạng thái thẩm định pháp lý (Pending, Approved, Rejected)</summary>
+        public string VerificationStatus { get; set; } = "Approved";
+
         /// <summary>Họ và tên người đại diện pháp luật của nhà thầu</summary>
         public string FullName { get; set; } = string.Empty;
 

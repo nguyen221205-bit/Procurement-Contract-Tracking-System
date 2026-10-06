@@ -70,6 +70,14 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidSubmissionDto>.Fail("Tài khoản của bạn chưa liên kết với hồ sơ nhà thầu.");
             }
 
+            if (contractor.VerificationStatus != "Approved")
+            {
+                var reasonMessage = contractor.VerificationStatus == "Pending"
+                    ? "Hồ sơ năng lực nhà thầu của bạn đang trong trạng thái chờ Bên mời thầu thẩm định phê duyệt. Vui lòng quay lại sau khi hồ sơ được phê duyệt."
+                    : "Hồ sơ năng lực nhà thầu của bạn đã bị từ chối phê duyệt. Vui lòng liên hệ Bên mời thầu để được hỗ trợ.";
+                return ApiResponse<BidSubmissionDto>.Fail(reasonMessage);
+            }
+
             // 5. Kiểm tra nộp trùng (mỗi nhà thầu chỉ nộp 1 hồ sơ cho 1 gói thầu)
             var alreadySubmitted = await _unitOfWork.Repository<BidSubmission>()
                 .ExistsAsync(bs => bs.BidPackageId == bidPackageId && bs.ContractorId == contractor.Id);

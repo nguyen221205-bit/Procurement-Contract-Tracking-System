@@ -25,8 +25,10 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
-  UserCheck
+  UserCheck,
+  Download
 } from 'lucide-react';
+import { reportApi } from '../api/reportApi';
 
 export const UsersPage = () => {
   const { user: currentUser } = useAuth();
@@ -49,6 +51,29 @@ export const UsersPage = () => {
   const [rolesUser, setRolesUser] = useState(null);
   const [toggleUser, setToggleUser] = useState(null);
   const [toggleLoading, setToggleLoading] = useState(false);
+  const [exportingContractors, setExportingContractors] = useState(false);
+
+  const handleExportContractors = async () => {
+    try {
+      setExportingContractors(true);
+      toast.loading('Đang xuất danh sách nhà thầu...', { id: 'export-contractors' });
+      const response = await reportApi.exportContractorsCsv();
+      const blob = new Blob([response], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Danh_sach_nha_thau_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('Xuất danh sách nhà thầu thành công!', { id: 'export-contractors' });
+    } catch (err) {
+      toast.error('Lỗi khi xuất danh sách nhà thầu: ' + (err.message || 'Lỗi kết nối'), { id: 'export-contractors' });
+    } finally {
+      setExportingContractors(false);
+    }
+  };
 
   // Tải danh mục vai trò
   useEffect(() => {
@@ -161,6 +186,19 @@ export const UsersPage = () => {
           <p className="text-xs text-slate-500 mt-1">
             Quản lý tài khoản, điều chỉnh vai trò và kiểm soát trạng thái hoạt động trong hệ thống
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportContractors}
+            disabled={exportingContractors}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+            title="Xuất toàn bộ danh sách hồ sơ nhà thầu ra file CSV (Excel tiếng Việt)"
+          >
+            <Download className={`w-4 h-4 ${exportingContractors ? 'animate-bounce' : ''}`} />
+            <span>Xuất Danh Sách Nhà Thầu</span>
+          </button>
         </div>
       </div>
 

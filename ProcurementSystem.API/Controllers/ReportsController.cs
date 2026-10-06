@@ -49,5 +49,33 @@ namespace ProcurementSystem.API.Controllers
             var result = await _reportService.GetDashboardMetricsAsync();
             return Ok(result);
         }
+
+        /// <summary>
+        /// Xuất danh sách toàn bộ nhà thầu ra file CSV (Excel tương thích tiếng Việt có dấu với UTF-8 BOM)
+        /// </summary>
+        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        [HttpGet("contractors/export")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [Produces("text/csv")]
+        public async Task<IActionResult> ExportContractorsCsv()
+        {
+            var csvBytes = await _reportService.ExportContractorsCsvAsync();
+            var fileName = $"Danh_sach_nha_thau_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
+            return File(csvBytes, "text/csv; charset=utf-8", fileName);
+        }
+
+        /// <summary>
+        /// Xuất danh sách toàn bộ hợp đồng ra file CSV (Excel tương thích tiếng Việt có dấu với UTF-8 BOM)
+        /// </summary>
+        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        [HttpGet("contracts/export")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [Produces("text/csv")]
+        public async Task<IActionResult> ExportContractsCsv()
+        {
+            var csvBytes = await _reportService.ExportContractsCsvAsync();
+            var fileName = $"Danh_sach_hop_dong_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
+            return File(csvBytes, "text/csv; charset=utf-8", fileName);
+        }
     }
 }

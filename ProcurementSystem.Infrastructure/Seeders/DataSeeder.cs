@@ -37,6 +37,18 @@ namespace ProcurementSystem.Infrastructure.Seeders
                 BEGIN
                     ALTER TABLE [BidSubmissions] ADD [BidPrice] DECIMAL(18,2) NULL;
                 END
+
+                -- Bảo đảm cột SelectionReason luôn tồn tại trên bảng BidSubmissions
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[BidSubmissions]') AND name = 'SelectionReason')
+                BEGIN
+                    ALTER TABLE [BidSubmissions] ADD [SelectionReason] NVARCHAR(1000) NULL;
+                END
+
+                -- Bảo đảm cột VerificationStatus luôn tồn tại trên bảng Contractors
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Contractors]') AND name = 'VerificationStatus')
+                BEGIN
+                    ALTER TABLE [Contractors] ADD [VerificationStatus] NVARCHAR(50) NOT NULL CONSTRAINT DF_Contractors_VerificationStatus DEFAULT N'Approved';
+                END
             ");
 
             // 1. Seed Roles

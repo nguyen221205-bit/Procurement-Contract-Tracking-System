@@ -93,15 +93,21 @@ export const FinalizeWinnerModal = ({
 
           {/* Ô nhập căn cứ / lý do phê duyệt lựa chọn */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-slate-500" />
-              <span>Căn cứ / Lý do lựa chọn trao thầu:</span>
-              {(hasTie || isNotRank1) && (
-                <span className="text-[10px] text-amber-600 font-semibold">(Khuyến nghị nhập)</span>
+            <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-slate-500" />
+                <span>Căn cứ / Lý do lựa chọn trao thầu:</span>
+              </span>
+              {isNotRank1 ? (
+                <span className="text-[11px] text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                  * Bắt buộc (Điều 61 Luật Đấu thầu)
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400 font-normal">(Tùy chọn ghi chú)</span>
               )}
             </label>
             <textarea
-              rows={2}
+              rows={3}
               value={decisionReason}
               onChange={(e) => setDecisionReason(e.target.value)}
               placeholder={
@@ -111,8 +117,17 @@ export const FinalizeWinnerModal = ({
                   ? 'Ví dụ: Nhà thầu xếp hạng 1 từ chối ký hợp đồng / Không đạt thỏa thuận thương thảo, chuyển quyền trao thầu cho đơn vị xếp kế tiếp...'
                   : 'Ghi chú phê duyệt kết quả lựa chọn nhà thầu (tùy chọn)...'
               }
-              className="w-full p-2.5 text-xs text-slate-800 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500 focus:border-amber-500 placeholder:text-slate-400"
+              className={`w-full p-2.5 text-xs text-slate-800 bg-slate-50 border rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500 placeholder:text-slate-400 ${
+                isNotRank1 && !decisionReason.trim()
+                  ? 'border-amber-400 bg-amber-50/30'
+                  : 'border-slate-300'
+              }`}
             />
+            {isNotRank1 && !decisionReason.trim() && (
+              <p className="text-[11px] text-amber-700 font-medium">
+                Vui lòng nhập lý do giải trình để kích hoạt nút Xác nhận trao thầu.
+              </p>
+            )}
           </div>
 
           {/* Package Info */}
@@ -151,8 +166,12 @@ export const FinalizeWinnerModal = ({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={loading}
-            className="inline-flex items-center space-x-2 px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+            disabled={loading || (isNotRank1 && !decisionReason.trim())}
+            className={`inline-flex items-center space-x-2 px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50 ${
+              isNotRank1 && !decisionReason.trim()
+                ? 'bg-slate-400 cursor-not-allowed'
+                : 'bg-amber-600 hover:bg-amber-700'
+            }`}
           >
             {loading ? (
               <>

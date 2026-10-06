@@ -26,8 +26,10 @@ namespace ProcurementSystem.Infrastructure.Services
 
         public async Task<ApiResponse<ContractorRegisterResponse>> RegisterContractorAsync(RegisterContractorRequest request)
         {
+            var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
             // 1. Kiểm tra email tồn tại
-            var emailExists = await _unitOfWork.Repository<User>().ExistsAsync(u => u.Email == request.Email);
+            var emailExists = await _unitOfWork.Repository<User>().ExistsAsync(u => u.Email.ToLower() == normalizedEmail);
             if (emailExists)
             {
                 return ApiResponse<ContractorRegisterResponse>.Fail("Email đã được sử dụng.");
@@ -50,7 +52,7 @@ namespace ProcurementSystem.Infrastructure.Services
             // 4. Kiểm tra chữ ký số trên file GPKD (nếu là PDF)
             bool isSigned = false;
             string? signerInfo = null;
-            string verificationMessage = "Đăng ký thành công.";
+            string verificationMessage = "Đăng ký thành công. Hồ sơ đang chờ Bên mời thầu thẩm định phê duyệt.";
             
             var extension = Path.GetExtension(request.BusinessLicenseFile.FileName).ToLowerInvariant();
             if (extension == ".pdf")
@@ -86,10 +88,10 @@ namespace ProcurementSystem.Infrastructure.Services
                 // Tạo User
                 var user = new User
                 {
-                    FullName = request.FullName,
-                    Email = request.Email,
+                    FullName = request.FullName.Trim(),
+                    Email = normalizedEmail,
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                    Phone = request.Phone,
+                    Phone = request.Phone?.Trim(),
                     IsActive = true
                 };
 
@@ -110,15 +112,16 @@ namespace ProcurementSystem.Infrastructure.Services
                 };
                 await _unitOfWork.Repository<UserRole>().AddAsync(userRole);
 
-                // Tạo Contractor
+                // Tạo Contractor với VerificationStatus = Pending (Cần Bên mời thầu / Admin thẩm định phê duyệt)
                 var contractor = new Contractor
                 {
                     UserId = user.Id,
-                    CompanyName = request.CompanyName,
-                    TaxCode = request.TaxCode,
-                    Address = request.Address,
+                    CompanyName = request.CompanyName.Trim(),
+                    TaxCode = request.TaxCode?.Trim(),
+                    Address = request.Address?.Trim(),
                     BusinessLicenseFile = fileUrl,
-                    Rating = 0
+                    Rating = 0,
+                    VerificationStatus = "Pending"
                 };
                 await _unitOfWork.Repository<Contractor>().AddAsync(contractor);
 
