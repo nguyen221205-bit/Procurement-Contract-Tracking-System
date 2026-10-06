@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.BidPackage;
 using ProcurementSystem.Core.Interfaces;
+using ProcurementSystem.Infrastructure.Entities;
 
 namespace ProcurementSystem.API.Controllers
 {
@@ -18,10 +19,12 @@ namespace ProcurementSystem.API.Controllers
     public class BidPackagesController : ControllerBase
     {
         private readonly IBidPackageService _bidPackageService;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public BidPackagesController(IBidPackageService bidPackageService)
+        public BidPackagesController(IBidPackageService bidPackageService, IUnitOfWork unitOfWork)
         {
             _bidPackageService = bidPackageService;
+            _unitOfWork = unitOfWork;
         }
 
         /// <summary>
@@ -264,6 +267,44 @@ namespace ProcurementSystem.API.Controllers
             var result = await _bidPackageService.RemoveEvaluatorAsync(id, evaluatorId, currentUserId, isAdmin);
             if (!result.Success) return BadRequest(result);
             return Ok(result);
+        }
+
+        /// <summary>
+        /// Tải tệp tài liệu mời thầu (HSMT) an toàn có xác thực
+        /// </summary>
+        /// <param name="documentId">Định danh tài liệu mời thầu cần tải</param>
+        [HttpGet("documents/{documentId:int}/download")]
+        [Authorize]
+        [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DownloadBidDocument(int documentId)
+        {
+            var document = await _unitOfWork.Repository<BidDocument>().GetByIdAsync(documentId);
+            if (document == null)
+            {
+                return NotFound(ApiResponse<string>.Fail("Không tìm thấy tài liệu mời thầu."));
+            }
+
+            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), document.FilePath.TrimStart('/'));
+            if (!System.IO.File.Exists(physicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            var ext = Path.GetExtension(document.FileName).ToLowerInvariant();
+            var contentType = ext switch
+            {
+                ".pdf" => "application/pdf",
+                ".doc" => "application/msword",
+                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".xls" => "application/vnd.ms-excel",
+                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".zip" => "application/zip",
+                ".rar" => "application/x-rar-compressed",
+                _ => "application/octet-stream"
+            };
+
+            return PhysicalFile(physicalPath, contentType, document.FileName);
         }
 
         private int GetCurrentUserId()

@@ -170,7 +170,29 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidSubmissionDto>.Fail("Không tìm thấy hồ sơ dự thầu.");
             }
 
-            // Bảo mật: Nếu không phải nhân sự nội bộ, kiểm tra quyền sở hữu
+            // Bảo mật Sealed-Bid: Căn cứ Điều 16 Luật Đấu thầu 2023, hồ sơ phải được niêm phong khi gói thầu còn Open
+            if (submission.BidPackage.Status == BidPackageStatus.Open)
+            {
+                if (isInternalStaff)
+                {
+                    return ApiResponse<BidSubmissionDto>.Fail(
+                        "Căn cứ Điều 16 Luật Đấu thầu 2023: Hồ sơ dự thầu đang trong thời hạn niêm phong bảo mật. Nhân sự nội bộ không được phép mở xem hồ sơ trước thời điểm đóng thầu.");
+                }
+
+                var contractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.UserId == userId);
+
+                if (contractor == null || contractor.Id != submission.ContractorId)
+                {
+                    return ApiResponse<BidSubmissionDto>.Fail("Bạn không có quyền xem hồ sơ dự thầu này.");
+                }
+
+                return ApiResponse<BidSubmissionDto>.Ok(MapToDto(submission));
+            }
+
+            // Gói thầu đã đóng/chấm điểm: Nhân sự nội bộ được xem; Nhà thầu chỉ xem hồ sơ của mình
             if (!isInternalStaff)
             {
                 var contractor = await _unitOfWork.Repository<Contractor>()
@@ -402,11 +424,19 @@ namespace ProcurementSystem.Infrastructure.Services
             var file = await _unitOfWork.Repository<SubmissionFile>()
                 .Query()
                 .Include(f => f.BidSubmission)
+                .ThenInclude(bs => bs.BidPackage)
                 .FirstOrDefaultAsync(f => f.Id == fileId);
 
             if (file == null)
             {
                 return ApiResponse<SubmissionFileDownloadDto>.Fail("Không tìm thấy tệp tài liệu đính kèm.");
+            }
+
+            // Bảo mật Sealed-Bid: Căn cứ Điều 16 Luật Đấu thầu 2023, cấm tải tệp hồ sơ khi gói còn Open
+            if (file.BidSubmission.BidPackage.Status == BidPackageStatus.Open && isInternalStaff)
+            {
+                return ApiResponse<SubmissionFileDownloadDto>.Fail(
+                    "Căn cứ Điều 16 Luật Đấu thầu 2023: Không thể tải tệp đề xuất dự thầu khi gói thầu đang trong giai đoạn tiếp nhận hồ sơ (chưa đóng thầu).");
             }
 
             // Kiểm soát IDOR: Contractor chỉ được tải tệp của hồ sơ do chính mình nộp
