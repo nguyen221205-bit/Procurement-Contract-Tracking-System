@@ -27,6 +27,7 @@ namespace ProcurementSystem.Infrastructure.Services
             var openPackages = await packagesQuery.CountAsync(bp => bp.Status == BidPackageStatus.Open);
             var closedPackages = await packagesQuery.CountAsync(bp => bp.Status == BidPackageStatus.Closed);
             var evaluatingPackages = await packagesQuery.CountAsync(bp => bp.Status == BidPackageStatus.Evaluating);
+            var awardedPackages = await packagesQuery.CountAsync(bp => bp.Status == BidPackageStatus.Awarded);
             var contractedPackages = await packagesQuery.CountAsync(bp => bp.Status == BidPackageStatus.Contracted);
             var totalEstimatedBudget = await packagesQuery.SumAsync(bp => (decimal?)bp.Budget) ?? 0;
 
@@ -110,6 +111,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 OpenPackages = openPackages,
                 ClosedPackages = closedPackages,
                 EvaluatingPackages = evaluatingPackages,
+                AwardedPackages = awardedPackages,
                 ContractedPackages = contractedPackages,
 
                 TotalSubmissions = totalSubmissions,

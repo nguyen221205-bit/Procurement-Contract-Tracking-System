@@ -111,7 +111,7 @@ BEGIN
         Type INT NOT NULL, -- 0: Goods, 1: Construction, 2: Service
         Budget DECIMAL(18,2) NOT NULL,
         Deadline DATETIME2 NOT NULL,
-        Status INT NOT NULL CONSTRAINT DF_BidPackages_Status DEFAULT 0, -- 0: Open, 1: Closed, 2: Evaluating, 3: Contracted
+        Status INT NOT NULL CONSTRAINT DF_BidPackages_Status DEFAULT 0, -- 0: Open, 1: Closed, 2: Evaluating, 3: Awarded, 4: Contracted
         Description NVARCHAR(2000) NULL,
         CreatedBy INT NOT NULL,
         CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_BidPackages_CreatedAt DEFAULT SYSUTCDATETIME(),

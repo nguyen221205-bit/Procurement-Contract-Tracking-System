@@ -208,7 +208,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidPackageDto>.Fail("Bạn không có quyền chỉnh sửa gói thầu này.");
             }
 
-            // P2-1: Chỉ cho phép chỉnh sửa thông tin khi gói thầu đang mở thầu (Open)
+            // P2-1 & P0: Chỉ cho phép chỉnh sửa thông tin khi gói thầu đang mở thầu (Open)
             if (package.Status != BidPackageStatus.Open)
             {
                 return ApiResponse<BidPackageDto>.Fail($"Không thể chỉnh sửa gói thầu khi đang ở trạng thái '{package.Status}'. Chỉ được phép chỉnh sửa khi gói thầu đang mở thầu (Open).");
@@ -274,9 +274,19 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // State Machine Validation
-            if (package.Status == BidPackageStatus.Contracted)
+            if (package.Status == BidPackageStatus.Contracted || package.Status == BidPackageStatus.Awarded)
             {
-                return ApiResponse<BidPackageDto>.Fail("Gói thầu đã ký hợp đồng, không thể thay đổi trạng thái.");
+                return ApiResponse<BidPackageDto>.Fail(
+                    $"Gói thầu hiện đang ở trạng thái '{package.Status}'. Không thể thay đổi trạng thái gói thầu một khi đã có kết quả trao thầu hoặc đã ký hợp đồng.");
+            }
+
+            // Cấm người dùng tự kích hoạt thủ công trạng thái Awarded hoặc Contracted
+            if (request.NewStatus == BidPackageStatus.Awarded || request.NewStatus == BidPackageStatus.Contracted)
+            {
+                return ApiResponse<BidPackageDto>.Fail(
+                    $"Không thể chuyển trạng thái thủ công sang '{request.NewStatus}'. " +
+                    "Trạng thái 'Awarded' được hệ thống tự động thiết lập khi phê duyệt kết quả trao thầu; " +
+                    "trạng thái 'Contracted' được tự động thiết lập khi hợp đồng kinh tế chính thức có hiệu lực.");
             }
 
             // Kiểm tra quy tắc chuyển trạng thái hợp lệ
@@ -289,8 +299,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 (BidPackageStatus.Closed, BidPackageStatus.Evaluating) => true,
                 (BidPackageStatus.Closed, BidPackageStatus.Open) => true,
 
-                // Từ Evaluating có thể sang Contracted (Hoàn tất đấu thầu & ký HĐ) hoặc quay lại Closed
-                (BidPackageStatus.Evaluating, BidPackageStatus.Contracted) => true,
+                // Từ Evaluating chỉ được quay lại Closed nếu chưa có bất kỳ điểm chấm nào
                 (BidPackageStatus.Evaluating, BidPackageStatus.Closed) => true,
 
                 _ => false
@@ -298,7 +307,37 @@ namespace ProcurementSystem.Infrastructure.Services
 
             if (!isValidTransition)
             {
-                return ApiResponse<BidPackageDto>.Fail($"Không thể chuyển trạng thái từ '{package.Status}' sang '{request.NewStatus}'. Quy trình hợp lệ: Mở thầu -> Đóng thầu -> Chấm điểm -> Ký hợp đồng.");
+                return ApiResponse<BidPackageDto>.Fail(
+                    $"Không thể chuyển trạng thái từ '{package.Status}' sang '{request.NewStatus}'. Quy trình bắt buộc: Đang mở -> Đã đóng -> Đang chấm -> Đã trao thầu -> Đã ký HĐ.");
+            }
+
+            // Kiểm tra bảo mật State Machine P0-1 (Khoản 4 Điều 131 NĐ 24/2024 & Điều 16 Luật Đấu thầu 2023):
+            if (request.NewStatus == BidPackageStatus.Open || request.NewStatus == BidPackageStatus.Closed)
+            {
+                var hasScores = await _unitOfWork.Repository<EvaluationScore>()
+                    .Query()
+                    .AnyAsync(es => es.Criteria.BidPackageId == id || es.BidSubmission.BidPackageId == id);
+
+                var hasWinner = await _unitOfWork.Repository<BidSubmission>()
+                    .Query()
+                    .AnyAsync(bs => bs.BidPackageId == id && (bs.Status == "Selected" || bs.Status == "Rejected"));
+
+                if (hasScores || hasWinner)
+                {
+                    return ApiResponse<BidPackageDto>.Fail(
+                        "Căn cứ Điều 16 Luật Đấu thầu 2023: Tuyệt đối không được phép mở lại hoặc quay lui trạng thái gói thầu " +
+                        "sau khi Tổ chuyên gia đã tiến hành đánh giá chấm điểm hoặc đã có kết quả trao thầu.");
+                }
+            }
+
+            // Nếu gia hạn thầu Closed -> Open: Bắt buộc Deadline phải được dời đến tương lai
+            if (package.Status == BidPackageStatus.Closed && request.NewStatus == BidPackageStatus.Open)
+            {
+                if (package.Deadline <= DateTime.UtcNow)
+                {
+                    return ApiResponse<BidPackageDto>.Fail(
+                        "Không thể mở lại gói thầu với thời hạn nộp thầu đã hết hạn. Vui lòng cập nhật gia hạn ngày đóng thầu (Deadline) trước khi mở lại.");
+                }
             }
 
             // P2-3: Đóng thầu trước thời hạn (Deadline) bắt buộc phải có lý do
@@ -376,6 +415,11 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<List<BidDocumentDto>>.Fail("Vui lòng chọn ít nhất một file để upload.");
             }
 
+            if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
+            {
+                return ApiResponse<List<BidDocumentDto>>.Fail("Gói thầu đã trao thầu hoặc đã ký hợp đồng, không thể tải lên thêm tài liệu mời thầu.");
+            }
+
             var uploadedDtos = new List<BidDocumentDto>();
 
             foreach (var file in files)
@@ -428,9 +472,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Bạn không có quyền xóa tài liệu của gói thầu này.");
             }
 
-            if (package.Status == BidPackageStatus.Contracted)
+            if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
             {
-                return ApiResponse<bool>.Fail("Gói thầu đã ký hợp đồng, không thể xóa tài liệu mời thầu.");
+                return ApiResponse<bool>.Fail("Gói thầu đã trao thầu hoặc đã ký hợp đồng, không thể xóa tài liệu mời thầu.");
             }
 
             // Xóa file vật lý
@@ -489,9 +533,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<PackageEvaluatorDto>.Fail("Không tìm thấy gói thầu.");
             }
 
-            if (package.Status == BidPackageStatus.Contracted)
+            if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
             {
-                return ApiResponse<PackageEvaluatorDto>.Fail("Gói thầu đã hoàn tất ký hợp đồng, không thể thay đổi Tổ chuyên gia.");
+                return ApiResponse<PackageEvaluatorDto>.Fail("Gói thầu đã có kết quả trao thầu hoặc đã ký hợp đồng, không thể thay đổi Tổ chuyên gia.");
             }
 
             var evaluatorUser = await _unitOfWork.Repository<User>()
@@ -555,9 +599,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Không tìm thấy gói thầu.");
             }
 
-            if (package.Status == BidPackageStatus.Contracted)
+            if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
             {
-                return ApiResponse<bool>.Fail("Gói thầu đã hoàn tất ký hợp đồng, không thể thay đổi Tổ chuyên gia.");
+                return ApiResponse<bool>.Fail("Gói thầu đã có kết quả trao thầu hoặc đã ký hợp đồng, không thể thay đổi Tổ chuyên gia.");
             }
 
             var assignment = await _unitOfWork.Repository<BidPackageEvaluator>()

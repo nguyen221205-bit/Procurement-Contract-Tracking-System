@@ -40,7 +40,7 @@ import CriteriaTemplateModal from '../components/packages/CriteriaTemplateModal'
 import AssignEvaluatorModal from '../components/packages/AssignEvaluatorModal';
 import SubmitBidModal from '../components/submissions/SubmitBidModal';
 import { PACKAGE_TYPES, ROLES } from '../utils/constants';
-import { formatVND, formatDate, formatDateTime } from '../utils/formatters';
+import { formatVND, formatCurrency, formatDate, formatDateTime } from '../utils/formatters';
 import { downloadSecureFile } from '../utils/fileDownload';
 
 const API_BASE_URL = 'http://localhost:5225';
@@ -111,8 +111,9 @@ export const PackageDetailPage = () => {
 
   // Kiểm tra tính hợp lệ của Tổ chuyên gia theo Luật Đấu thầu: Tối thiểu 3 thành viên và là số lẻ
   const isCommitteeValid = evaluators.length >= 3 && evaluators.length % 2 === 1;
-  const isAssignedEvaluator = evaluators.some((e) => e.evaluatorId === user?.id);
-  const canManageCommittee = (isAdmin || isProcurement) && String(pkg?.status) !== 'Contracted' && String(pkg?.status) !== '3';
+  const canManageCommittee = (isAdmin || isProcurement) && 
+    String(pkg?.status) !== 'Contracted' && String(pkg?.status) !== '4' &&
+    String(pkg?.status) !== 'Awarded' && String(pkg?.status) !== '3';
 
   // Tải dữ liệu ban đầu
   const loadPackageData = async () => {
@@ -800,7 +801,7 @@ export const PackageDetailPage = () => {
                           </td>
                           <td className="py-3 px-4 text-right font-mono">
                             {(() => {
-                              const isPublic = pkg?.status === 'Awarded' || pkg?.status === 'Contracted' || String(pkg?.status) === '3';
+                              const isPublic = pkg?.status === 'Awarded' || pkg?.status === 'Contracted' || String(pkg?.status) === '3' || String(pkg?.status) === '4';
                               const canEvaluatorView = pkg?.status === 'Evaluating' && (isEvaluator || isAssignedEvaluator || isAdmin || isProcurement);
                               if (isPublic) {
                                 return (
@@ -1327,7 +1328,7 @@ export const PackageDetailPage = () => {
                   <span className="text-slate-400">Giá dự thầu:</span>
                   <p className="font-semibold text-slate-900 font-mono">
                     {(() => {
-                      const isPublic = pkg?.status === 'Awarded' || pkg?.status === 'Contracted' || String(pkg?.status) === '3';
+                      const isPublic = pkg?.status === 'Awarded' || pkg?.status === 'Contracted' || String(pkg?.status) === '3' || String(pkg?.status) === '4';
                       const canEvaluatorView = pkg?.status === 'Evaluating' && (isEvaluator || isAssignedEvaluator || isAdmin || isProcurement);
                       if (isPublic) return <span className="text-emerald-700 font-bold">{selectedSubmission.bidPrice ? formatCurrency(selectedSubmission.bidPrice) : '-'}</span>;
                       if (canEvaluatorView) return <span className="text-sky-700 font-bold">{selectedSubmission.bidPrice ? formatCurrency(selectedSubmission.bidPrice) : '-'}</span>;
