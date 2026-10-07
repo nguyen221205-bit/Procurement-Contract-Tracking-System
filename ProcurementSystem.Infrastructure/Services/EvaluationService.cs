@@ -868,8 +868,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
-            // Tự động sắp xếp phân hạng Rank 1, 2, 3... cho các hồ sơ đã hoàn tất đánh giá
-            // Tiêu chuẩn xếp hạng: Điểm tổng cao nhất -> Giá dự thầu thấp nhất -> Thời gian nộp sớm nhất
+            // P2-9: Tự động sắp xếp phân hạng Rank 1, 2, 3... cho các hồ sơ đã hoàn tất đánh giá:
+            // Tiêu chuẩn phá hòa điểm: Điểm tổng hợp cao nhất -> Giá dự thầu thấp nhất -> Thời gian nộp sớm nhất
             var scoredSubmissions = submissions
                 .Where(s => s.TotalScore.HasValue && (s.Status == "Evaluated" || s.Status == "Selected"))
                 .OrderByDescending(s => s.TotalScore!.Value)

@@ -218,6 +218,27 @@ namespace ProcurementSystem.API.Controllers
             return Ok(result);
         }
 
+        /// <summary>
+        /// Tự động tính toán lại điểm đánh giá uy tín năng lực nhà thầu dựa trên lịch sử hợp đồng và nghiệm thu (P2-11)
+        /// </summary>
+        /// <param name="id">Mã định danh duy nhất của nhà thầu.</param>
+        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        [HttpPost("{id:int}/recalculate-rating")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<ApiResponse<ContractorDto>>> RecalculateRating(int id)
+        {
+            var result = await _contractorService.RecalculateContractorRatingAsync(id);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+
         private int? GetCurrentUserId()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

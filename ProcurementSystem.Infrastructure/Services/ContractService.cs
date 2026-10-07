@@ -289,14 +289,16 @@ namespace ProcurementSystem.Infrastructure.Services
                     $"Căn cứ Điều 64 Luật Đấu thầu 2023: Giá trị hợp đồng ({request.Value:N0} VNĐ) không được vượt quá giá trúng thầu đã phê duyệt ({winningSubmission.BidPrice.Value:N0} VNĐ).");
             }
 
-            // 6. Tự động sinh số hợp đồng hoặc kiểm tra trùng lặp
+            // 6. Tự động sinh số hợp đồng hoặc kiểm tra trùng lặp (P2-6)
             if (string.IsNullOrWhiteSpace(request.ContractNumber))
             {
-                var seq = await _unitOfWork.Repository<Contract>().Query().CountAsync() + 1;
+                var year = DateTime.UtcNow.Year;
+                var count = await _unitOfWork.Repository<Contract>().Query().CountAsync(c => c.CreatedAt.Year == year);
+                int seq = count + 1;
                 string candidateNumber;
                 do
                 {
-                    candidateNumber = $"HD-{DateTime.UtcNow.Year}-{bidPackage.Code}-{seq:D3}";
+                    candidateNumber = $"HD-{year}-{bidPackage.Code}-{seq:D3}";
                     seq++;
                 } while (await _unitOfWork.Repository<Contract>().ExistsAsync(c => c.ContractNumber == candidateNumber));
                 
@@ -357,6 +359,20 @@ namespace ProcurementSystem.Infrastructure.Services
             if (contract == null)
             {
                 return ApiResponse<ContractDto>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            // P2-6: Kiểm tra quyền quản lý hợp đồng (Procurement chỉ thao tác trên hợp đồng thuộc gói do mình phụ trách)
+            var userRoles = await _unitOfWork.Repository<UserRole>()
+                .Query()
+                .Include(ur => ur.Role)
+                .Where(ur => ur.UserId == userId)
+                .Select(ur => ur.Role.Name)
+                .ToListAsync();
+
+            var isAdmin = userRoles.Contains("Admin");
+            if (!isAdmin && contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<ContractDto>.Fail("Bạn chỉ có quyền quản trị hợp đồng thuộc gói thầu do chính mình phụ trách.");
             }
 
             // Chỉ cho phép sửa khi hợp đồng đang ở trạng thái Draft
@@ -511,6 +527,18 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<string>.Fail("Không tìm thấy hợp đồng.");
             }
 
+            // P2-8: Validate định dạng PDF và dung lượng tối đa 20MB
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (ext != ".pdf")
+            {
+                return ApiResponse<string>.Fail("Tệp tài liệu scan hợp đồng bắt buộc phải là định dạng PDF (.pdf).");
+            }
+
+            if (file.Length > 20 * 1024 * 1024)
+            {
+                return ApiResponse<string>.Fail("Dung lượng tệp scan không được vượt quá 20MB.");
+            }
+
             // Xóa file cũ nếu đã tồn tại
             if (!string.IsNullOrWhiteSpace(contract.ScannedFilePath))
             {
@@ -548,6 +576,14 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 return ApiResponse<ContractMilestoneDto>.Fail(
                     "Không thể thêm mốc thanh toán vào hợp đồng đã hoàn thành hoặc chấm dứt.");
+            }
+
+            // P2-7: Ràng buộc DueDate phải nằm trong khoảng StartDate và EndDate của hợp đồng
+            if (request.DueDate < contract.StartDate || request.DueDate > contract.EndDate)
+            {
+                return ApiResponse<ContractMilestoneDto>.Fail(
+                    $"Hạn hoàn thành mốc thanh toán ({request.DueDate:dd/MM/yyyy}) phải nằm trong thời hạn hiệu lực của hợp đồng " +
+                    $"({contract.StartDate:dd/MM/yyyy} - {contract.EndDate:dd/MM/yyyy}).");
             }
 
             // Kiểm tra tổng các mốc không vượt quá giá trị hợp đồng
@@ -607,6 +643,14 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 return ApiResponse<ContractMilestoneDto>.Fail(
                     "Chỉ có thể cập nhật các mốc thanh toán đang ở trạng thái Chờ xử lý (Pending).");
+            }
+
+            // P2-7: Ràng buộc DueDate phải nằm trong khoảng StartDate và EndDate của hợp đồng
+            if (request.DueDate < contract.StartDate || request.DueDate > contract.EndDate)
+            {
+                return ApiResponse<ContractMilestoneDto>.Fail(
+                    $"Hạn hoàn thành mốc thanh toán ({request.DueDate:dd/MM/yyyy}) phải nằm trong thời hạn hiệu lực của hợp đồng " +
+                    $"({contract.StartDate:dd/MM/yyyy} - {contract.EndDate:dd/MM/yyyy}).");
             }
 
             var totalExcludingCurrent = contract.Milestones

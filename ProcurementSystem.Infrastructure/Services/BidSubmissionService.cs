@@ -78,11 +78,13 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidSubmissionDto>.Fail(reasonMessage);
             }
 
-            // 5. Kiểm tra nộp trùng (mỗi nhà thầu chỉ nộp 1 hồ sơ cho 1 gói thầu)
-            var alreadySubmitted = await _unitOfWork.Repository<BidSubmission>()
-                .ExistsAsync(bs => bs.BidPackageId == bidPackageId && bs.ContractorId == contractor.Id);
+            // 5. Kiểm tra nộp trùng hoặc nộp lại (P2-4)
+            var existingSubmission = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Include(s => s.SubmissionFiles)
+                .FirstOrDefaultAsync(bs => bs.BidPackageId == bidPackageId && bs.ContractorId == contractor.Id);
 
-            if (alreadySubmitted)
+            if (existingSubmission != null && existingSubmission.Status != "Withdrawn")
             {
                 return ApiResponse<BidSubmissionDto>.Fail("Bạn đã nộp hồ sơ dự thầu cho gói thầu này rồi.");
             }
@@ -98,21 +100,49 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidSubmissionDto>.Fail("Số lượng file và số lượng loại file phải khớp nhau.");
             }
 
-            // 7. Tạo hồ sơ dự thầu
+            // P2-5: Kiểm tra bắt buộc phải có tối thiểu Báo giá (Quotation) và Hồ sơ năng lực (Capability)
+            if (!fileTypes.Contains(SubmissionFileType.Quotation) || !fileTypes.Contains(SubmissionFileType.Capability))
+            {
+                return ApiResponse<BidSubmissionDto>.Fail(
+                    "Hồ sơ dự thầu bắt buộc phải đính kèm tối thiểu: Báo giá tài chính (Quotation) và Hồ sơ năng lực (Capability).");
+            }
+
+            // 7. Tạo hoặc cập nhật hồ sơ dự thầu (hỗ trợ nộp lại sau khi đã rút thầu Withdrawn)
             await _unitOfWork.BeginTransactionAsync();
             try
             {
-                var submission = new BidSubmission
+                BidSubmission submission;
+                if (existingSubmission != null)
                 {
-                    BidPackageId = bidPackageId,
-                    ContractorId = contractor.Id,
-                    SubmittedAt = DateTime.UtcNow,
-                    BidPrice = bidPrice,
-                    Status = "Submitted"
-                };
+                    submission = existingSubmission;
+                    submission.BidPrice = bidPrice;
+                    submission.SubmittedAt = DateTime.UtcNow;
+                    submission.Status = "Submitted";
+                    submission.TotalScore = null;
+                    submission.Rank = null;
+                    _unitOfWork.Repository<BidSubmission>().Update(submission);
 
-                await _unitOfWork.Repository<BidSubmission>().AddAsync(submission);
-                await _unitOfWork.SaveChangesAsync();
+                    // Xóa các liên kết file cũ
+                    foreach (var oldFile in submission.SubmissionFiles.ToList())
+                    {
+                        _unitOfWork.Repository<SubmissionFile>().Delete(oldFile);
+                    }
+                    await _unitOfWork.SaveChangesAsync();
+                }
+                else
+                {
+                    submission = new BidSubmission
+                    {
+                        BidPackageId = bidPackageId,
+                        ContractorId = contractor.Id,
+                        SubmittedAt = DateTime.UtcNow,
+                        BidPrice = bidPrice,
+                        Status = "Submitted"
+                    };
+
+                    await _unitOfWork.Repository<BidSubmission>().AddAsync(submission);
+                    await _unitOfWork.SaveChangesAsync();
+                }
 
                 // 8. Lưu các file đính kèm
                 var submissionFiles = new List<SubmissionFile>();
@@ -355,23 +385,12 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Đã hết thời hạn. Không thể rút hồ sơ dự thầu.");
             }
 
-            // Xóa file vật lý
-            foreach (var file in submission.SubmissionFiles)
-            {
-                _fileStorageService.DeleteFile(file.FilePath);
-            }
-
-            // Xóa các bản ghi file
-            foreach (var file in submission.SubmissionFiles.ToList())
-            {
-                _unitOfWork.Repository<SubmissionFile>().Delete(file);
-            }
-
-            // Xóa hồ sơ dự thầu
-            _unitOfWork.Repository<BidSubmission>().Delete(submission);
+            // P2-4: Chuyển sang Soft Delete để bảo toàn chứng cứ kiểm toán đấu thầu
+            submission.Status = "Withdrawn";
+            _unitOfWork.Repository<BidSubmission>().Update(submission);
             await _unitOfWork.SaveChangesAsync();
 
-            return ApiResponse<bool>.Ok(true, "Rút hồ sơ dự thầu thành công.");
+            return ApiResponse<bool>.Ok(true, "Rút hồ sơ dự thầu thành công. Bạn có thể nộp lại hồ sơ mới trước thời điểm đóng thầu.");
         }
 
         private static BidSubmissionDto MapToDto(BidSubmission submission)
