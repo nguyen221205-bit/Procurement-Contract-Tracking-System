@@ -142,7 +142,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 if (contractor == null || contractor.Id != contract.ContractorId)
                 {
-                    return ApiResponse<ContractDto>.Fail("Bạn không có quyền xem hợp đồng này.");
+                    return ApiResponse<ContractDto>.Forbidden("Bạn không có quyền xem hợp đồng này.");
                 }
             }
 
@@ -168,7 +168,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Include(s => s.Contractor)
                     .ThenInclude(c => c.User)
                 .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.BidPackageId == packageId && s.Status == "Selected");
+                .FirstOrDefaultAsync(s => s.BidPackageId == packageId && s.Status == BidSubmissionStatus.Selected);
 
             if (awardedSubmission == null)
             {
@@ -246,7 +246,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 .FirstOrDefaultAsync(bs =>
                     bs.BidPackageId == request.BidPackageId &&
                     bs.ContractorId == request.ContractorId &&
-                    bs.Status == "Selected");
+                    bs.Status == BidSubmissionStatus.Selected);
 
             if (awardedSubmission == null)
             {
@@ -281,7 +281,7 @@ namespace ProcurementSystem.Infrastructure.Services
             var winningSubmission = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
                 .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.BidPackageId == bidPackage.Id && s.Status == "Selected");
+                .FirstOrDefaultAsync(s => s.BidPackageId == bidPackage.Id && s.Status == BidSubmissionStatus.Selected);
 
             if (winningSubmission?.BidPrice.HasValue == true && request.Value > winningSubmission.BidPrice.Value)
             {
@@ -372,7 +372,7 @@ namespace ProcurementSystem.Infrastructure.Services
             var isAdmin = userRoles.Contains("Admin");
             if (!isAdmin && contract.BidPackage.CreatedBy != userId)
             {
-                return ApiResponse<ContractDto>.Fail("Bạn chỉ có quyền quản trị hợp đồng thuộc gói thầu do chính mình phụ trách.");
+                return ApiResponse<ContractDto>.Forbidden("Bạn chỉ có quyền quản trị hợp đồng thuộc gói thầu do chính mình phụ trách.");
             }
 
             // Chỉ cho phép sửa khi hợp đồng đang ở trạng thái Draft
@@ -775,7 +775,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 if (currentContractor == null || currentContractor.Id != contractorId)
                 {
-                    return ApiResponse<List<ContractSummaryDto>>.Fail(
+                    return ApiResponse<List<ContractSummaryDto>>.Forbidden(
                         "Bạn không có quyền xem lịch sử hợp đồng của nhà thầu khác.");
                 }
             }
@@ -850,7 +850,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
             if (contractor == null || contractor.Id != contract.ContractorId)
             {
-                return ApiResponse<ProgressUpdateDto>.Fail(
+                return ApiResponse<ProgressUpdateDto>.Forbidden(
                     "Bạn không có quyền cập nhật tiến độ cho hợp đồng này.");
             }
 

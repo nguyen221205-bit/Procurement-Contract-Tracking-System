@@ -237,12 +237,12 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Kiểm tra trạng thái hồ sơ dự thầu
-            if (submission.Status == "Withdrawn")
+            if (submission.Status == BidSubmissionStatus.Withdrawn)
             {
                 return ApiResponse<List<EvaluationScoreDto>>.Fail("Không thể chấm điểm hồ sơ dự thầu đã rút lui khỏi gói thầu.");
             }
 
-            if (submission.Status == "Selected" || submission.Status == "Rejected")
+            if (submission.Status == BidSubmissionStatus.Selected || submission.Status == BidSubmissionStatus.Rejected)
             {
                 return ApiResponse<List<EvaluationScoreDto>>.Fail("Gói thầu đã có kết quả phê duyệt trúng thầu chính thức, không thể thay đổi điểm đánh giá.");
             }
@@ -527,14 +527,14 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Hồ sơ dự thầu được chọn không thuộc gói thầu này.");
             }
 
-            if (!selectedSubmission.TotalScore.HasValue || selectedSubmission.Status != "Evaluated")
+            if (!selectedSubmission.TotalScore.HasValue || selectedSubmission.Status != BidSubmissionStatus.Evaluated)
             {
                 return ApiResponse<bool>.Fail("Hồ sơ dự thầu được chọn chưa hoàn tất quá trình chấm điểm đánh giá.");
             }
 
             // Căn cứ NĐ 24/2024/NĐ-CP: Toàn bộ hồ sơ dự thầu hợp lệ phải hoàn tất đánh giá đủ điều kiện
-            var activeSubmissions = submissions.Where(s => s.Status != "Withdrawn" && s.Status != "Disqualified").ToList();
-            var incompleteSubmissions = activeSubmissions.Where(s => s.Status != "Evaluated").ToList();
+            var activeSubmissions = submissions.Where(s => s.Status != BidSubmissionStatus.Withdrawn && s.Status != "Disqualified").ToList();
+            var incompleteSubmissions = activeSubmissions.Where(s => s.Status != BidSubmissionStatus.Evaluated).ToList();
             if (incompleteSubmissions.Any())
             {
                 return ApiResponse<bool>.Fail(
@@ -556,12 +556,12 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 if (sub.Id == request.SelectedSubmissionId)
                 {
-                    sub.Status = "Selected";
+                    sub.Status = BidSubmissionStatus.Selected;
                     sub.SelectionReason = request.DecisionReason;
                 }
                 else
                 {
-                    sub.Status = "Rejected";
+                    sub.Status = BidSubmissionStatus.Rejected;
                 }
                 _unitOfWork.Repository<BidSubmission>().Update(sub);
             }
@@ -638,7 +638,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
             var totalSubmissions = await submissionsQuery.CountAsync();
             var evaluatedSubmissions = await submissionsQuery
-                .CountAsync(s => s.Status == "Evaluated" || s.Status == "Selected" || s.Status == "Rejected");
+                .CountAsync(s => s.Status == BidSubmissionStatus.Evaluated || s.Status == BidSubmissionStatus.Selected || s.Status == BidSubmissionStatus.Rejected);
             var pendingSubmissions = totalSubmissions - evaluatedSubmissions;
 
             // Thống kê điểm số (chỉ lấy các hồ sơ đã có điểm)
@@ -657,7 +657,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
             // Thông tin hồ sơ trúng thầu (nếu đã phê duyệt)
             var winningSub = await submissionsQuery
-                .Where(s => s.Status == "Selected")
+                .Where(s => s.Status == BidSubmissionStatus.Selected)
                 .Select(s => new
                 {
                     s.Id,
@@ -720,7 +720,7 @@ namespace ProcurementSystem.Infrastructure.Services
             // Tìm hồ sơ trúng thầu đã được phê duyệt chính thức (Status == "Selected")
             var awardedSubmission = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
-                .Where(s => s.BidPackageId == packageId && s.Status == "Selected")
+                .Where(s => s.BidPackageId == packageId && s.Status == BidSubmissionStatus.Selected)
                 .Include(s => s.Contractor)
                     .ThenInclude(c => c.User)
                 .AsNoTracking()
@@ -810,7 +810,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
             // Tìm giá dự thầu thấp nhất giữa các hồ sơ hợp lệ có giá dự thầu để áp dụng công thức chấm điểm Giá (Điều 29 NĐ 24/2024/NĐ-CP)
             var activeSubmissionsWithPrice = submissions
-                .Where(s => s.Status != "Withdrawn" && s.Status != "Disqualified" && s.BidPrice.HasValue && s.BidPrice.Value > 0)
+                .Where(s => s.Status != BidSubmissionStatus.Withdrawn && s.Status != "Disqualified" && s.BidPrice.HasValue && s.BidPrice.Value > 0)
                 .ToList();
             decimal? minBidPrice = activeSubmissionsWithPrice.Any()
                 ? activeSubmissionsWithPrice.Min(s => s.BidPrice!.Value)
@@ -825,7 +825,7 @@ namespace ProcurementSystem.Infrastructure.Services
             foreach (var sub in submissions)
             {
                 // Bỏ qua nếu hồ sơ đã rút hoặc bị loại
-                if (sub.Status == "Withdrawn" || sub.Status == "Disqualified") continue;
+                if (sub.Status == BidSubmissionStatus.Withdrawn || sub.Status == "Disqualified") continue;
 
                 if (!sub.EvaluationScores.Any()) continue;
 
@@ -862,16 +862,16 @@ namespace ProcurementSystem.Infrastructure.Services
                 sub.TotalScore = Math.Round(finalTotalScore, 2);
 
                 // Căn cứ NĐ 24/2024/NĐ-CP: CHỈ gán trạng thái 'Evaluated' khi ĐỦ 100% giám khảo chấm đủ 100% tiêu chí
-                if (sub.EvaluationScores.Count >= requiredScoreCount && sub.Status != "Selected" && sub.Status != "Rejected")
+                if (sub.EvaluationScores.Count >= requiredScoreCount && sub.Status != BidSubmissionStatus.Selected && sub.Status != BidSubmissionStatus.Rejected)
                 {
-                    sub.Status = "Evaluated";
+                    sub.Status = BidSubmissionStatus.Evaluated;
                 }
             }
 
             // P2-9: Tự động sắp xếp phân hạng Rank 1, 2, 3... cho các hồ sơ đã hoàn tất đánh giá:
             // Tiêu chuẩn phá hòa điểm: Điểm tổng hợp cao nhất -> Giá dự thầu thấp nhất -> Thời gian nộp sớm nhất
             var scoredSubmissions = submissions
-                .Where(s => s.TotalScore.HasValue && (s.Status == "Evaluated" || s.Status == "Selected"))
+                .Where(s => s.TotalScore.HasValue && (s.Status == BidSubmissionStatus.Evaluated || s.Status == BidSubmissionStatus.Selected))
                 .OrderByDescending(s => s.TotalScore!.Value)
                 .ThenBy(s => s.BidPrice ?? decimal.MaxValue)
                 .ThenBy(s => s.SubmittedAt)

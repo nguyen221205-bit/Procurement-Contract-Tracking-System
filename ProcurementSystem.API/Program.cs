@@ -15,9 +15,10 @@ using ProcurementSystem.API.BackgroundServices;
 var builder = WebApplication.CreateBuilder(args);
 
 // ==========================================
-// 1. DATABASE - MySQL + EF Core
+// 1. DATABASE - Microsoft SQL Server + EF Core
 // ==========================================
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -69,7 +70,8 @@ builder.Services.AddHostedService<ContractExpiryNotificationWorker>();
 // 3. AUTHENTICATION - JWT
 // ==========================================
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"]
+var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY")
+    ?? jwtSettings["SecretKey"]
     ?? throw new InvalidOperationException("JWT SecretKey not configured.");
 
 builder.Services.AddAuthentication(options =>
