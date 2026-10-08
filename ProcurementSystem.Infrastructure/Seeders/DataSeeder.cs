@@ -49,6 +49,37 @@ namespace ProcurementSystem.Infrastructure.Seeders
                 BEGIN
                     ALTER TABLE [Contractors] ADD [VerificationStatus] NVARCHAR(50) NOT NULL CONSTRAINT DF_Contractors_VerificationStatus DEFAULT N'Approved';
                 END
+
+                -- Bảo đảm bảng EvaluatorProposals luôn tồn tại
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'EvaluatorProposals')
+                BEGIN
+                    CREATE TABLE [EvaluatorProposals] (
+                        [Id] INT IDENTITY(1,1) NOT NULL,
+                        [ProposerUserId] INT NOT NULL,
+                        [FullName] NVARCHAR(100) NOT NULL,
+                        [Email] NVARCHAR(150) NOT NULL,
+                        [Phone] NVARCHAR(20) NULL,
+                        [Specialization] NVARCHAR(200) NULL,
+                        [Workplace] NVARCHAR(250) NULL,
+                        [ExperienceYears] INT NULL,
+                        [CertificateName] NVARCHAR(200) NULL,
+                        [CertificateFile] NVARCHAR(500) NULL,
+                        [Notes] NVARCHAR(1000) NULL,
+                        [Status] NVARCHAR(50) NOT NULL CONSTRAINT DF_EvaluatorProposals_Status DEFAULT N'Pending',
+                        [AdminNotes] NVARCHAR(1000) NULL,
+                        [ReviewedByUserId] INT NULL,
+                        [ReviewedAt] DATETIME2 NULL,
+                        [CreatedUserId] INT NULL,
+                        [CreatedAt] DATETIME2 NOT NULL CONSTRAINT DF_EvaluatorProposals_CreatedAt DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT PK_EvaluatorProposals PRIMARY KEY CLUSTERED ([Id] ASC),
+                        CONSTRAINT FK_EvaluatorProposals_Users_Proposer FOREIGN KEY ([ProposerUserId]) REFERENCES [Users]([Id]),
+                        CONSTRAINT FK_EvaluatorProposals_Users_Reviewer FOREIGN KEY ([ReviewedByUserId]) REFERENCES [Users]([Id]),
+                        CONSTRAINT FK_EvaluatorProposals_Users_Created FOREIGN KEY ([CreatedUserId]) REFERENCES [Users]([Id])
+                    );
+                    CREATE NONCLUSTERED INDEX IX_EvaluatorProposals_Status ON [EvaluatorProposals] ([Status]);
+                    CREATE NONCLUSTERED INDEX IX_EvaluatorProposals_Email ON [EvaluatorProposals] ([Email]);
+                    CREATE NONCLUSTERED INDEX IX_EvaluatorProposals_ProposerUserId ON [EvaluatorProposals] ([ProposerUserId]);
+                END
             ");
 
             // 1. Seed Roles

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserCheck, Search, AlertCircle, Shield, Check } from 'lucide-react';
+import { X, UserCheck, Search, AlertCircle, Shield, Check, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { bidPackageApi } from '../../api/bidPackageApi';
 import { userApi } from '../../api/userApi';
 import LoadingSpinner from '../common/LoadingSpinner';
+import ProposeEvaluatorModal from '../evaluators/ProposeEvaluatorModal';
 
 export const AssignEvaluatorModal = ({
   isOpen,
@@ -17,6 +18,7 @@ export const AssignEvaluatorModal = ({
   const [submitting, setSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEvaluatorId, setSelectedEvaluatorId] = useState(null);
+  const [isProposeModalOpen, setIsProposeModalOpen] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -101,8 +103,8 @@ export const AssignEvaluatorModal = ({
           </button>
         </div>
 
-        {/* Search bar */}
-        <div className="p-4 border-b border-slate-100 bg-white">
+        {/* Search bar & Propose Shortcut */}
+        <div className="p-4 border-b border-slate-100 bg-white space-y-2.5">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -112,6 +114,18 @@ export const AssignEvaluatorModal = ({
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition"
             />
+          </div>
+
+          <div className="flex items-center justify-between bg-indigo-50/70 px-3 py-2 rounded-xl border border-indigo-100/80 text-[11px]">
+            <span className="text-indigo-900 font-medium">Chưa có chuyên gia phù hợp trong hệ thống?</span>
+            <button
+              type="button"
+              onClick={() => setIsProposeModalOpen(true)}
+              className="inline-flex items-center space-x-1 font-bold text-indigo-700 hover:text-indigo-900 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 shadow-2xs hover:bg-indigo-50 transition"
+            >
+              <UserPlus className="w-3 h-3" />
+              <span>+ Đề xuất chuyên gia mới</span>
+            </button>
           </div>
         </div>
 
@@ -232,6 +246,14 @@ export const AssignEvaluatorModal = ({
           </div>
         </div>
       </div>
+
+      <ProposeEvaluatorModal
+        isOpen={isProposeModalOpen}
+        onClose={() => setIsProposeModalOpen(false)}
+        onSuccess={() => {
+          loadCandidates();
+        }}
+      />
     </div>
   );
 };

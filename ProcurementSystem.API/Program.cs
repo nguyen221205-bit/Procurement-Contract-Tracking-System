@@ -52,6 +52,7 @@ builder.Services.AddScoped<IBidSubmissionService, BidSubmissionService>();
 
 // Evaluation & Scoring Services
 builder.Services.AddScoped<IEvaluationService, EvaluationService>();
+builder.Services.AddScoped<IEvaluatorProposalService, EvaluatorProposalService>();
 
 // Contract Services
 builder.Services.AddScoped<IContractService, ContractService>();

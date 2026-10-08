@@ -13,6 +13,7 @@ import ContractsPage from './pages/ContractsPage';
 import ContractDetailPage from './pages/ContractDetailPage';
 import UsersPage from './pages/UsersPage';
 import ContractorsPage from './pages/ContractorsPage';
+import EvaluatorProposalsPage from './pages/EvaluatorProposalsPage';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { ROLES } from './utils/constants';
@@ -49,6 +50,14 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
                     <ContractorsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/evaluator-proposals"
+                element={
+                  <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROCUREMENT]}>
+                    <EvaluatorProposalsPage />
                   </ProtectedRoute>
                 }
               />

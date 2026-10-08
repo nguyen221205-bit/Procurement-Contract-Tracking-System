@@ -113,4 +113,18 @@ export const CONTRACTOR_VERIFICATION_CONFIG = {
   Rejected: { label: 'Đã từ chối', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
 };
 
+// Evaluator Proposal Status (Pending, Approved, Rejected)
+export const EVALUATOR_PROPOSAL_STATUS = {
+  PENDING: 'Pending',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+};
+
+export const EVALUATOR_PROPOSAL_CONFIG = {
+  Pending: { label: 'Chờ thẩm định', badgeColor: 'bg-amber-50 text-amber-700 border-amber-300' },
+  Approved: { label: 'Đã phê duyệt', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  Rejected: { label: 'Đã từ chối', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
+};
+
+
 

@@ -9,6 +9,7 @@ import {
   Scale,
   Users,
   Building2,
+  Award,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -35,6 +36,12 @@ const MENU_ITEMS = [
     path: '/evaluation',
     icon: Scale,
     roles: [ROLES.ADMIN, ROLES.PROCUREMENT, ROLES.EVALUATOR],
+  },
+  {
+    name: 'Đề xuất Giám khảo',
+    path: '/evaluator-proposals',
+    icon: Award,
+    roles: [ROLES.ADMIN, ROLES.PROCUREMENT],
   },
   {
     name: 'Nhà thầu',

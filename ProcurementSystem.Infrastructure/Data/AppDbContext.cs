@@ -25,6 +25,7 @@ namespace ProcurementSystem.Infrastructure.Data
         public DbSet<Acceptance> Acceptances => Set<Acceptance>();
         public DbSet<Notification> Notifications => Set<Notification>();
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+        public DbSet<EvaluatorProposal> EvaluatorProposals => Set<EvaluatorProposal>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -239,6 +240,29 @@ namespace ProcurementSystem.Infrastructure.Data
             modelBuilder.Entity<Contract>().HasIndex(c => new { c.ContractorId, c.Status });
             modelBuilder.Entity<ContractMilestone>().HasIndex(cm => new { cm.ContractId, cm.Status });
             modelBuilder.Entity<EvaluationCriteria>().HasIndex(ec => ec.BidPackageId);
+
+            // EvaluatorProposal relationships & indexes
+            modelBuilder.Entity<EvaluatorProposal>()
+                .HasOne(ep => ep.ProposerUser)
+                .WithMany()
+                .HasForeignKey(ep => ep.ProposerUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<EvaluatorProposal>()
+                .HasOne(ep => ep.ReviewedByUser)
+                .WithMany()
+                .HasForeignKey(ep => ep.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<EvaluatorProposal>()
+                .HasOne(ep => ep.CreatedUser)
+                .WithMany()
+                .HasForeignKey(ep => ep.CreatedUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<EvaluatorProposal>().HasIndex(ep => ep.Status);
+            modelBuilder.Entity<EvaluatorProposal>().HasIndex(ep => ep.Email);
+            modelBuilder.Entity<EvaluatorProposal>().HasIndex(ep => ep.ProposerUserId);
         }
     }
 }
