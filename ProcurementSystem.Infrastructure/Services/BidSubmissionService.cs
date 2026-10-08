@@ -73,8 +73,8 @@ namespace ProcurementSystem.Infrastructure.Services
             if (contractor.VerificationStatus != "Approved")
             {
                 var reasonMessage = contractor.VerificationStatus == "Pending"
-                    ? "Hồ sơ năng lực nhà thầu của bạn đang trong trạng thái chờ Bên mời thầu thẩm định phê duyệt. Vui lòng quay lại sau khi hồ sơ được phê duyệt."
-                    : "Hồ sơ năng lực nhà thầu của bạn đã bị từ chối phê duyệt. Vui lòng liên hệ Bên mời thầu để được hỗ trợ.";
+                    ? "Tài khoản doanh nghiệp của bạn đang trong trạng thái chờ Quản trị viên (Admin) thẩm định Giấy phép kinh doanh. Vui lòng liên hệ Quản trị viên hệ thống hoặc quay lại sau khi tài khoản được kích hoạt."
+                    : "Hồ sơ đăng ký doanh nghiệp của bạn đã bị từ chối phê duyệt. Vui lòng liên hệ Quản trị viên hệ thống để được hỗ trợ.";
                 return ApiResponse<BidSubmissionDto>.Fail(reasonMessage);
             }
 

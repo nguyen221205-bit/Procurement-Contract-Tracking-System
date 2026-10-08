@@ -100,3 +100,17 @@ export const MILESTONE_STATUS_CONFIG = {
   3: { label: 'Quá hạn', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
 };
 
+// Contractor Verification Status khớp Enum/String Backend (Pending, Approved, Rejected)
+export const CONTRACTOR_VERIFICATION_STATUS = {
+  PENDING: 'Pending',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+};
+
+export const CONTRACTOR_VERIFICATION_CONFIG = {
+  Pending: { label: 'Chờ thẩm định', badgeColor: 'bg-amber-50 text-amber-700 border-amber-300' },
+  Approved: { label: 'Đã kích hoạt', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  Rejected: { label: 'Đã từ chối', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
+};
+
+

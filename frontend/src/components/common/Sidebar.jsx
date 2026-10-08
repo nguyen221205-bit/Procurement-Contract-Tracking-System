@@ -7,7 +7,8 @@ import {
   FileText,
   FileCheck,
   Scale,
-  Users
+  Users,
+  Building2,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -34,6 +35,12 @@ const MENU_ITEMS = [
     path: '/evaluation',
     icon: Scale,
     roles: [ROLES.ADMIN, ROLES.PROCUREMENT, ROLES.EVALUATOR],
+  },
+  {
+    name: 'Nhà thầu',
+    path: '/contractors',
+    icon: Building2,
+    roles: [ROLES.ADMIN],
   },
   {
     name: 'Người dùng',
