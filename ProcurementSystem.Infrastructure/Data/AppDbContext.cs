@@ -26,6 +26,7 @@ namespace ProcurementSystem.Infrastructure.Data
         public DbSet<Notification> Notifications => Set<Notification>();
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
         public DbSet<EvaluatorProposal> EvaluatorProposals => Set<EvaluatorProposal>();
+        public DbSet<ProcuringEntity> ProcuringEntities => Set<ProcuringEntity>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -263,6 +264,23 @@ namespace ProcurementSystem.Infrastructure.Data
             modelBuilder.Entity<EvaluatorProposal>().HasIndex(ep => ep.Status);
             modelBuilder.Entity<EvaluatorProposal>().HasIndex(ep => ep.Email);
             modelBuilder.Entity<EvaluatorProposal>().HasIndex(ep => ep.ProposerUserId);
+
+            // ProcuringEntity relationships & indexes
+            modelBuilder.Entity<ProcuringEntity>()
+                .HasOne(pe => pe.User)
+                .WithOne(u => u.ProcuringEntity)
+                .HasForeignKey<ProcuringEntity>(pe => pe.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ProcuringEntity>()
+                .HasOne(pe => pe.ReviewedByUser)
+                .WithMany()
+                .HasForeignKey(pe => pe.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ProcuringEntity>().HasIndex(pe => pe.TaxCode);
+            modelBuilder.Entity<ProcuringEntity>().HasIndex(pe => pe.VerificationStatus);
+            modelBuilder.Entity<ProcuringEntity>().HasIndex(pe => pe.UserId).IsUnique();
         }
     }
 }

@@ -80,6 +80,36 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     CREATE NONCLUSTERED INDEX IX_EvaluatorProposals_Email ON [EvaluatorProposals] ([Email]);
                     CREATE NONCLUSTERED INDEX IX_EvaluatorProposals_ProposerUserId ON [EvaluatorProposals] ([ProposerUserId]);
                 END
+
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ProcuringEntities')
+                BEGIN
+                    CREATE TABLE [ProcuringEntities] (
+                        [Id] INT IDENTITY(1,1) NOT NULL,
+                        [UserId] INT NOT NULL,
+                        [OrganizationName] NVARCHAR(250) NOT NULL,
+                        [OrganizationType] NVARCHAR(100) NOT NULL,
+                        [TaxCode] NVARCHAR(20) NOT NULL,
+                        [BudgetCode] NVARCHAR(50) NULL,
+                        [Address] NVARCHAR(500) NULL,
+                        [RepresentativeName] NVARCHAR(100) NOT NULL,
+                        [RepresentativeTitle] NVARCHAR(100) NOT NULL,
+                        [RepresentativePhone] NVARCHAR(20) NULL,
+                        [EstablishmentDecisionFile] NVARCHAR(500) NOT NULL,
+                        [AppointmentDecisionFile] NVARCHAR(500) NULL,
+                        [VerificationStatus] NVARCHAR(50) NOT NULL CONSTRAINT DF_ProcuringEntities_VerificationStatus DEFAULT N'Pending',
+                        [AdminNotes] NVARCHAR(1000) NULL,
+                        [ReviewedByUserId] INT NULL,
+                        [ReviewedAt] DATETIME2 NULL,
+                        [CreatedAt] DATETIME2 NOT NULL CONSTRAINT DF_ProcuringEntities_CreatedAt DEFAULT SYSUTCDATETIME(),
+                        [UpdatedAt] DATETIME2 NULL,
+                        CONSTRAINT PK_ProcuringEntities PRIMARY KEY CLUSTERED ([Id] ASC),
+                        CONSTRAINT FK_ProcuringEntities_Users_User FOREIGN KEY ([UserId]) REFERENCES [Users]([Id]) ON DELETE CASCADE,
+                        CONSTRAINT FK_ProcuringEntities_Users_Reviewer FOREIGN KEY ([ReviewedByUserId]) REFERENCES [Users]([Id])
+                    );
+                    CREATE UNIQUE NONCLUSTERED INDEX IX_ProcuringEntities_UserId ON [ProcuringEntities] ([UserId]);
+                    CREATE NONCLUSTERED INDEX IX_ProcuringEntities_TaxCode ON [ProcuringEntities] ([TaxCode]);
+                    CREATE NONCLUSTERED INDEX IX_ProcuringEntities_VerificationStatus ON [ProcuringEntities] ([VerificationStatus]);
+                END
             ");
 
             // 1. Seed Roles
@@ -153,6 +183,27 @@ namespace ProcurementSystem.Infrastructure.Seeders
                 {
                     UserId = procUser.Id,
                     RoleId = procRole.Id
+                });
+                await context.SaveChangesAsync();
+            }
+
+            // 2.2.1 Seed ProcuringEntity profile for procurement@procurement.com if not exists
+            if (procUser != null && !await context.ProcuringEntities.AnyAsync(pe => pe.UserId == procUser.Id))
+            {
+                await context.ProcuringEntities.AddAsync(new ProcuringEntity
+                {
+                    UserId = procUser.Id,
+                    OrganizationName = "Ban Quản lý Dự án Đầu tư Xây dựng Mua sắm Tập trung",
+                    OrganizationType = "Ban Quản lý Dự án",
+                    TaxCode = "0100109106",
+                    BudgetCode = "1054321",
+                    Address = "Số 123 Đường Trần Phú, Quận Ba Đình, Hà Nội",
+                    RepresentativeName = "Nguyen Thi Chuyen Vien Mua Sam",
+                    RepresentativeTitle = "Phó Giám đốc Ban QLDA",
+                    RepresentativePhone = "0901111111",
+                    EstablishmentDecisionFile = "uploads/procuring-entities/seed_qd_thanh_lap.pdf",
+                    VerificationStatus = "Approved",
+                    ReviewedAt = DateTime.UtcNow
                 });
                 await context.SaveChangesAsync();
             }

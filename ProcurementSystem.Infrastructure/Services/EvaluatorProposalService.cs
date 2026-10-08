@@ -91,6 +91,19 @@ namespace ProcurementSystem.Infrastructure.Services
         public async Task<ApiResponse<EvaluatorProposalDto>> CreateProposalAsync(
             CreateEvaluatorProposalRequest request, int proposerUserId)
         {
+            // 0. Kiểm tra thẩm định hồ sơ Bên mời thầu (Luồng 2)
+            var procuringEntity = await _unitOfWork.Repository<ProcuringEntity>()
+                .Query()
+                .FirstOrDefaultAsync(pe => pe.UserId == proposerUserId);
+
+            if (procuringEntity != null && procuringEntity.VerificationStatus != "Approved")
+            {
+                var msg = procuringEntity.VerificationStatus == "Pending"
+                    ? "Hồ sơ pháp nhân Bên mời thầu của bạn đang ở trạng thái chờ thẩm định (Pending). Vui lòng chờ Quản trị viên (Admin) phê duyệt trước khi gửi đề xuất giám khảo."
+                    : $"Hồ sơ pháp nhân Bên mời thầu của bạn đã bị từ chối phê duyệt. Lý do: {procuringEntity.AdminNotes ?? "Không đáp ứng điều kiện pháp lý"}. Vui lòng liên hệ Admin.";
+                return ApiResponse<EvaluatorProposalDto>.Fail(msg);
+            }
+
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
             // 1. Kiểm tra Email đã tồn tại trong bảng Users chưa

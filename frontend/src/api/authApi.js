@@ -9,6 +9,10 @@ export const authApi = {
     return await axiosClient.post('/auth/register-contractor', data);
   },
 
+  registerProcuringEntity: async (data) => {
+    return await axiosClient.post('/auth/register-procuring-entity', data);
+  },
+
   refreshToken: async (token, refreshToken) => {
     return await axiosClient.post('/auth/refresh-token', { token, refreshToken });
   },

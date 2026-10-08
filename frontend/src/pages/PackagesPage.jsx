@@ -21,8 +21,10 @@ import {
   Layers,
   FileCheck,
   Coins,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
+import { procuringEntityApi } from '../api/procuringEntityApi';
 
 const FILTER_TABS = [
   { label: 'Tất cả', value: '' },
@@ -43,6 +45,19 @@ export const PackagesPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [procuringProfile, setProcuringProfile] = useState(null);
+
+  useEffect(() => {
+    if (hasRole([ROLES.PROCUREMENT]) && !hasRole([ROLES.ADMIN])) {
+      procuringEntityApi.getMyProfile()
+        .then(res => {
+          if (res?.success && res.data) {
+            setProcuringProfile(res.data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [hasRole]);
 
   // Bộ lọc & Phân trang
   const [activeTab, setActiveTab] = useState('');
@@ -173,7 +188,17 @@ export const PackagesPage = () => {
           {canCreate && (
             <button
               onClick={handleCreateClick}
-              className="inline-flex items-center space-x-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow transition"
+              disabled={procuringProfile && procuringProfile.verificationStatus !== 'Approved'}
+              title={
+                procuringProfile && procuringProfile.verificationStatus !== 'Approved'
+                  ? 'Hồ sơ pháp nhân Bên mời thầu đang chờ Quản trị viên (Admin) thẩm định phê duyệt'
+                  : ''
+              }
+              className={`inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold shadow-xs transition ${
+                procuringProfile && procuringProfile.verificationStatus !== 'Approved'
+                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  : 'bg-slate-900 hover:bg-slate-800 text-white hover:shadow'
+              }`}
             >
               <Plus className="w-4 h-4" />
               <span>Tạo gói thầu mới</span>
@@ -181,6 +206,37 @@ export const PackagesPage = () => {
           )}
         </div>
       </div>
+
+      {/* BANNER CẢNH BÁO NẾU HỒ SƠ BÊN MỜI THẦU CHƯA ĐƯỢC DUYỆT */}
+      {procuringProfile && procuringProfile.verificationStatus !== 'Approved' && (
+        <div
+          className={`p-4 rounded-xl border flex items-start space-x-3 text-xs shadow-2xs ${
+            procuringProfile.verificationStatus === 'Pending'
+              ? 'bg-amber-50 border-amber-200 text-amber-900'
+              : 'bg-rose-50 border-rose-200 text-rose-900'
+          }`}
+        >
+          <AlertTriangle
+            className={`w-5 h-5 shrink-0 mt-0.5 ${
+              procuringProfile.verificationStatus === 'Pending' ? 'text-amber-600' : 'text-rose-600'
+            }`}
+          />
+          <div className="space-y-1">
+            <h4 className="font-bold text-sm">
+              {procuringProfile.verificationStatus === 'Pending'
+                ? 'Hồ sơ Bên mời thầu đang chờ Quản trị viên (Admin) thẩm định'
+                : 'Hồ sơ Bên mời thầu bị từ chối phê duyệt'}
+            </h4>
+            <p className="text-slate-700 leading-relaxed">
+              {procuringProfile.verificationStatus === 'Pending'
+                ? 'Tài khoản của bạn đã được khởi tạo nhưng đang trong trạng thái chờ Quản trị viên xác minh Quyết định thành lập / Giấy phép pháp nhân. Bạn chưa thể tạo gói thầu mới hoặc đề xuất giám khảo cho đến khi được phê duyệt.'
+                : `Hồ sơ Bên mời thầu của bạn đã bị từ chối. Lý do: "${
+                    procuringProfile.adminNotes || 'Chưa đáp ứng đủ tiêu chuẩn pháp lý'
+                  }". Vui lòng liên hệ Admin để được hỗ trợ.`}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Thanh KPI Nghiệp vụ (Clickable Filter Cards) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">

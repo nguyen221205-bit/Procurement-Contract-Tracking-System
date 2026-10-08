@@ -10,6 +10,7 @@ import {
   Users,
   Building2,
   Award,
+  Briefcase,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -47,6 +48,12 @@ const MENU_ITEMS = [
     name: 'Nhà thầu',
     path: '/contractors',
     icon: Building2,
+    roles: [ROLES.ADMIN],
+  },
+  {
+    name: 'Bên mời thầu',
+    path: '/procuring-entities',
+    icon: Briefcase,
     roles: [ROLES.ADMIN],
   },
   {

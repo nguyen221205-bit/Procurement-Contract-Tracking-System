@@ -27,5 +27,25 @@ namespace ProcurementSystem.API.Controllers
             if (!result.Success) return BadRequest(result);
             return StatusCode(StatusCodes.Status201Created, result);
         }
+
+        /// <summary>
+        /// Đăng ký tài khoản Bên mời thầu / Chủ đầu tư mới kèm Quyết định thành lập / Giấy phép
+        /// </summary>
+        /// <param name="request">Thông tin đăng ký (Tên cơ quan, Loại hình, Mã số thuế, Quyết định thành lập, v.v.)</param>
+        /// <param name="procuringEntityAuthService">Dịch vụ xác thực bên mời thầu</param>
+        /// <response code="201">Đăng ký tài khoản bên mời thầu thành công, hồ sơ chờ phê duyệt.</response>
+        /// <response code="400">Dữ liệu đăng ký không hợp lệ, email hoặc mã số thuế đã tồn tại.</response>
+        [HttpPost("register-procuring-entity")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(typeof(ApiResponse<ProcuringEntityRegisterResponse>), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ApiResponse<ProcuringEntityRegisterResponse>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<ProcuringEntityRegisterResponse>>> RegisterProcuringEntity(
+            [FromForm] RegisterProcuringEntityRequest request,
+            [FromServices] IProcuringEntityAuthService procuringEntityAuthService)
+        {
+            var result = await procuringEntityAuthService.RegisterProcuringEntityAsync(request);
+            if (!result.Success) return BadRequest(result);
+            return StatusCode(StatusCodes.Status201Created, result);
+        }
     }
 }

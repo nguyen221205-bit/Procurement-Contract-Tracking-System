@@ -30,5 +30,6 @@ namespace ProcurementSystem.Infrastructure.Entities
         // Navigation properties
         public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
         public virtual Contractor? Contractor { get; set; }
+        public virtual ProcuringEntity? ProcuringEntity { get; set; }
     }
 }

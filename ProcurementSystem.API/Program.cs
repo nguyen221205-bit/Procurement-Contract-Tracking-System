@@ -40,6 +40,8 @@ builder.Services.AddScoped<IPdfSecurityService, PdfSecurityService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IContractorAuthService, ContractorAuthService>();
 builder.Services.AddScoped<IContractorService, ContractorService>();
+builder.Services.AddScoped<IProcuringEntityAuthService, ProcuringEntityAuthService>();
+builder.Services.AddScoped<IProcuringEntityService, ProcuringEntityService>();
 
 // User Management Services
 builder.Services.AddScoped<IUserService, UserService>();
