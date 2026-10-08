@@ -15,9 +15,7 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  Briefcase,
-  FileText,
-  BadgeCheck
+  Briefcase
 } from 'lucide-react';
 
 export const RegisterPage = () => {
@@ -26,7 +24,7 @@ export const RegisterPage = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Form data cho Nhà thầu
+  // Dữ liệu form Nhà thầu
   const [contractorData, setContractorData] = useState({
     fullName: '',
     email: '',
@@ -38,7 +36,7 @@ export const RegisterPage = () => {
   });
   const [licenseFile, setLicenseFile] = useState(null);
 
-  // Form data cho Bên mời thầu
+  // Dữ liệu form Bên mời thầu
   const [procuringData, setProcuringData] = useState({
     fullName: '',
     email: '',
@@ -71,7 +69,7 @@ export const RegisterPage = () => {
     e.preventDefault();
 
     if (!contractorData.fullName || !contractorData.email || !contractorData.password || !contractorData.companyName || !contractorData.taxCode) {
-      toast.error('Vui lòng điền đầy đủ các thông tin bắt buộc');
+      toast.error('Vui lòng điền đầy đủ các mục có dấu sao (*)');
       return;
     }
 
@@ -96,7 +94,7 @@ export const RegisterPage = () => {
       const response = await authApi.registerContractor(data);
 
       if (response && response.success) {
-        toast.success('Đăng ký nhà thầu thành công! Vui lòng chờ phê duyệt.');
+        toast.success('Đăng ký thành công! Hồ sơ của bạn đang được xét duyệt.');
         navigate('/login');
       } else {
         toast.error(response?.message || 'Đăng ký không thành công');
@@ -113,12 +111,12 @@ export const RegisterPage = () => {
     e.preventDefault();
 
     if (!procuringData.fullName || !procuringData.email || !procuringData.password || !procuringData.organizationName || !procuringData.taxCode || !procuringData.representativeName) {
-      toast.error('Vui lòng điền đầy đủ các thông tin bắt buộc');
+      toast.error('Vui lòng điền đầy đủ các mục có dấu sao (*)');
       return;
     }
 
     if (!establishmentFile) {
-      toast.error('Vui lòng tải lên Quyết định thành lập / Giấy phép hoạt động');
+      toast.error('Vui lòng tải lên Quyết định thành lập hoặc Giấy phép hoạt động');
       return;
     }
 
@@ -144,7 +142,7 @@ export const RegisterPage = () => {
       const response = await authApi.registerProcuringEntity(data);
 
       if (response && response.success) {
-        toast.success(response.message || 'Đăng ký Bên mời thầu thành công! Hồ sơ đang chờ Quản trị viên thẩm định.');
+        toast.success('Đăng ký thành công! Hồ sơ của bạn sẽ được kích hoạt sớm nhất.');
         navigate('/login');
       } else {
         toast.error(response?.message || 'Đăng ký không thành công');
@@ -159,7 +157,7 @@ export const RegisterPage = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center py-10 px-4 sm:px-6">
       <div className="max-w-xl w-full space-y-6">
-        {/* Tên hệ thống */}
+        {/* Tiêu đề ứng dụng */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-900 text-sky-400 shadow-sm">
             <ShieldCheck className="w-6 h-6" />
@@ -169,14 +167,14 @@ export const RegisterPage = () => {
           </h1>
         </div>
 
-        {/* Khung đăng ký */}
+        {/* Khung nội dung đăng ký */}
         <div className="bg-white p-7 sm:p-9 rounded-2xl border border-slate-200 shadow-sm space-y-6">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">
               Đăng ký tài khoản
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              Chọn vai trò của đơn vị bạn trên Hệ thống Mua sắm & Đấu thầu
+              Chọn loại tài khoản phù hợp với đơn vị của bạn
             </p>
           </div>
 
@@ -192,7 +190,7 @@ export const RegisterPage = () => {
               }`}
             >
               <Building2 className="w-4 h-4" />
-              <span>Nhà thầu tham gia thầu</span>
+              <span>Nhà thầu</span>
             </button>
             <button
               type="button"
@@ -204,7 +202,7 @@ export const RegisterPage = () => {
               }`}
             >
               <Briefcase className="w-4 h-4" />
-              <span>Bên mời thầu / Chủ đầu tư</span>
+              <span>Bên mời thầu</span>
             </button>
           </div>
 
@@ -213,10 +211,10 @@ export const RegisterPage = () => {
           {/* ============================================================== */}
           {roleType === 'contractor' && (
             <form onSubmit={handleContractorSubmit} className="space-y-5">
-              {/* NHÓM 1: TÀI KHOẢN ĐẠI DIỆN */}
+              {/* NHÓM 1: THÔNG TIN TÀI KHOẢN */}
               <div className="space-y-3.5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 pb-1 border-b border-slate-100">
-                  1. Tài khoản đại diện
+                  1. Thông tin tài khoản
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -242,7 +240,7 @@ export const RegisterPage = () => {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Email <span className="text-rose-500">*</span>
+                      Email đăng nhập <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative rounded-lg">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -319,7 +317,7 @@ export const RegisterPage = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Tên công ty / Doanh nghiệp <span className="text-rose-500">*</span>
+                      Tên công ty <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative rounded-lg">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -339,7 +337,7 @@ export const RegisterPage = () => {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Mã số thuế (MST) <span className="text-rose-500">*</span>
+                      Mã số thuế <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative rounded-lg">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -377,16 +375,15 @@ export const RegisterPage = () => {
                   </div>
                 </div>
 
-                {/* TẢI LÊN GIẤY PHÉP KINH DOANH */}
                 <FileUpload
                   file={licenseFile}
                   onFileSelect={(file) => setLicenseFile(file)}
                   onFileRemove={() => setLicenseFile(null)}
-                  label="Giấy phép kinh doanh (GPKD)"
+                  label="Giấy phép kinh doanh"
                   required={true}
                   accept=".pdf,.jpg,.jpeg,.png"
                   maxSizeMB={10}
-                  helperText="PDF, JPG, PNG (Tối đa 10MB)"
+                  helperText="File PDF hoặc ảnh chụp rõ nét (Tối đa 10MB)"
                 />
               </div>
 
@@ -408,7 +405,7 @@ export const RegisterPage = () => {
                   </>
                 ) : (
                   <>
-                    <span>Đăng ký Nhà thầu</span>
+                    <span>Đăng ký tài khoản</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -421,17 +418,16 @@ export const RegisterPage = () => {
           {/* ============================================================== */}
           {roleType === 'procuring_entity' && (
             <form onSubmit={handleProcuringSubmit} className="space-y-5">
-              {/* NHÓM 1: TÀI KHOẢN ĐẠI DIỆN */}
+              {/* NHÓM 1: THÔNG TIN TÀI KHOẢN */}
               <div className="space-y-3.5">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-sky-700 pb-1 border-b border-sky-100 flex items-center justify-between">
-                  <span>1. Tài khoản đăng nhập & Cán bộ phụ trách</span>
-                  <span className="text-[10px] text-slate-400 font-normal">Luật Đấu thầu 22/2023/QH15</span>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-sky-700 pb-1 border-b border-sky-100">
+                  1. Thông tin đăng nhập
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Họ tên cán bộ phụ trách <span className="text-rose-500">*</span>
+                      Họ và tên người đăng ký <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative rounded-lg">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -443,7 +439,7 @@ export const RegisterPage = () => {
                         name="fullName"
                         value={procuringData.fullName}
                         onChange={handleProcuringChange}
-                        placeholder="Nguyễn Thị B"
+                        placeholder="Nguyễn Thị Mai"
                         className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                       />
                     </div>
@@ -451,7 +447,7 @@ export const RegisterPage = () => {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Email công vụ / Đăng nhập <span className="text-rose-500">*</span>
+                      Email đăng nhập <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative rounded-lg">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -463,7 +459,7 @@ export const RegisterPage = () => {
                         name="email"
                         value={procuringData.email}
                         onChange={handleProcuringChange}
-                        placeholder="procurement@agency.gov.vn"
+                        placeholder="mai.nguyen@donvi.gov.vn"
                         className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                       />
                     </div>
@@ -500,7 +496,7 @@ export const RegisterPage = () => {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Số điện thoại liên hệ
+                      Số điện thoại
                     </label>
                     <div className="relative rounded-lg">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -519,15 +515,15 @@ export const RegisterPage = () => {
                 </div>
               </div>
 
-              {/* NHÓM 2: THÔNG TIN PHÁP NHÂN CƠ QUAN / ĐƠN VỊ */}
+              {/* NHÓM 2: THÔNG TIN ĐƠN VỊ */}
               <div className="space-y-3.5 pt-1">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-sky-700 pb-1 border-b border-sky-100">
-                  2. Thông tin Cơ quan / Đơn vị mời thầu
+                  2. Thông tin đơn vị
                 </h3>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Tên đầy đủ của Cơ quan / Chủ đầu tư / Ban QLDA <span className="text-rose-500">*</span>
+                    Tên cơ quan / đơn vị <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative rounded-lg">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -539,7 +535,7 @@ export const RegisterPage = () => {
                       name="organizationName"
                       value={procuringData.organizationName}
                       onChange={handleProcuringChange}
-                      placeholder="Ban Quản lý Dự án Đầu tư Xây dựng Công trình Giao thông TP"
+                      placeholder="Ban Quản lý Dự án Đầu tư Xây dựng..."
                       className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                     />
                   </div>
@@ -548,7 +544,7 @@ export const RegisterPage = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Loại hình cơ quan <span className="text-rose-500">*</span>
+                      Loại hình đơn vị <span className="text-rose-500">*</span>
                     </label>
                     <select
                       name="organizationType"
@@ -557,7 +553,7 @@ export const RegisterPage = () => {
                       className="block w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                     >
                       <option value="Ban Quản lý Dự án">Ban Quản lý Dự án (PMU)</option>
-                      <option value="Cơ quan hành chính nhà nước">Cơ quan hành chính nhà nước</option>
+                      <option value="Cơ quan hành chính nhà nước">Cơ quan nhà nước</option>
                       <option value="Đơn vị sự nghiệp công lập">Đơn vị sự nghiệp công lập</option>
                       <option value="Doanh nghiệp nhà nước">Doanh nghiệp nhà nước</option>
                       <option value="Đơn vị mua sắm tập trung">Đơn vị mua sắm tập trung</option>
@@ -567,7 +563,7 @@ export const RegisterPage = () => {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Mã số thuế (MST) <span className="text-rose-500">*</span>
+                      Mã số thuế <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative rounded-lg">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -589,21 +585,21 @@ export const RegisterPage = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Mã đơn vị ngân sách (Mã ĐVQHNS)
+                      Mã đơn vị ngân sách
                     </label>
                     <input
                       type="text"
                       name="budgetCode"
                       value={procuringData.budgetCode}
                       onChange={handleProcuringChange}
-                      placeholder="1054321 (tùy chọn)"
+                      placeholder="1054321 (nếu có)"
                       className="block w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Địa chỉ trụ sở chính
+                      Địa chỉ trụ sở
                     </label>
                     <div className="relative rounded-lg">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -625,13 +621,13 @@ export const RegisterPage = () => {
               {/* NHÓM 3: NGƯỜI ĐẠI DIỆN PHÁP LUẬT */}
               <div className="space-y-3.5 pt-1">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-sky-700 pb-1 border-b border-sky-100">
-                  3. Người đại diện pháp luật / Thủ trưởng đơn vị
+                  3. Người đại diện pháp luật
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Họ và tên người đại diện <span className="text-rose-500">*</span>
+                      Họ và tên <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -654,7 +650,7 @@ export const RegisterPage = () => {
                       name="representativeTitle"
                       value={procuringData.representativeTitle}
                       onChange={handleProcuringChange}
-                      placeholder="Giám đốc Ban QLDA / Giám đốc Sở"
+                      placeholder="Giám đốc, Trưởng ban..."
                       className="block w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                     />
                   </div>
@@ -662,46 +658,45 @@ export const RegisterPage = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    SĐT người đại diện (nếu khác SĐT cán bộ)
+                    Số điện thoại
                   </label>
                   <input
                     type="tel"
                     name="representativePhone"
                     value={procuringData.representativePhone}
                     onChange={handleProcuringChange}
-                    placeholder="0903 999 888"
+                    placeholder="0903 999 888 (nếu khác SĐT ở trên)"
                     className="block w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                   />
                 </div>
               </div>
 
-              {/* NHÓM 4: TÀI LIỆU PHÁP LÝ ĐÍNH KÈM */}
+              {/* NHÓM 4: TÀI LIỆU ĐÍNH KÈM */}
               <div className="space-y-3.5 pt-1">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-sky-700 pb-1 border-b border-sky-100 flex items-center justify-between">
-                  <span>4. Tài liệu thẩm định pháp nhân</span>
-                  <span className="text-[10px] text-amber-600 font-medium">Bắt buộc để Admin duyệt</span>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-sky-700 pb-1 border-b border-sky-100">
+                  4. Hồ sơ đính kèm
                 </h3>
 
                 <FileUpload
                   file={establishmentFile}
                   onFileSelect={(file) => setEstablishmentFile(file)}
                   onFileRemove={() => setEstablishmentFile(null)}
-                  label="Quyết định thành lập / Giấy phép hoạt động (PDF)"
+                  label="Quyết định thành lập hoặc Giấy phép hoạt động"
                   required={true}
                   accept=".pdf,.jpg,.jpeg,.png"
                   maxSizeMB={15}
-                  helperText="File scan PDF quyết định thành lập cơ quan / Ban QLDA (Tối đa 15MB)"
+                  helperText="File PDF hoặc ảnh scan rõ nét (Tối đa 15MB)"
                 />
 
                 <FileUpload
                   file={appointmentFile}
                   onFileSelect={(file) => setAppointmentFile(file)}
                   onFileRemove={() => setAppointmentFile(null)}
-                  label="Quyết định bổ nhiệm người đứng đầu / Giấy ủy quyền (Tùy chọn)"
+                  label="Quyết định bổ nhiệm người đứng đầu (nếu có)"
                   required={false}
                   accept=".pdf,.jpg,.jpeg,.png"
                   maxSizeMB={15}
-                  helperText="Tệp scan quyết định bổ nhiệm hoặc giấy ủy quyền ký số (nếu có)"
+                  helperText="File PDF hoặc ảnh scan văn bản bổ nhiệm / ủy quyền"
                 />
               </div>
 
@@ -719,11 +714,11 @@ export const RegisterPage = () => {
                 {loading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Đang xử lý đăng ký...</span>
+                    <span>Đang xử lý...</span>
                   </>
                 ) : (
                   <>
-                    <span>Đăng ký Bên mời thầu</span>
+                    <span>Đăng ký tài khoản</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
