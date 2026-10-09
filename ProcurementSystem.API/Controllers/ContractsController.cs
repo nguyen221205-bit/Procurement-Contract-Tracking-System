@@ -72,7 +72,7 @@ namespace ProcurementSystem.API.Controllers
 
             if (!result.Success)
             {
-                if (result.Message.Contains("không có quyền"))
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
                 {
                     return StatusCode(StatusCodes.Status403Forbidden, result);
                 }
@@ -106,7 +106,7 @@ namespace ProcurementSystem.API.Controllers
 
             if (!result.Success)
             {
-                if (result.Message.Contains("không có quyền"))
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
                 {
                     return StatusCode(StatusCodes.Status403Forbidden, result);
                 }
@@ -443,7 +443,7 @@ namespace ProcurementSystem.API.Controllers
 
             if (!result.Success)
             {
-                if (result.Message.Contains("không có quyền"))
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
                 {
                     return StatusCode(StatusCodes.Status403Forbidden, result);
                 }
@@ -491,7 +491,7 @@ namespace ProcurementSystem.API.Controllers
 
             if (!result.Success)
             {
-                if (result.Message.Contains("không có quyền"))
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
                 {
                     return StatusCode(StatusCodes.Status403Forbidden, result);
                 }

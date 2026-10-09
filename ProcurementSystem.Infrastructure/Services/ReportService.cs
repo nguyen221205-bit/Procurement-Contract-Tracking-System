@@ -142,5 +142,96 @@ namespace ProcurementSystem.Infrastructure.Services
 
             return ApiResponse<ProcurementDashboardDto>.Ok(dashboardDto, "Lấy dữ liệu thống kê tổng hợp (Dashboard) thành công.");
         }
+
+        public async Task<byte[]> ExportContractorsCsvAsync()
+        {
+            var contractors = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .Include(c => c.User)
+                .OrderBy(c => c.Id)
+                .AsNoTracking()
+                .ToListAsync();
+
+            using var memoryStream = new MemoryStream();
+            using (var writer = new StreamWriter(memoryStream, new System.Text.UTF8Encoding(true)))
+            {
+                // Tiêu đề cột
+                await writer.WriteLineAsync("ID,Tên doanh nghiệp,Mã số thuế,Địa chỉ,Người đại diện,Email,Số điện thoại,Điểm uy tín (sao),Trạng thái thẩm định,Ngày tạo");
+
+                foreach (var c in contractors)
+                {
+                    var line = string.Join(",",
+                        EscapeCsv(c.Id),
+                        EscapeCsv(c.CompanyName),
+                        EscapeCsv(c.TaxCode),
+                        EscapeCsv(c.Address),
+                        EscapeCsv(c.User?.FullName),
+                        EscapeCsv(c.User?.Email),
+                        EscapeCsv(c.User?.Phone),
+                        EscapeCsv(c.Rating),
+                        EscapeCsv(c.VerificationStatus),
+                        EscapeCsv(c.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"))
+                    );
+                    await writer.WriteLineAsync(line);
+                }
+            }
+
+            return memoryStream.ToArray();
+        }
+
+        public async Task<byte[]> ExportContractsCsvAsync()
+        {
+            var contracts = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.BidPackage)
+                .Include(c => c.Contractor)
+                .OrderByDescending(c => c.CreatedAt)
+                .AsNoTracking()
+                .ToListAsync();
+
+            using var memoryStream = new MemoryStream();
+            using (var writer = new StreamWriter(memoryStream, new System.Text.UTF8Encoding(true)))
+            {
+                // Tiêu đề cột
+                await writer.WriteLineAsync("ID,Số hợp đồng,Mã gói thầu,Tên gói thầu,Nhà thầu thi công,Mã số thuế,Giá trị hợp đồng (VNĐ),Ngân sách dự toán (VNĐ),Tiết kiệm (VNĐ),Ngày bắt đầu,Ngày kết thúc,Trạng thái,Ngày ký");
+
+                foreach (var c in contracts)
+                {
+                    var budget = c.BidPackage?.Budget ?? 0;
+                    var val = c.Value;
+                    var savings = budget > val ? budget - val : 0;
+
+                    var line = string.Join(",",
+                        EscapeCsv(c.Id),
+                        EscapeCsv(c.ContractNumber),
+                        EscapeCsv(c.BidPackage?.Code),
+                        EscapeCsv(c.BidPackage?.Name),
+                        EscapeCsv(c.Contractor?.CompanyName),
+                        EscapeCsv(c.Contractor?.TaxCode),
+                        EscapeCsv(val.ToString("0.##")),
+                        EscapeCsv(budget.ToString("0.##")),
+                        EscapeCsv(savings.ToString("0.##")),
+                        EscapeCsv(c.StartDate.ToString("yyyy-MM-dd")),
+                        EscapeCsv(c.EndDate.ToString("yyyy-MM-dd")),
+                        EscapeCsv(c.Status.ToString()),
+                        EscapeCsv(c.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"))
+                    );
+                    await writer.WriteLineAsync(line);
+                }
+            }
+
+            return memoryStream.ToArray();
+        }
+
+        private static string EscapeCsv(object? value)
+        {
+            if (value == null) return string.Empty;
+            var str = value.ToString() ?? string.Empty;
+            if (str.Contains(',') || str.Contains('"') || str.Contains('\n') || str.Contains('\r'))
+            {
+                return $"\"{str.Replace("\"", "\"\"")}\"";
+            }
+            return str;
+        }
     }
 }

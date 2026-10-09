@@ -33,8 +33,13 @@ export const evaluationApi = {
     return await axiosClient.get(`/evaluations/submissions/${submissionId}/scores`);
   },
 
-  finalizeEvaluation: async (packageId, selectedSubmissionId) => {
-    return await axiosClient.post(`/evaluations/packages/${packageId}/finalize?selectedSubmissionId=${selectedSubmissionId}`);
+  finalizeEvaluation: async (packageId, data) => {
+    if (typeof data === 'object') {
+      return await axiosClient.post(`/evaluations/packages/${packageId}/finalize`, data);
+    }
+    return await axiosClient.post(`/evaluations/packages/${packageId}/finalize`, {
+      selectedSubmissionId: data,
+    });
   },
 
   getAwardedBid: async (packageId) => {

@@ -25,6 +25,9 @@ namespace ProcurementSystem.Infrastructure.Entities
         [MaxLength(50)]
         public string Status { get; set; } = "Submitted"; // Submitted, Evaluated, Selected, Rejected
 
+        [MaxLength(1000)]
+        public string? SelectionReason { get; set; }
+
         // Navigation properties
         [ForeignKey("BidPackageId")]
         public virtual BidPackage BidPackage { get; set; } = null!;

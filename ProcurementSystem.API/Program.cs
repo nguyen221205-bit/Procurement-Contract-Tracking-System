@@ -10,13 +10,15 @@ using ProcurementSystem.Infrastructure.Data;
 using ProcurementSystem.Infrastructure.Repositories;
 using ProcurementSystem.Infrastructure.Seeders;
 using ProcurementSystem.Infrastructure.Services;
+using ProcurementSystem.API.BackgroundServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ==========================================
-// 1. DATABASE - MySQL + EF Core
+// 1. DATABASE - Microsoft SQL Server + EF Core
 // ==========================================
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -38,6 +40,8 @@ builder.Services.AddScoped<IPdfSecurityService, PdfSecurityService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IContractorAuthService, ContractorAuthService>();
 builder.Services.AddScoped<IContractorService, ContractorService>();
+builder.Services.AddScoped<IProcuringEntityAuthService, ProcuringEntityAuthService>();
+builder.Services.AddScoped<IProcuringEntityService, ProcuringEntityService>();
 
 // User Management Services
 builder.Services.AddScoped<IUserService, UserService>();
@@ -50,6 +54,7 @@ builder.Services.AddScoped<IBidSubmissionService, BidSubmissionService>();
 
 // Evaluation & Scoring Services
 builder.Services.AddScoped<IEvaluationService, EvaluationService>();
+builder.Services.AddScoped<IEvaluatorProposalService, EvaluatorProposalService>();
 
 // Contract Services
 builder.Services.AddScoped<IContractService, ContractService>();
@@ -57,11 +62,19 @@ builder.Services.AddScoped<IContractService, ContractService>();
 // Management & Reporting Services
 builder.Services.AddScoped<IReportService, ReportService>();
 
+// Audit & Notification Services
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// Background Workers (Cronjob cảnh báo hạn 1 giờ/lần + startup)
+builder.Services.AddHostedService<ContractExpiryNotificationWorker>();
+
 // ==========================================
 // 3. AUTHENTICATION - JWT
 // ==========================================
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"]
+var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY")
+    ?? jwtSettings["SecretKey"]
     ?? throw new InvalidOperationException("JWT SecretKey not configured.");
 
 builder.Services.AddAuthentication(options =>

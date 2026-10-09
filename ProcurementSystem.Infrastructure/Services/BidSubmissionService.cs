@@ -70,13 +70,21 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidSubmissionDto>.Fail("Tài khoản của bạn chưa liên kết với hồ sơ nhà thầu.");
             }
 
+            if (contractor.VerificationStatus != "Approved")
+            {
+                var reasonMessage = contractor.VerificationStatus == "Pending"
+                    ? "Tài khoản doanh nghiệp của bạn đang trong trạng thái chờ Quản trị viên (Admin) thẩm định Giấy phép kinh doanh. Vui lòng liên hệ Quản trị viên hệ thống hoặc quay lại sau khi tài khoản được kích hoạt."
+                    : "Hồ sơ đăng ký doanh nghiệp của bạn đã bị từ chối phê duyệt. Vui lòng liên hệ Quản trị viên hệ thống để được hỗ trợ.";
+                return ApiResponse<BidSubmissionDto>.Fail(reasonMessage);
+            }
+
             // 5. Kiểm tra nộp trùng hoặc nộp lại (P2-4)
             var existingSubmission = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
                 .Include(s => s.SubmissionFiles)
                 .FirstOrDefaultAsync(bs => bs.BidPackageId == bidPackageId && bs.ContractorId == contractor.Id);
 
-            if (existingSubmission != null && existingSubmission.Status != "Withdrawn")
+            if (existingSubmission != null && existingSubmission.Status != BidSubmissionStatus.Withdrawn)
             {
                 return ApiResponse<BidSubmissionDto>.Fail("Bạn đã nộp hồ sơ dự thầu cho gói thầu này rồi.");
             }
@@ -109,7 +117,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     submission = existingSubmission;
                     submission.BidPrice = bidPrice;
                     submission.SubmittedAt = DateTime.UtcNow;
-                    submission.Status = "Submitted";
+                    submission.Status = BidSubmissionStatus.Submitted;
                     submission.TotalScore = null;
                     submission.Rank = null;
                     _unitOfWork.Repository<BidSubmission>().Update(submission);
@@ -129,7 +137,7 @@ namespace ProcurementSystem.Infrastructure.Services
                         ContractorId = contractor.Id,
                         SubmittedAt = DateTime.UtcNow,
                         BidPrice = bidPrice,
-                        Status = "Submitted"
+                        Status = BidSubmissionStatus.Submitted
                     };
 
                     await _unitOfWork.Repository<BidSubmission>().AddAsync(submission);
@@ -216,7 +224,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 if (contractor == null || contractor.Id != submission.ContractorId)
                 {
-                    return ApiResponse<BidSubmissionDto>.Fail("Bạn không có quyền xem hồ sơ dự thầu này.");
+                    return ApiResponse<BidSubmissionDto>.Forbidden("Bạn không có quyền xem hồ sơ dự thầu này.");
                 }
 
                 return ApiResponse<BidSubmissionDto>.Ok(MapToDto(submission));
@@ -232,7 +240,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 if (contractor == null || contractor.Id != submission.ContractorId)
                 {
-                    return ApiResponse<BidSubmissionDto>.Fail("Bạn không có quyền xem hồ sơ dự thầu này.");
+                    return ApiResponse<BidSubmissionDto>.Forbidden("Bạn không có quyền xem hồ sơ dự thầu này.");
                 }
             }
 
@@ -363,7 +371,7 @@ namespace ProcurementSystem.Infrastructure.Services
             // Kiểm tra quyền sở hữu
             if (submission.ContractorId != contractor.Id)
             {
-                return ApiResponse<bool>.Fail("Bạn không có quyền rút hồ sơ dự thầu này.");
+                return ApiResponse<bool>.Forbidden("Bạn không có quyền rút hồ sơ dự thầu này.");
             }
 
             // Kiểm tra gói thầu còn Open và chưa hết hạn
@@ -378,7 +386,7 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // P2-4: Chuyển sang Soft Delete để bảo toàn chứng cứ kiểm toán đấu thầu
-            submission.Status = "Withdrawn";
+            submission.Status = BidSubmissionStatus.Withdrawn;
             _unitOfWork.Repository<BidSubmission>().Update(submission);
             await _unitOfWork.SaveChangesAsync();
 
@@ -468,7 +476,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 if (contractor == null || contractor.Id != file.BidSubmission.ContractorId)
                 {
-                    return ApiResponse<SubmissionFileDownloadDto>.Fail(
+                    return ApiResponse<SubmissionFileDownloadDto>.Forbidden(
                         "Bạn không có quyền tải tệp hồ sơ của nhà thầu khác.");
                 }
             }

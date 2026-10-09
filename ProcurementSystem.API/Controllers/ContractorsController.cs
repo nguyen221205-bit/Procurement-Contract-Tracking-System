@@ -180,6 +180,95 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
+        /// Thẩm định và phê duyệt hoặc từ chối hồ sơ năng lực nhà thầu
+        /// </summary>
+        /// <param name="id">Mã định danh duy nhất của nhà thầu.</param>
+        /// <param name="request">Thông tin thẩm định (True: Duyệt, False: Từ chối kèm ghi chú).</param>
+        /// <remarks>Quyền hạn: Admin (Chỉ Quản trị viên hệ thống có quyền thẩm định).</remarks>
+        /// <response code="200">Thẩm định hồ sơ nhà thầu thành công.</response>
+        /// <response code="400">Dữ liệu yêu cầu không hợp lệ.</response>
+        /// <response code="401">Chưa xác thực danh tính.</response>
+        /// <response code="403">Từ chối truy cập (Yêu cầu vai trò Admin).</response>
+        /// <response code="404">Không tìm thấy nhà thầu tương ứng.</response>
+        [HttpPatch("{id:int}/verify")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<ApiResponse<ContractorDto>>> VerifyContractor(
+            int id,
+            [FromBody] VerifyContractorRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(ApiResponse<ContractorDto>.Fail(errors));
+            }
+
+            var reviewerId = GetCurrentUserId() ?? 0;
+            var result = await _contractorService.VerifyContractorAsync(id, request, reviewerId);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Tải về hoặc xem trực tuyến tệp Giấy phép đăng ký kinh doanh (GPKD) của nhà thầu
+        /// </summary>
+        /// <param name="id">Mã định danh duy nhất của nhà thầu.</param>
+        /// <remarks>Quyền hạn: Admin.</remarks>
+        /// <response code="200">Truy xuất tệp GPKD thành công.</response>
+        /// <response code="401">Chưa xác thực danh tính.</response>
+        /// <response code="403">Từ chối truy cập (Yêu cầu vai trò Admin).</response>
+        /// <response code="404">Không tìm thấy nhà thầu hoặc tệp giấy phép kinh doanh.</response>
+        [HttpGet("{id:int}/license-file")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DownloadLicenseFile(int id)
+        {
+            var contractorResult = await _contractorService.GetContractorByIdAsync(id);
+            if (!contractorResult.Success || contractorResult.Data == null)
+            {
+                return NotFound(ApiResponse<string>.Fail("Không tìm thấy thông tin nhà thầu."));
+            }
+
+            var contractor = contractorResult.Data;
+            if (string.IsNullOrWhiteSpace(contractor.BusinessLicenseFile))
+            {
+                return NotFound(ApiResponse<string>.Fail("Nhà thầu chưa tải lên tệp Giấy phép đăng ký kinh doanh."));
+            }
+
+            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), contractor.BusinessLicenseFile.TrimStart('/'));
+            if (!System.IO.File.Exists(physicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp Giấy phép đăng ký kinh doanh không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            var fileName = Path.GetFileName(physicalPath);
+            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var contentType = ext switch
+            {
+                ".pdf" => "application/pdf",
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".doc" => "application/msword",
+                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                _ => "application/octet-stream"
+            };
+
+            return PhysicalFile(physicalPath, contentType, fileName);
+        }
+
+        /// <summary>
         /// Tự động tính toán lại điểm đánh giá uy tín năng lực nhà thầu dựa trên lịch sử hợp đồng và nghiệm thu (P2-11)
         /// </summary>
         /// <param name="id">Mã định danh duy nhất của nhà thầu.</param>

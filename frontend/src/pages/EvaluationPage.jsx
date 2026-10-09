@@ -111,10 +111,13 @@ export const EvaluationPage = () => {
   };
 
   // Handle finalize submission
-  const handleConfirmFinalize = async (submissionId) => {
+  const handleConfirmFinalize = async (submissionId, decisionReason) => {
     try {
       setFinalizing(true);
-      const res = await evaluationApi.finalizeEvaluation(packageId, submissionId);
+      const res = await evaluationApi.finalizeEvaluation(packageId, {
+        selectedSubmissionId: submissionId,
+        decisionReason: decisionReason || null,
+      });
       if (res?.success) {
         toast.success('Phê duyệt kết quả trúng thầu thành công!');
         setIsFinalizeModalOpen(false);

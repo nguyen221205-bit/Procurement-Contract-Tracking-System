@@ -91,14 +91,18 @@ ProcurementSystem.sln
 - Công cụ quản lý CSDL (SQL Server Management Studio hoặc Azure Data Studio).
 - Visual Studio 2022 / VS Code hoặc Command Line (PowerShell/CMD).
 
-### 2. Cấu hình Chuỗi Kết Nối CSDL (Connection String)
-Mở tệp `ProcurementSystem.API/appsettings.json` và cập nhật thông tin máy chủ SQL Server của bạn:
+### 2. Cấu hình Chuỗi Kết Nối & Bảo Mật (Connection String & Secrets)
+Bạn có thể cấu hình nhanh thông qua tệp `ProcurementSystem.API/appsettings.json` (sử dụng tệp mẫu tham khảo `appsettings.Example.json`):
 
 ```json
 "ConnectionStrings": {
   "DefaultConnection": "Server=localhost;Database=procurement_db;User Id=sa;Password=YOUR_STRONG_PASSWORD;TrustServerCertificate=True;MultipleActiveResultSets=True;"
 }
 ```
+
+> **Khuyến nghị bảo mật môi trường Production (P3-1)**: Hệ thống hỗ trợ nạp tự động qua biến môi trường (Environment Variables) để cách ly thông tin nhạy cảm:
+> - `DB_CONNECTION_STRING`: Chuỗi kết nối đến Microsoft SQL Server.
+> - `JWT_SECRET_KEY`: Khóa bí mật ký JWT Token (tối thiểu 32 ký tự).
 
 ### 3. Cập nhật Cơ Sở Dữ Liệu (Database Migration)
 Mở PowerShell tại thư mục dự án và thực thi lệnh cập nhật cấu trúc bảng:
@@ -189,10 +193,12 @@ python scripts/testing/test_load_concurrency.py
    - Gọi `POST /api/evaluations/submissions/{id}/scores` chấm điểm chi tiết theo từng tiêu chí (thang điểm 0 - 100).
 7. **Bước 7 (Xem Bảng Xếp hạng Điểm Trọng số)**:
    - Gọi `GET /api/evaluations/packages/{id}/summary` xem kết quả tính toán tự động điểm tổng hợp có trọng số và thứ hạng của các nhà thầu.
-8. **Bước 8 (Phê duyệt Kết quả Trúng thầu)**:
-   - Sử dụng token Admin gọi `POST /api/evaluations/packages/{id}/finalize?selectedSubmissionId={subId}` để trao thầu cho nhà thầu xếp hạng 1. Hồ sơ chuyển sang `Selected`, gói thầu chuyển sang `Contracted` và khóa cứng cỗ máy trạng thái.
-9. **Bước 9 (Bàn giao Hợp đồng & Giám sát Dashboard)**:
-   - Gọi `GET /api/evaluations/packages/{id}/awarded-bid` để xác nhận cờ sẵn sàng lập hợp đồng (`isReadyForContract: true`).
+8. **Bước 8 (Phê duyệt Kết quả Trúng thầu - Điều 61 Luật Đấu thầu 2023)**:
+   - Sử dụng token Admin gọi `POST /api/evaluations/packages/{id}/finalize?selectedSubmissionId={subId}` để trao thầu cho nhà thầu trúng thầu (xếp hạng 1, hoặc kèm lý do giải trình nếu chọn hạng khác). Hồ sơ chuyển sang `Selected`, gói thầu tự động chuyển sang `Awarded` (Đã trao thầu).
+9. **Bước 9 (Ký kết Hợp đồng & Giám sát Vòng đời)**:
+   - Gọi `GET /api/evaluations/packages/{id}/awarded-bid` xác nhận thông tin nhà thầu trúng thầu (`isReadyForContract: true`).
+   - Gọi `POST /api/contracts` tạo hợp đồng kinh tế (hệ thống tự động sinh số hiệu chuẩn `HD-{Năm}-{MãGói}-{STT}` nếu để trống, và kiểm soát giá trị hợp đồng $\le$ giá trúng thầu).
+   - Kích hoạt hợp đồng `Draft -> Active` (yêu cầu đính kèm file scan hợp đồng PDF và tổng tỷ lệ thanh toán các mốc đạt 100%). Khi hợp đồng chính thức có hiệu lực (`Active`), hệ thống tự động cập nhật gói thầu sang `Contracted`.
    - Gọi `GET /api/reports/dashboard` để quan sát số liệu KPI tài chính, tỷ lệ tiết kiệm và tiến độ giải ngân được cập nhật theo thời gian thực.
 
 ---

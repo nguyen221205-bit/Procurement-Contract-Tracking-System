@@ -65,8 +65,8 @@ Write-Host "`n[STEP 5] Contractor 1 submits Bid with Proposal file..." -Foregrou
 $dummyFilePath = "$env:TEMP\de_xuat_ky_thuat_erp.pdf"
 [System.IO.File]::WriteAllText($dummyFilePath, "%PDF-1.4 dummy ERP proposal content")
 
-# Use curl.exe for multipart/form-data upload
-$curlCmd = "curl.exe -s -X POST `"$baseUrl/api/bid-packages/$pkgId/submissions`" -H `"Authorization: Bearer $contToken`" -F `"Files=@$dummyFilePath`" -F `"FileTypes=0`""
+# Use curl.exe for multipart/form-data upload (P2-5: bat buoc Quotation va Capability)
+$curlCmd = "curl.exe -s -X POST `"$baseUrl/api/bid-packages/$pkgId/submissions`" -H `"Authorization: Bearer $contToken`" -F `"bidPrice=1150000000`" -F `"Files=@$dummyFilePath`" -F `"FileTypes=Quotation`" -F `"Files=@$dummyFilePath`" -F `"FileTypes=Capability`""
 $subJson = Invoke-Expression $curlCmd
 $subRes = $subJson | ConvertFrom-Json
 if (-not $subRes.success) {
@@ -77,24 +77,40 @@ Write-Host "  -> Bid Submission created! Submission ID: $subId, Status: $($subRe
 
 # Step 6: Close Bidding & Set to Evaluating
 Write-Host "`n[STEP 6] Admin transitions status: Open -> Closed -> Evaluating..." -ForegroundColor Yellow
-$closeBody = @{ newStatus = 1 } | ConvertTo-Json
+$closeBody = @{ newStatus = 1; reason = "Dong thau truoc thoi han de to chuc cham diem" } | ConvertTo-Json
 $closeRes = Invoke-RestMethod -Uri "$baseUrl/api/bid-packages/$pkgId/status" -Method Put -Body $closeBody -Headers $adminHeaders -ContentType "application/json"
 Write-Host "  -> Status transitioned to: $($closeRes.data.status)" -ForegroundColor Green
 
-$evalBody = @{ newStatus = 2 } | ConvertTo-Json
+# Phân công Tổ chuyên gia (tối thiểu 3 giám khảo số lẻ theo Luật Đấu thầu P1-3)
+$evalUsersRes = Invoke-RestMethod -Uri "$baseUrl/api/users?Role=Evaluator" -Method Get -Headers $adminHeaders
+$evalUserIds = $evalUsersRes.data.items | Select-Object -ExpandProperty id -First 3
+foreach ($eId in $evalUserIds) {
+    $assignBody = @{ evaluatorId = $eId } | ConvertTo-Json
+    $null = Invoke-RestMethod -Uri "$baseUrl/api/bid-packages/$pkgId/evaluators" -Method Post -Body $assignBody -Headers $adminHeaders -ContentType "application/json"
+}
+Write-Host "  -> Assigned 3 Evaluators to Package: $($evalUserIds -join ', ')" -ForegroundColor Green
+
+$evalBody = @{ newStatus = 2; reason = "Bat dau giai doan cham diem danh gia" } | ConvertTo-Json
 $evalRes = Invoke-RestMethod -Uri "$baseUrl/api/bid-packages/$pkgId/status" -Method Put -Body $evalBody -Headers $adminHeaders -ContentType "application/json"
 Write-Host "  -> Status transitioned to: $($evalRes.data.status)" -ForegroundColor Green
 
-# Step 7: Evaluator Scores the Submission
-Write-Host "`n[STEP 7] Evaluator scores submission (Crit 1: 95, Crit 2: 90)..." -ForegroundColor Yellow
-$scoreBody = @{
-    scores = @(
-        @{ criteriaId = $crit1Id; score = 95; comment = "Giai phap kien truc microservices rat tot" },
-        @{ criteriaId = $crit2Id; score = 90; comment = "Tien do 6 thang kha thi" }
-    )
-} | ConvertTo-Json
-$scoreRes = Invoke-RestMethod -Uri "$baseUrl/api/evaluations/submissions/$subId/scores" -Method Post -Body $scoreBody -Headers $adminHeaders -ContentType "application/json"
-Write-Host "  -> Submission scored successfully!" -ForegroundColor Green
+# Step 7: Evaluators Score the Submission (100% giam khao cham du tieu chi theo P0-3)
+Write-Host "`n[STEP 7] 3 Evaluators score submission (Crit 1: 95, Crit 2: 90)..." -ForegroundColor Yellow
+$evalEmails = @("evaluator@procurement.com", "evaluator2@procurement.com", "evaluator3@procurement.com")
+foreach ($evalEmail in $evalEmails) {
+    $eLoginBody = @{ email = $evalEmail; password = "Admin@123" } | ConvertTo-Json
+    $eLoginRes = Invoke-RestMethod -Uri "$baseUrl/api/auth/login" -Method Post -Body $eLoginBody -ContentType "application/json"
+    $eHeaders = @{ Authorization = "Bearer $($eLoginRes.data.token)" }
+
+    $scoreBody = @{
+        scores = @(
+            @{ criteriaId = $crit1Id; score = 95; comment = "Giai phap kien truc microservices rat tot" },
+            @{ criteriaId = $crit2Id; score = 90; comment = "Tien do 6 thang kha thi" }
+        )
+    } | ConvertTo-Json
+    $null = Invoke-RestMethod -Uri "$baseUrl/api/evaluations/submissions/$subId/scores" -Method Post -Body $scoreBody -Headers $eHeaders -ContentType "application/json"
+}
+Write-Host "  -> All 3 Evaluators scored submission successfully!" -ForegroundColor Green
 
 # Step 8: Check Evaluation Summary & Rankings
 Write-Host "`n[STEP 8] Admin checks Evaluation Summary & Rankings..." -ForegroundColor Yellow

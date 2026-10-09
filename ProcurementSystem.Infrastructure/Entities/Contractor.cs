@@ -25,6 +25,9 @@ namespace ProcurementSystem.Infrastructure.Entities
         [Column(TypeName = "decimal(5,2)")]
         public decimal Rating { get; set; } = 0;
 
+        [MaxLength(50)]
+        public string VerificationStatus { get; set; } = "Approved"; // Pending, Approved, Rejected
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation properties

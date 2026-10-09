@@ -7,7 +7,10 @@ import {
   FileText,
   FileCheck,
   Scale,
-  Users
+  Users,
+  Building2,
+  Award,
+  Briefcase,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -34,6 +37,24 @@ const MENU_ITEMS = [
     path: '/evaluation',
     icon: Scale,
     roles: [ROLES.ADMIN, ROLES.PROCUREMENT, ROLES.EVALUATOR],
+  },
+  {
+    name: 'Đề xuất Giám khảo',
+    path: '/evaluator-proposals',
+    icon: Award,
+    roles: [ROLES.ADMIN, ROLES.PROCUREMENT],
+  },
+  {
+    name: 'Nhà thầu',
+    path: '/contractors',
+    icon: Building2,
+    roles: [ROLES.ADMIN],
+  },
+  {
+    name: 'Bên mời thầu',
+    path: '/procuring-entities',
+    icon: Briefcase,
+    roles: [ROLES.ADMIN],
   },
   {
     name: 'Người dùng',

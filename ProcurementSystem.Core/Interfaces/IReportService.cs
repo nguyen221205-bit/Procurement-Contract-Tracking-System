@@ -10,5 +10,15 @@ namespace ProcurementSystem.Core.Interfaces
         /// Tiến độ gói thầu, hiệu quả tài chính đấu thầu, tổng giá trị hợp đồng và tiến độ giải ngân mốc thanh toán
         /// </summary>
         Task<ApiResponse<ProcurementDashboardDto>> GetDashboardMetricsAsync();
+
+        /// <summary>
+        /// Xuất danh sách toàn bộ nhà thầu ra tệp CSV (UTF-8 BOM hỗ trợ mở trực tiếp bằng Excel tiếng Việt)
+        /// </summary>
+        Task<byte[]> ExportContractorsCsvAsync();
+
+        /// <summary>
+        /// Xuất danh sách toàn bộ hợp đồng ra tệp CSV (UTF-8 BOM hỗ trợ mở trực tiếp bằng Excel tiếng Việt)
+        /// </summary>
+        Task<byte[]> ExportContractsCsvAsync();
     }
 }

@@ -31,6 +31,8 @@ namespace ProcurementSystem.Core.DTOs.BidSubmission
         public int? Rank { get; set; }
         /// <summary>Trạng thái xử lý hồ sơ.</summary>
         public string Status { get; set; } = string.Empty;
+        /// <summary>Lý do/căn cứ phê duyệt lựa chọn nhà thầu trúng thầu.</summary>
+        public string? SelectionReason { get; set; }
 
         /// <summary>Danh sách file tài liệu đính kèm.</summary>
         public List<SubmissionFileDto> Files { get; set; } = new();

@@ -142,7 +142,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 if (contractor == null || contractor.Id != contract.ContractorId)
                 {
-                    return ApiResponse<ContractDto>.Fail("Bạn không có quyền xem hợp đồng này.");
+                    return ApiResponse<ContractDto>.Forbidden("Bạn không có quyền xem hợp đồng này.");
                 }
             }
 
@@ -168,7 +168,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Include(s => s.Contractor)
                     .ThenInclude(c => c.User)
                 .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.BidPackageId == packageId && s.Status == "Selected");
+                .FirstOrDefaultAsync(s => s.BidPackageId == packageId && s.Status == BidSubmissionStatus.Selected);
 
             if (awardedSubmission == null)
             {
@@ -246,7 +246,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 .FirstOrDefaultAsync(bs =>
                     bs.BidPackageId == request.BidPackageId &&
                     bs.ContractorId == request.ContractorId &&
-                    bs.Status == "Selected");
+                    bs.Status == BidSubmissionStatus.Selected);
 
             if (awardedSubmission == null)
             {
@@ -271,14 +271,25 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<ContractDto>.Fail("Ngày kết thúc phải sau ngày bắt đầu.");
             }
 
-            // 5. Kiểm soát dự toán ngân sách
+            // 5. Kiểm soát dự toán ngân sách và giá trúng thầu (Điều 64 Luật Đấu thầu 2023)
             if (request.Value > bidPackage.Budget)
             {
                 return ApiResponse<ContractDto>.Fail(
                     $"Giá trị hợp đồng ({request.Value:N0} VNĐ) không được vượt quá ngân sách dự toán của gói thầu ({bidPackage.Budget:N0} VNĐ).");
             }
 
-            // 6. Tự động sinh số hợp đồng hoặc kiểm tra trùng lặp (P2-10)
+            var winningSubmission = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.BidPackageId == bidPackage.Id && s.Status == BidSubmissionStatus.Selected);
+
+            if (winningSubmission?.BidPrice.HasValue == true && request.Value > winningSubmission.BidPrice.Value)
+            {
+                return ApiResponse<ContractDto>.Fail(
+                    $"Căn cứ Điều 64 Luật Đấu thầu 2023: Giá trị hợp đồng ({request.Value:N0} VNĐ) không được vượt quá giá trúng thầu đã phê duyệt ({winningSubmission.BidPrice.Value:N0} VNĐ).");
+            }
+
+            // 6. Tự động sinh số hợp đồng hoặc kiểm tra trùng lặp (P2-6)
             if (string.IsNullOrWhiteSpace(request.ContractNumber))
             {
                 var year = DateTime.UtcNow.Year;
@@ -361,7 +372,7 @@ namespace ProcurementSystem.Infrastructure.Services
             var isAdmin = userRoles.Contains("Admin");
             if (!isAdmin && contract.BidPackage.CreatedBy != userId)
             {
-                return ApiResponse<ContractDto>.Fail("Bạn chỉ có quyền quản trị hợp đồng thuộc gói thầu do chính mình phụ trách.");
+                return ApiResponse<ContractDto>.Forbidden("Bạn chỉ có quyền quản trị hợp đồng thuộc gói thầu do chính mình phụ trách.");
             }
 
             // Chỉ cho phép sửa khi hợp đồng đang ở trạng thái Draft
@@ -423,7 +434,7 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 { ContractStatus.Draft, new List<ContractStatus> { ContractStatus.Active } },
                 { ContractStatus.Active, new List<ContractStatus> { ContractStatus.Completed, ContractStatus.Terminated } },
-                { ContractStatus.Completed, new List<ContractStatus> { ContractStatus.Active } },
+                { ContractStatus.Completed, new List<ContractStatus>() }, // Cấm Completed -> Active (P1-4)
                 { ContractStatus.Terminated, new List<ContractStatus>() }
             };
 
@@ -431,6 +442,32 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 return ApiResponse<ContractDto>.Fail(
                     $"Không thể chuyển hợp đồng từ trạng thái '{contract.Status}' sang '{request.NewStatus}'.");
+            }
+
+            // Nghiệp vụ P1-4: Kích hoạt hợp đồng (Draft -> Active) bắt buộc thỏa mãn đầy đủ điều kiện pháp lý
+            if (contract.Status == ContractStatus.Draft && request.NewStatus == ContractStatus.Active)
+            {
+                // 1. Bắt buộc có tệp scan hợp đồng đã ký
+                if (string.IsNullOrWhiteSpace(contract.ScannedFilePath))
+                {
+                    return ApiResponse<ContractDto>.Fail(
+                        "Căn cứ Điều 65 Luật Đấu thầu: Hợp đồng phải được tải lên bản scan có chữ ký, con dấu pháp lý trước khi kích hoạt có hiệu lực.");
+                }
+
+                // 2. Bắt buộc có mốc thanh toán và tổng mốc phải đúng bằng 100% giá trị hợp đồng
+                var milestones = contract.Milestones?.ToList() ?? new List<ContractMilestone>();
+                if (!milestones.Any())
+                {
+                    return ApiResponse<ContractDto>.Fail(
+                        "Hợp đồng chưa thiết lập các mốc thanh toán. Vui lòng tạo kế hoạch mốc thanh toán trước khi kích hoạt.");
+                }
+
+                var totalMilestoneAmount = milestones.Sum(m => m.Amount);
+                if (totalMilestoneAmount != contract.Value)
+                {
+                    return ApiResponse<ContractDto>.Fail(
+                        $"Tổng giá trị các mốc thanh toán ({totalMilestoneAmount:N0} VNĐ) phải đúng bằng 100% giá trị hợp đồng ({contract.Value:N0} VNĐ).");
+                }
             }
 
             // Nghiệp vụ: Chỉ cho phép chuyển sang Completed khi đã nghiệm thu và giải ngân đủ 100% giá trị hợp đồng
@@ -738,7 +775,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 if (currentContractor == null || currentContractor.Id != contractorId)
                 {
-                    return ApiResponse<List<ContractSummaryDto>>.Fail(
+                    return ApiResponse<List<ContractSummaryDto>>.Forbidden(
                         "Bạn không có quyền xem lịch sử hợp đồng của nhà thầu khác.");
                 }
             }
@@ -813,7 +850,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
             if (contractor == null || contractor.Id != contract.ContractorId)
             {
-                return ApiResponse<ProgressUpdateDto>.Fail(
+                return ApiResponse<ProgressUpdateDto>.Forbidden(
                     "Bạn không có quyền cập nhật tiến độ cho hợp đồng này.");
             }
 
@@ -822,6 +859,28 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 return ApiResponse<ProgressUpdateDto>.Fail(
                     "Chỉ có thể cập nhật tiến độ cho hợp đồng đang ở trạng thái Hoạt động (Active).");
+            }
+
+            // P1-5: Chống lỗi nộp trùng tuần (DbUpdateException -> HTTP 500)
+            var isDuplicateWeek = await _unitOfWork.Repository<ProgressUpdate>()
+                .ExistsAsync(p => p.ContractId == contractId && p.WeekNumber == request.WeekNumber);
+            if (isDuplicateWeek)
+            {
+                return ApiResponse<ProgressUpdateDto>.Fail(
+                    $"Hợp đồng đã tồn tại báo cáo tiến độ cho Tuần {request.WeekNumber}. Vui lòng không nộp trùng tuần.");
+            }
+
+            // P1-5: Kiểm tra % hoàn thành không được giảm sút so với tuần trước
+            var lastProgress = await _unitOfWork.Repository<ProgressUpdate>()
+                .Query()
+                .Where(p => p.ContractId == contractId)
+                .OrderByDescending(p => p.WeekNumber)
+                .FirstOrDefaultAsync();
+
+            if (lastProgress != null && request.CompletionPercent < lastProgress.CompletionPercent)
+            {
+                return ApiResponse<ProgressUpdateDto>.Fail(
+                    $"Tỷ lệ hoàn thành tuần mới ({request.CompletionPercent}%) không được nhỏ hơn tuần trước ({lastProgress.CompletionPercent}%).");
             }
 
             var progressUpdate = new ProgressUpdate
@@ -884,6 +943,13 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 return ApiResponse<MilestoneAcceptanceDto>.Fail(
                     "Chỉ có thể nghiệm thu mốc thanh toán khi hợp đồng đang ở trạng thái Hoạt động (Active).");
+            }
+
+            // P1-5: Chống duyệt lặp mốc thanh toán đã hoàn thành
+            if (milestone.Status == MilestoneStatus.Completed)
+            {
+                return ApiResponse<MilestoneAcceptanceDto>.Fail(
+                    "Mốc thanh toán này đã được nghiệm thu hoàn thành trước đó. Không thể thực hiện nghiệm thu lại.");
             }
 
             var approver = await _unitOfWork.Repository<User>()

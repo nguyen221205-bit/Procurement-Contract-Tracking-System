@@ -20,11 +20,10 @@ namespace ProcurementSystem.Core.DTOs.Contract
         public int ContractorId { get; set; }
 
         /// <summary>
-        /// Số hiệu hợp đồng (Nếu để trống hệ thống sẽ tự sinh theo quy tắc: HD-{Năm}-{MãGói}-{STT})
+        /// Số hiệu hợp đồng (Nếu để trống hệ thống sẽ tự động sinh theo quy tắc: HD-{Năm}-{MãGói}-{STT:D3})
         /// </summary>
-        [Required(ErrorMessage = "Số hợp đồng là bắt buộc.")]
         [MaxLength(50, ErrorMessage = "Số hợp đồng không được vượt quá 50 ký tự.")]
-        public string ContractNumber { get; set; } = string.Empty;
+        public string? ContractNumber { get; set; }
 
         /// <summary>
         /// Giá trị hợp đồng (VNĐ), không được vượt quá ngân sách dự toán của gói thầu

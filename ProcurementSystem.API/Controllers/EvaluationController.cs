@@ -177,7 +177,9 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ApiResponse<List<EvaluationScoreDto>>>> GetScoresBySubmission(int submissionId)
         {
-            var result = await _evaluationService.GetScoresBySubmissionAsync(submissionId);
+            var currentUserId = GetCurrentUserId();
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _evaluationService.GetScoresBySubmissionAsync(submissionId, currentUserId, isInternalStaff);
             return Ok(result);
         }
 
@@ -266,7 +268,8 @@ namespace ProcurementSystem.API.Controllers
         /// Gói thầu sẵn sàng chuyển sang giai đoạn ký kết Hợp đồng.
         /// </remarks>
         /// <param name="packageId">Định danh gói thầu</param>
-        /// <param name="selectedSubmissionId">Mã hồ sơ dự thầu được chọn trúng thầu</param>
+        /// <param name="request">Dữ liệu phê duyệt gồm SelectedSubmissionId và DecisionReason (bắt buộc nếu Rank != 1)</param>
+        /// <param name="selectedSubmissionId">Fallback query param</param>
         /// <response code="200">Phê duyệt kết quả trúng thầu thành công.</response>
         /// <response code="400">Hồ sơ chưa hoàn tất chấm điểm hoặc gói thầu đã bị khóa.</response>
         /// <response code="401">Chưa đăng nhập.</response>
@@ -277,12 +280,26 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
-        public async Task<ActionResult<ApiResponse<bool>>> FinalizeEvaluation(int packageId, [FromQuery] int selectedSubmissionId)
+        public async Task<ActionResult<ApiResponse<bool>>> FinalizeEvaluation(
+            int packageId, 
+            [FromBody] FinalizeEvaluationRequest? request = null,
+            [FromQuery] int? selectedSubmissionId = null)
         {
+            var effectiveRequest = request ?? new FinalizeEvaluationRequest();
+            if (effectiveRequest.SelectedSubmissionId <= 0 && selectedSubmissionId.HasValue)
+            {
+                effectiveRequest.SelectedSubmissionId = selectedSubmissionId.Value;
+            }
+
+            if (effectiveRequest.SelectedSubmissionId <= 0)
+            {
+                return BadRequest(ApiResponse<bool>.Fail("Vui lòng cung cấp mã hồ sơ dự thầu trúng thầu (SelectedSubmissionId)."));
+            }
+
             var userId = GetCurrentUserId();
             var isAdmin = User.IsInRole("Admin");
 
-            var result = await _evaluationService.FinalizeEvaluationAsync(packageId, selectedSubmissionId, userId, isAdmin);
+            var result = await _evaluationService.FinalizeEvaluationAsync(packageId, effectiveRequest, userId, isAdmin);
             if (!result.Success) return BadRequest(result);
             return Ok(result);
         }

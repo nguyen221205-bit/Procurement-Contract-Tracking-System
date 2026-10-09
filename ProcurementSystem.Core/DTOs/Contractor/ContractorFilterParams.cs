@@ -29,6 +29,11 @@ namespace ProcurementSystem.Core.DTOs.Contractor
         public decimal? MaxRating { get; set; }
 
         /// <summary>
+        /// Lọc theo trạng thái thẩm định: "Pending", "Approved", "Rejected"
+        /// </summary>
+        public string? VerificationStatus { get; set; }
+
+        /// <summary>
         /// Tiêu chí sắp xếp: "rating", "name", "createdat"
         /// </summary>
         public string? SortBy { get; set; } = "rating";
