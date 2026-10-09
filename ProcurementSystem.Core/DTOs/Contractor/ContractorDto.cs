@@ -40,5 +40,17 @@ namespace ProcurementSystem.Core.DTOs.Contractor
 
         /// <summary>Số điện thoại liên hệ</summary>
         public string? Phone { get; set; }
+
+        /// <summary>Đã xác thực chữ ký số điện tử (USB Token / HSM)</summary>
+        public bool IsDigitalSigned { get; set; } = false;
+
+        /// <summary>Tên đơn vị / cá nhân ký số điện tử</summary>
+        public string? DigitalSignerName { get; set; }
+
+        /// <summary>Thời gian ký số điện tử</summary>
+        public DateTime? DigitalSignDate { get; set; }
+
+        /// <summary>Thông báo kết quả kiểm tra chữ ký số</summary>
+        public string? DigitalSignMessage { get; set; }
     }
 }

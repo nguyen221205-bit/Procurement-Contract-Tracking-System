@@ -17,7 +17,8 @@ import {
   Calendar,
   Star,
   FileCheck2,
-  AlertTriangle
+  AlertTriangle,
+  ShieldCheck
 } from 'lucide-react';
 
 export const VerifyContractorModal = ({
@@ -194,6 +195,62 @@ export const VerifyContractorModal = ({
             <span className="text-[11px] text-slate-400 italic">Không có file</span>
           )}
         </div>
+
+        {/* Khối kết quả xác thực Chữ ký số điện tử (USB Token / HSM) */}
+        {contractor.isDigitalSigned ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-emerald-900">
+                    Chữ ký số hợp lệ (USB Token / HSM)
+                  </span>
+                  <span className="ml-2 inline-block px-2 py-0.5 text-[10px] font-semibold bg-emerald-200/80 text-emerald-800 rounded-full">
+                    Đã kiểm tra PKCS#7
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1 border-t border-emerald-100/80 text-emerald-900">
+              <div>
+                <span className="text-emerald-700 font-medium">Chủ thể chứng thư: </span>
+                <span className="font-bold text-slate-800">{contractor.digitalSignerName || 'Đã xác nhận'}</span>
+              </div>
+              {contractor.digitalSignDate && (
+                <div>
+                  <span className="text-emerald-700 font-medium">Thời gian ký: </span>
+                  <span className="font-medium text-slate-800">{formatDate(contractor.digitalSignDate)}</span>
+                </div>
+              )}
+              <div className="sm:col-span-2 text-[11px] text-emerald-700 flex items-center space-x-1">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{contractor.digitalSignMessage || 'Tệp GPKD nguyên vẹn, chứng thư số điện tử hợp lệ theo quy định pháp luật.'}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 flex items-start space-x-3">
+            <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg shrink-0 mt-0.5">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div className="space-y-0.5 text-xs">
+              <div className="flex items-center space-x-2">
+                <span className="font-bold text-slate-800">
+                  Tài liệu scan thông thường
+                </span>
+                <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-200 text-slate-700 rounded-full">
+                  Chưa ký số điện tử
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Không phát hiện chữ ký số PDF PKCS#7 nhúng trong tệp. Quản trị viên vui lòng đối chiếu trực quan con dấu mộc đỏ và chữ ký trên văn bản scan.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Ghi chú / Lý do thẩm định */}
         <div className="space-y-1.5">

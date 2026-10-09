@@ -81,7 +81,11 @@ namespace ProcurementSystem.Infrastructure.Services
                 CreatedAt = c.CreatedAt,
                 FullName = c.User.FullName,
                 Email = c.User.Email,
-                Phone = c.User.Phone
+                Phone = c.User.Phone,
+                IsDigitalSigned = c.IsDigitalSigned,
+                DigitalSignerName = c.DigitalSignerName,
+                DigitalSignDate = c.DigitalSignDate,
+                DigitalSignMessage = c.DigitalSignMessage
             });
 
             var paginatedResult = await PaginatedList<ContractorDto>.CreateAsync(
@@ -290,7 +294,11 @@ namespace ProcurementSystem.Infrastructure.Services
                 CreatedAt = contractor.CreatedAt,
                 FullName = contractor.User?.FullName ?? string.Empty,
                 Email = contractor.User?.Email ?? string.Empty,
-                Phone = contractor.User?.Phone
+                Phone = contractor.User?.Phone,
+                IsDigitalSigned = contractor.IsDigitalSigned,
+                DigitalSignerName = contractor.DigitalSignerName,
+                DigitalSignDate = contractor.DigitalSignDate,
+                DigitalSignMessage = contractor.DigitalSignMessage
             };
         }
     }

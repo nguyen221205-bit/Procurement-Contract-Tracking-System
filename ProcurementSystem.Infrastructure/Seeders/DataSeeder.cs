@@ -50,6 +50,24 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     ALTER TABLE [Contractors] ADD [VerificationStatus] NVARCHAR(50) NOT NULL CONSTRAINT DF_Contractors_VerificationStatus DEFAULT N'Approved';
                 END
 
+                -- Bảo đảm các cột Chữ ký số điện tử luôn tồn tại trên bảng Contractors
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Contractors]') AND name = 'IsDigitalSigned')
+                BEGIN
+                    ALTER TABLE [Contractors] ADD [IsDigitalSigned] BIT NOT NULL CONSTRAINT DF_Contractors_IsDigitalSigned DEFAULT 0;
+                END
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Contractors]') AND name = 'DigitalSignerName')
+                BEGIN
+                    ALTER TABLE [Contractors] ADD [DigitalSignerName] NVARCHAR(250) NULL;
+                END
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Contractors]') AND name = 'DigitalSignDate')
+                BEGIN
+                    ALTER TABLE [Contractors] ADD [DigitalSignDate] DATETIME2 NULL;
+                END
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Contractors]') AND name = 'DigitalSignMessage')
+                BEGIN
+                    ALTER TABLE [Contractors] ADD [DigitalSignMessage] NVARCHAR(500) NULL;
+                END
+
                 -- Bảo đảm bảng EvaluatorProposals luôn tồn tại
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'EvaluatorProposals')
                 BEGIN
@@ -97,6 +115,10 @@ namespace ProcurementSystem.Infrastructure.Seeders
                         [EstablishmentDecisionFile] NVARCHAR(500) NOT NULL,
                         [AppointmentDecisionFile] NVARCHAR(500) NULL,
                         [VerificationStatus] NVARCHAR(50) NOT NULL CONSTRAINT DF_ProcuringEntities_VerificationStatus DEFAULT N'Pending',
+                        [IsDigitalSigned] BIT NOT NULL CONSTRAINT DF_ProcuringEntities_IsDigitalSigned DEFAULT 0,
+                        [DigitalSignerName] NVARCHAR(250) NULL,
+                        [DigitalSignDate] DATETIME2 NULL,
+                        [DigitalSignMessage] NVARCHAR(500) NULL,
                         [AdminNotes] NVARCHAR(1000) NULL,
                         [ReviewedByUserId] INT NULL,
                         [ReviewedAt] DATETIME2 NULL,
@@ -109,6 +131,24 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     CREATE UNIQUE NONCLUSTERED INDEX IX_ProcuringEntities_UserId ON [ProcuringEntities] ([UserId]);
                     CREATE NONCLUSTERED INDEX IX_ProcuringEntities_TaxCode ON [ProcuringEntities] ([TaxCode]);
                     CREATE NONCLUSTERED INDEX IX_ProcuringEntities_VerificationStatus ON [ProcuringEntities] ([VerificationStatus]);
+                END
+
+                -- Bảo đảm các cột Chữ ký số điện tử luôn tồn tại trên bảng ProcuringEntities (trường hợp bảng đã tồn tại từ trước)
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[ProcuringEntities]') AND name = 'IsDigitalSigned')
+                BEGIN
+                    ALTER TABLE [ProcuringEntities] ADD [IsDigitalSigned] BIT NOT NULL CONSTRAINT DF_ProcuringEntities_IsDigitalSigned_Alt DEFAULT 0;
+                END
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[ProcuringEntities]') AND name = 'DigitalSignerName')
+                BEGIN
+                    ALTER TABLE [ProcuringEntities] ADD [DigitalSignerName] NVARCHAR(250) NULL;
+                END
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[ProcuringEntities]') AND name = 'DigitalSignDate')
+                BEGIN
+                    ALTER TABLE [ProcuringEntities] ADD [DigitalSignDate] DATETIME2 NULL;
+                END
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[ProcuringEntities]') AND name = 'DigitalSignMessage')
+                BEGIN
+                    ALTER TABLE [ProcuringEntities] ADD [DigitalSignMessage] NVARCHAR(500) NULL;
                 END
             ");
 

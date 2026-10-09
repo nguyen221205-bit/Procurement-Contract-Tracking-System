@@ -82,6 +82,9 @@ namespace ProcurementSystem.Core.DTOs.Auth
         public string EstablishmentDecisionFileUrl { get; set; } = string.Empty;
         public string? AppointmentDecisionFileUrl { get; set; }
         public string VerificationStatus { get; set; } = "Pending";
+        public bool IsDigitallySigned { get; set; } = false;
+        public string? SignerInfo { get; set; }
+        public DateTime? SignDate { get; set; }
         public string VerificationMessage { get; set; } = string.Empty;
     }
 }

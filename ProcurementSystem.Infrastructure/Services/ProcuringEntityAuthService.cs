@@ -12,15 +12,18 @@ namespace ProcurementSystem.Infrastructure.Services
         private readonly AppDbContext _context;
         private readonly IFileStorageService _fileStorageService;
         private readonly IOtpService _otpService;
+        private readonly IPdfSecurityService _pdfSecurityService;
 
         public ProcuringEntityAuthService(
             AppDbContext context,
             IFileStorageService fileStorageService,
-            IOtpService otpService)
+            IOtpService otpService,
+            IPdfSecurityService pdfSecurityService)
         {
             _context = context;
             _fileStorageService = fileStorageService;
             _otpService = otpService;
+            _pdfSecurityService = pdfSecurityService;
         }
 
         public async Task<ApiResponse<ProcuringEntityRegisterResponse>> RegisterProcuringEntityAsync(RegisterProcuringEntityRequest request)
@@ -59,6 +62,26 @@ namespace ProcurementSystem.Infrastructure.Services
             if (request.EstablishmentDecisionFile.Length > 15 * 1024 * 1024)
             {
                 return ApiResponse<ProcuringEntityRegisterResponse>.Fail("Dung lượng file Quyết định thành lập không được vượt quá 15MB.");
+            }
+
+            // Kiểm tra chữ ký số trên file Quyết định thành lập (nếu là PDF)
+            bool isSigned = false;
+            string? signerInfo = null;
+            DateTime? signDate = null;
+            string? signMessage = null;
+
+            if (extEst == ".pdf")
+            {
+                using var stream = request.EstablishmentDecisionFile.OpenReadStream();
+                var signResult = _pdfSecurityService.InspectPdfSignature(stream);
+                if (signResult.IsSigned && !signResult.IsIntegrityValid)
+                {
+                    return ApiResponse<ProcuringEntityRegisterResponse>.Fail("File Quyết định thành lập PDF có chữ ký số không hợp lệ hoặc đã bị chỉnh sửa sau khi ký.");
+                }
+                isSigned = signResult.IsSigned && signResult.IsIntegrityValid;
+                signerInfo = signResult.SignerName;
+                signDate = signResult.SignDate;
+                signMessage = signResult.SummaryMessage;
             }
 
             // Kiểm tra file quyết định bổ nhiệm nếu có
@@ -137,6 +160,10 @@ namespace ProcurementSystem.Infrastructure.Services
                     EstablishmentDecisionFile = estFileUrl,
                     AppointmentDecisionFile = appFileUrl,
                     VerificationStatus = "Pending",
+                    IsDigitalSigned = isSigned,
+                    DigitalSignerName = signerInfo,
+                    DigitalSignDate = signDate,
+                    DigitalSignMessage = signMessage,
                     CreatedAt = DateTime.UtcNow
                 };
 
@@ -155,6 +182,9 @@ namespace ProcurementSystem.Infrastructure.Services
                     EstablishmentDecisionFileUrl = estFileUrl,
                     AppointmentDecisionFileUrl = appFileUrl,
                     VerificationStatus = "Pending",
+                    IsDigitallySigned = isSigned,
+                    SignerInfo = signerInfo,
+                    SignDate = signDate,
                     VerificationMessage = "Đăng ký thành công! Hồ sơ pháp nhân Bên mời thầu của bạn đang chờ Quản trị viên (Admin) thẩm định phê duyệt trước khi tạo gói thầu."
                 };
 

@@ -62,6 +62,7 @@ namespace ProcurementSystem.Infrastructure.Services
             // 4. Kiểm tra chữ ký số trên file GPKD (nếu là PDF)
             bool isSigned = false;
             string? signerInfo = null;
+            DateTime? signDate = null;
             string verificationMessage = "Đăng ký thành công. Hồ sơ đang chờ Bên mời thầu thẩm định phê duyệt.";
             
             var extension = Path.GetExtension(request.BusinessLicenseFile.FileName).ToLowerInvariant();
@@ -71,6 +72,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 var signResult = _pdfSecurityService.InspectPdfSignature(stream);
                 isSigned = signResult.IsSigned && signResult.IsIntegrityValid;
                 signerInfo = signResult.SignerName;
+                signDate = signResult.SignDate;
 
                 if (signResult.IsSigned && !signResult.IsIntegrityValid)
                 {
@@ -131,7 +133,11 @@ namespace ProcurementSystem.Infrastructure.Services
                     Address = request.Address?.Trim(),
                     BusinessLicenseFile = fileUrl,
                     Rating = 0,
-                    VerificationStatus = "Pending"
+                    VerificationStatus = "Pending",
+                    IsDigitalSigned = isSigned,
+                    DigitalSignerName = signerInfo,
+                    DigitalSignDate = signDate,
+                    DigitalSignMessage = verificationMessage
                 };
                 await _unitOfWork.Repository<Contractor>().AddAsync(contractor);
 
