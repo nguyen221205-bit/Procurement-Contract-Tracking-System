@@ -47,5 +47,33 @@ namespace ProcurementSystem.API.Controllers
             if (!result.Success) return BadRequest(result);
             return StatusCode(StatusCodes.Status201Created, result);
         }
+
+        /// <summary>
+        /// Tra cứu thông tin doanh nghiệp qua Mã số thuế từ CSDL Quốc gia (VietQR API) phục vụ Autofill
+        /// </summary>
+        /// <param name="taxCode">Mã số thuế doanh nghiệp (10 hoặc 13 chữ số)</param>
+        /// <param name="taxLookupService">Dịch vụ tra cứu mã số thuế</param>
+        /// <response code="200">Tra cứu thành công, trả về thông tin tên công ty, địa chỉ.</response>
+        /// <response code="404">Không tìm thấy mã số thuế trên hệ thống quốc gia.</response>
+        [HttpGet("tax-lookup/{taxCode}")]
+        [ProducesResponseType(typeof(ApiResponse<TaxBusinessData>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<TaxBusinessData>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<TaxBusinessData>>> LookupTaxCode(
+            string taxCode,
+            [FromServices] ITaxLookupService taxLookupService)
+        {
+            if (string.IsNullOrWhiteSpace(taxCode))
+            {
+                return BadRequest(ApiResponse<TaxBusinessData>.Fail("Vui lòng cung cấp mã số thuế hợp lệ."));
+            }
+
+            var result = await taxLookupService.VerifyTaxCodeAsync(taxCode);
+            if (result == null)
+            {
+                return NotFound(ApiResponse<TaxBusinessData>.Fail("Không tìm thấy thông tin doanh nghiệp với mã số thuế này trên Cổng Quốc gia."));
+            }
+
+            return Ok(ApiResponse<TaxBusinessData>.Ok(result, "Tra cứu thông tin doanh nghiệp thành công."));
+        }
     }
 }

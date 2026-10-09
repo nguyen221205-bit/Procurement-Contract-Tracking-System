@@ -15,7 +15,10 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  Briefcase
+  Briefcase,
+  Search,
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
 
 export const RegisterPage = () => {
@@ -54,14 +57,101 @@ export const RegisterPage = () => {
   const [establishmentFile, setEstablishmentFile] = useState(null);
   const [appointmentFile, setAppointmentFile] = useState(null);
 
+  // Trạng thái tra cứu MST
+  const [taxLookupLoadingContractor, setTaxLookupLoadingContractor] = useState(false);
+  const [taxVerifiedContractor, setTaxVerifiedContractor] = useState(null);
+
+  const [taxLookupLoadingProcuring, setTaxLookupLoadingProcuring] = useState(false);
+  const [taxVerifiedProcuring, setTaxVerifiedProcuring] = useState(null);
+
   const handleContractorChange = (e) => {
     const { name, value } = e.target;
     setContractorData((prev) => ({ ...prev, [name]: value }));
+    if (name === 'taxCode') {
+      setTaxVerifiedContractor(null);
+    }
   };
 
   const handleProcuringChange = (e) => {
     const { name, value } = e.target;
     setProcuringData((prev) => ({ ...prev, [name]: value }));
+    if (name === 'taxCode') {
+      setTaxVerifiedProcuring(null);
+    }
+  };
+
+  // Hàm tra cứu MST Nhà thầu
+  const handleLookupTaxContractor = async (customCode) => {
+    const code = (typeof customCode === 'string' ? customCode : contractorData.taxCode)?.trim();
+    if (!code) {
+      toast.error('Vui lòng nhập Mã số thuế để tra cứu');
+      return;
+    }
+    const cleanCode = code.replace(/\s+/g, '');
+    if (!/^\d{10}(-\d{3})?$/.test(cleanCode) && !/^\d{13}$/.test(cleanCode)) {
+      toast.error('Mã số thuế gồm 10 hoặc 13 chữ số');
+      return;
+    }
+
+    setTaxLookupLoadingContractor(true);
+    try {
+      const res = await authApi.lookupTaxCode(cleanCode);
+      if (res && res.success && res.data) {
+        setContractorData((prev) => ({
+          ...prev,
+          taxCode: cleanCode,
+          companyName: res.data.name || prev.companyName,
+          address: res.data.address || prev.address,
+        }));
+        setTaxVerifiedContractor(res.data);
+        toast.success(`Đã tự động điền: ${res.data.name}`);
+      } else {
+        setTaxVerifiedContractor(false);
+        toast.error(res?.message || 'Không tìm thấy MST trên CSDL Quốc gia');
+      }
+    } catch (err) {
+      setTaxVerifiedContractor(false);
+      toast.error(err?.response?.data?.message || 'Không tìm thấy MST trên CSDL Quốc gia. Bạn có thể tự nhập tay thông tin.');
+    } finally {
+      setTaxLookupLoadingContractor(false);
+    }
+  };
+
+  // Hàm tra cứu MST Bên mời thầu
+  const handleLookupTaxProcuring = async (customCode) => {
+    const code = (typeof customCode === 'string' ? customCode : procuringData.taxCode)?.trim();
+    if (!code) {
+      toast.error('Vui lòng nhập Mã số thuế để tra cứu');
+      return;
+    }
+    const cleanCode = code.replace(/\s+/g, '');
+    if (!/^\d{10}(-\d{3})?$/.test(cleanCode) && !/^\d{13}$/.test(cleanCode)) {
+      toast.error('Mã số thuế gồm 10 hoặc 13 chữ số');
+      return;
+    }
+
+    setTaxLookupLoadingProcuring(true);
+    try {
+      const res = await authApi.lookupTaxCode(cleanCode);
+      if (res && res.success && res.data) {
+        setProcuringData((prev) => ({
+          ...prev,
+          taxCode: cleanCode,
+          organizationName: res.data.name || prev.organizationName,
+          address: res.data.address || prev.address,
+        }));
+        setTaxVerifiedProcuring(res.data);
+        toast.success(`Đã tự động điền: ${res.data.name}`);
+      } else {
+        setTaxVerifiedProcuring(false);
+        toast.error(res?.message || 'Không tìm thấy MST trên CSDL Quốc gia');
+      }
+    } catch (err) {
+      setTaxVerifiedProcuring(false);
+      toast.error(err?.response?.data?.message || 'Không tìm thấy MST trên CSDL Quốc gia. Bạn có thể tự nhập tay thông tin.');
+    } finally {
+      setTaxLookupLoadingProcuring(false);
+    }
   };
 
   // Submit Nhà thầu
@@ -310,36 +400,25 @@ export const RegisterPage = () => {
 
               {/* NHÓM 2: THÔNG TIN DOANH NGHIỆP */}
               <div className="space-y-3.5 pt-1">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 pb-1 border-b border-slate-100">
-                  2. Thông tin doanh nghiệp
-                </h3>
+                <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    2. Thông tin doanh nghiệp
+                  </h3>
+                  <span className="text-[11px] text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full font-medium">
+                    Hỗ trợ tra cứu tự động từ CSDL Thuế
+                  </span>
+                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Tên công ty <span className="text-rose-500">*</span>
+                {/* Ô Mã số thuế + Nút Tra cứu */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Mã số thuế doanh nghiệp <span className="text-rose-500">*</span>
                     </label>
-                    <div className="relative rounded-lg">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <Building2 className="w-4 h-4" />
-                      </div>
-                      <input
-                        type="text"
-                        required
-                        name="companyName"
-                        value={contractorData.companyName}
-                        onChange={handleContractorChange}
-                        placeholder="Công ty Cổ phần Xây dựng ABC"
-                        className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
-                      />
-                    </div>
+                    <span className="text-[11px] text-slate-400">10 hoặc 13 số</span>
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Mã số thuế <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative rounded-lg">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1 rounded-lg">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                         <FileSpreadsheet className="w-4 h-4" />
                       </div>
@@ -349,16 +428,71 @@ export const RegisterPage = () => {
                         name="taxCode"
                         value={contractorData.taxCode}
                         onChange={handleContractorChange}
-                        placeholder="0101234567"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleLookupTaxContractor();
+                          }
+                        }}
+                        placeholder="Nhập MST (Ví dụ: 0300588569...)"
                         className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                       />
                     </div>
+                    <button
+                      type="button"
+                      disabled={taxLookupLoadingContractor || !contractorData.taxCode?.trim()}
+                      onClick={() => handleLookupTaxContractor()}
+                      className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition shrink-0"
+                    >
+                      {taxLookupLoadingContractor ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang tra cứu...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Search className="w-3.5 h-3.5" />
+                          <span>Tra cứu CSDL</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Badge hiển thị kết quả xác thực */}
+                  {taxVerifiedContractor && (
+                    <div className="mt-2 flex items-start space-x-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-xs">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                      <div>
+                        <span className="font-semibold">Đã xác thực từ Cổng thông tin Doanh nghiệp Quốc gia:</span>
+                        <p className="font-medium mt-0.5">{taxVerifiedContractor.name}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Tên doanh nghiệp / công ty <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative rounded-lg">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      name="companyName"
+                      value={contractorData.companyName}
+                      onChange={handleContractorChange}
+                      placeholder="Tên công ty (tự động điền khi tra cứu MST)"
+                      className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
+                    />
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Địa chỉ trụ sở
+                    Địa chỉ trụ sở doanh nghiệp
                   </label>
                   <div className="relative rounded-lg">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -369,7 +503,7 @@ export const RegisterPage = () => {
                       name="address"
                       value={contractorData.address}
                       onChange={handleContractorChange}
-                      placeholder="Số 123 Đường Trần Phú, Quận Ba Đình, Hà Nội"
+                      placeholder="Địa chỉ trụ sở (tự động điền khi tra cứu MST)"
                       className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                     />
                   </div>
@@ -517,9 +651,75 @@ export const RegisterPage = () => {
 
               {/* NHÓM 2: THÔNG TIN ĐƠN VỊ */}
               <div className="space-y-3.5 pt-1">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-sky-700 pb-1 border-b border-sky-100">
-                  2. Thông tin đơn vị
-                </h3>
+                <div className="flex items-center justify-between pb-1 border-b border-sky-100">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-sky-700">
+                    2. Thông tin đơn vị
+                  </h3>
+                  <span className="text-[11px] text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full font-medium">
+                    Hỗ trợ tra cứu tự động từ CSDL Thuế
+                  </span>
+                </div>
+
+                {/* Ô Mã số thuế + Nút Tra cứu */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Mã số thuế đơn vị <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[11px] text-slate-400">10 hoặc 13 số</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1 rounded-lg">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <FileSpreadsheet className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        name="taxCode"
+                        value={procuringData.taxCode}
+                        onChange={handleProcuringChange}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleLookupTaxProcuring();
+                          }
+                        }}
+                        placeholder="Nhập MST cơ quan (Ví dụ: 0100109106...)"
+                        className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={taxLookupLoadingProcuring || !procuringData.taxCode?.trim()}
+                      onClick={() => handleLookupTaxProcuring()}
+                      className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition shrink-0"
+                    >
+                      {taxLookupLoadingProcuring ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang tra cứu...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Search className="w-3.5 h-3.5" />
+                          <span>Tra cứu CSDL</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Badge hiển thị kết quả xác thực */}
+                  {taxVerifiedProcuring && (
+                    <div className="mt-2 flex items-start space-x-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-xs">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                      <div>
+                        <span className="font-semibold">Đã xác thực từ Cổng thông tin Doanh nghiệp/Đơn vị Quốc gia:</span>
+                        <p className="font-medium mt-0.5">{taxVerifiedProcuring.name}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">
@@ -535,7 +735,7 @@ export const RegisterPage = () => {
                       name="organizationName"
                       value={procuringData.organizationName}
                       onChange={handleProcuringChange}
-                      placeholder="Ban Quản lý Dự án Đầu tư Xây dựng..."
+                      placeholder="Tên cơ quan (tự động điền khi tra cứu MST)"
                       className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                     />
                   </div>
@@ -563,28 +763,6 @@ export const RegisterPage = () => {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Mã số thuế <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative rounded-lg">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <FileSpreadsheet className="w-4 h-4" />
-                      </div>
-                      <input
-                        type="text"
-                        required
-                        name="taxCode"
-                        value={procuringData.taxCode}
-                        onChange={handleProcuringChange}
-                        placeholder="0100109106"
-                        className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                       Mã đơn vị ngân sách
                     </label>
                     <input
@@ -596,24 +774,24 @@ export const RegisterPage = () => {
                       className="block w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                     />
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Địa chỉ trụ sở
-                    </label>
-                    <div className="relative rounded-lg">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <MapPin className="w-4 h-4" />
-                      </div>
-                      <input
-                        type="text"
-                        name="address"
-                        value={procuringData.address}
-                        onChange={handleProcuringChange}
-                        placeholder="Số 45 Lê Duẩn, Quận 1, TP.HCM"
-                        className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
-                      />
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Địa chỉ trụ sở
+                  </label>
+                  <div className="relative rounded-lg">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <MapPin className="w-4 h-4" />
                     </div>
+                    <input
+                      type="text"
+                      name="address"
+                      value={procuringData.address}
+                      onChange={handleProcuringChange}
+                      placeholder="Địa chỉ trụ sở (tự động điền khi tra cứu MST)"
+                      className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
+                    />
                   </div>
                 </div>
               </div>
