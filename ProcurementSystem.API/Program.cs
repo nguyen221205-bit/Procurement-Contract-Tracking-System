@@ -30,9 +30,13 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+// Memory Cache
+builder.Services.AddMemoryCache();
+
 // Auth Services
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IOtpService, OtpService>();
 
 // Contractor Services
 builder.Services.AddHttpClient<ITaxLookupService, TaxLookupService>();

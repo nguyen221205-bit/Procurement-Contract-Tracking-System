@@ -75,5 +75,28 @@ namespace ProcurementSystem.API.Controllers
 
             return Ok(ApiResponse<TaxBusinessData>.Ok(result, "Tra cứu thông tin doanh nghiệp thành công."));
         }
+
+        /// <summary>
+        /// Gửi mã xác thực OTP 6 số qua email (thời hạn 5 phút, cooldown 60s)
+        /// </summary>
+        /// <param name="request">Email và mục đích gửi</param>
+        /// <param name="otpService">Dịch vụ quản lý OTP</param>
+        /// <response code="200">Gửi OTP thành công.</response>
+        /// <response code="400">Email không hợp lệ hoặc đang trong thời gian cooldown.</response>
+        [HttpPost("send-otp")]
+        [ProducesResponseType(typeof(ApiResponse<SendOtpResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<SendOtpResponse>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<SendOtpResponse>>> SendOtp(
+            [FromBody] SendOtpRequest request,
+            [FromServices] IOtpService otpService)
+        {
+            var result = await otpService.SendOtpAsync(request);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
     }
 }

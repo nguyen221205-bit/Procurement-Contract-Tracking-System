@@ -11,18 +11,28 @@ namespace ProcurementSystem.Infrastructure.Services
     {
         private readonly AppDbContext _context;
         private readonly IFileStorageService _fileStorageService;
+        private readonly IOtpService _otpService;
 
         public ProcuringEntityAuthService(
             AppDbContext context,
-            IFileStorageService fileStorageService)
+            IFileStorageService fileStorageService,
+            IOtpService otpService)
         {
             _context = context;
             _fileStorageService = fileStorageService;
+            _otpService = otpService;
         }
 
         public async Task<ApiResponse<ProcuringEntityRegisterResponse>> RegisterProcuringEntityAsync(RegisterProcuringEntityRequest request)
         {
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+            // 0. Xác thực mã OTP email
+            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterProcuringEntity", out var otpError) &&
+                !_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "Register", out otpError))
+            {
+                return ApiResponse<ProcuringEntityRegisterResponse>.Fail(otpError);
+            }
 
             // 1. Kiểm tra email đã tồn tại trong hệ thống chưa
             var emailExists = await _context.Users.AnyAsync(u => u.Email.ToLower() == normalizedEmail);

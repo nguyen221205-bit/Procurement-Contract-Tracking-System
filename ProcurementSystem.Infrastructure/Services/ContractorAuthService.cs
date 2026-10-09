@@ -11,22 +11,32 @@ namespace ProcurementSystem.Infrastructure.Services
         private readonly ITaxLookupService _taxLookupService;
         private readonly IPdfSecurityService _pdfSecurityService;
         private readonly IFileStorageService _fileStorageService;
+        private readonly IOtpService _otpService;
 
         public ContractorAuthService(
             IUnitOfWork unitOfWork,
             ITaxLookupService taxLookupService,
             IPdfSecurityService pdfSecurityService,
-            IFileStorageService fileStorageService)
+            IFileStorageService fileStorageService,
+            IOtpService otpService)
         {
             _unitOfWork = unitOfWork;
             _taxLookupService = taxLookupService;
             _pdfSecurityService = pdfSecurityService;
             _fileStorageService = fileStorageService;
+            _otpService = otpService;
         }
 
         public async Task<ApiResponse<ContractorRegisterResponse>> RegisterContractorAsync(RegisterContractorRequest request)
         {
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+            // 0. Xác thực mã OTP email
+            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterContractor", out var otpError) &&
+                !_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "Register", out otpError))
+            {
+                return ApiResponse<ContractorRegisterResponse>.Fail(otpError);
+            }
 
             // 1. Kiểm tra email tồn tại
             var emailExists = await _unitOfWork.Repository<User>().ExistsAsync(u => u.Email.ToLower() == normalizedEmail);
