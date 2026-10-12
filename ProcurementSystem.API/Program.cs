@@ -65,6 +65,7 @@ builder.Services.AddScoped<IReportService, ReportService>();
 // Audit & Notification Services
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Background Workers (Cronjob cảnh báo hạn 1 giờ/lần + startup)
 builder.Services.AddHostedService<ContractExpiryNotificationWorker>();
@@ -187,13 +188,17 @@ builder.Services.AddSwaggerGen(options =>
 // ==========================================
 // 6. CORS
 // ==========================================
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? new[] { "http://localhost:5173", "http://localhost:3000" };
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
 });
 
@@ -233,7 +238,7 @@ var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
 if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
 
 // CORS
-app.UseCors("AllowAll");
+app.UseCors("AllowFrontend");
 
 // Authentication & Authorization
 app.UseAuthentication();

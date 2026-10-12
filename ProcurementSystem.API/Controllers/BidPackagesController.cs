@@ -248,7 +248,8 @@ namespace ProcurementSystem.API.Controllers
         public async Task<ActionResult<ApiResponse<PackageEvaluatorDto>>> AssignEvaluator(int id, [FromBody] AssignEvaluatorRequest request)
         {
             var currentUserId = GetCurrentUserId();
-            var result = await _bidPackageService.AssignEvaluatorAsync(id, request, currentUserId);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _bidPackageService.AssignEvaluatorAsync(id, request, currentUserId, isAdmin);
             if (!result.Success) return BadRequest(result);
             return Ok(result);
         }

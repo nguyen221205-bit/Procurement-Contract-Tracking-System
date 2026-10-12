@@ -39,5 +39,15 @@ namespace ProcurementSystem.Core.Interfaces
         /// Tự động tính toán lại điểm đánh giá uy tín (Rating) nhà thầu dựa trên hợp đồng thực tế (P2-11)
         /// </summary>
         Task<ApiResponse<ContractorDto>> RecalculateContractorRatingAsync(int contractorId);
+
+        /// <summary>
+        /// Nhập danh sách nhà thầu từ file Excel (.xlsx), kiểm tra trùng MST/Email và báo lỗi chi tiết theo dòng
+        /// </summary>
+        Task<ApiResponse<ImportContractorResultDto>> ImportContractorsFromExcelAsync(Microsoft.AspNetCore.Http.IFormFile file);
+
+        /// <summary>
+        /// Tạo và tải về file mẫu Excel (.xlsx) chuẩn để nhập danh sách nhà thầu
+        /// </summary>
+        Task<byte[]> GenerateImportTemplateExcelAsync();
     }
 }

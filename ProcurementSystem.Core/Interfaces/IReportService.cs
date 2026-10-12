@@ -20,5 +20,15 @@ namespace ProcurementSystem.Core.Interfaces
         /// Xuất danh sách toàn bộ hợp đồng ra tệp CSV (UTF-8 BOM hỗ trợ mở trực tiếp bằng Excel tiếng Việt)
         /// </summary>
         Task<byte[]> ExportContractsCsvAsync();
+
+        /// <summary>
+        /// Xuất danh sách toàn bộ nhà thầu ra tệp Excel định dạng .xlsx
+        /// </summary>
+        Task<byte[]> ExportContractorsExcelAsync();
+
+        /// <summary>
+        /// Xuất danh sách toàn bộ hợp đồng ra tệp Excel định dạng .xlsx
+        /// </summary>
+        Task<byte[]> ExportContractsExcelAsync();
     }
 }
