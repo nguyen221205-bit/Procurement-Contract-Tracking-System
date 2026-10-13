@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
@@ -98,7 +99,7 @@ namespace ProcurementSystem.Infrastructure.Services
                                        CreatedAt = bp.CreatedAt,
                                        DocumentsCount = bp.BidDocuments.Count,
                                        SubmissionsCount = bp.BidSubmissions.Count,
-                                       IsAwarded = bp.BidSubmissions.Any(s => s.Status == "Selected"),
+                                       IsAwarded = bp.BidSubmissions.Any(s => s.Status == BidSubmissionStatus.Selected),
                                        EvaluatorIds = bp.PackageEvaluators.Select(pe => pe.EvaluatorId).ToList()
                                    })
                                    .ToListAsync();
@@ -221,16 +222,27 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidPackageDto>.Fail("Bạn không có quyền chỉnh sửa gói thầu này.");
             }
 
-            // P2-1 & P0: Chỉ cho phép chỉnh sửa thông tin khi gói thầu đang mở thầu (Open)
-            if (package.Status != BidPackageStatus.Open)
+            // R2-1 & N2: Cho phép chỉnh sửa thông tin khi gói thầu đang mở thầu (Open) hoặc đã đóng (Closed) khi chưa có điểm chấm
+            if (package.Status != BidPackageStatus.Open && package.Status != BidPackageStatus.Closed)
             {
-                return ApiResponse<BidPackageDto>.Fail($"Không thể chỉnh sửa gói thầu khi đang ở trạng thái '{package.Status}'. Chỉ được phép chỉnh sửa khi gói thầu đang mở thầu (Open).");
+                return ApiResponse<BidPackageDto>.Fail($"Không thể chỉnh sửa gói thầu khi đang ở trạng thái '{package.Status}'. Chỉ được phép chỉnh sửa khi gói thầu đang mở thầu (Open) hoặc đã đóng (Closed) chưa đánh giá.");
+            }
+
+            if (package.Status == BidPackageStatus.Closed)
+            {
+                var hasScoresOrWinner = await _unitOfWork.Repository<EvaluationScore>()
+                    .Query()
+                    .AnyAsync(es => es.Criteria.BidPackageId == id || es.BidSubmission.BidPackageId == id);
+                if (hasScoresOrWinner)
+                {
+                    return ApiResponse<BidPackageDto>.Fail("Không thể chỉnh sửa gói thầu đã đóng sau khi Tổ chuyên gia đã tiến hành đánh giá chấm điểm.");
+                }
             }
 
             // P2-1: Nếu đã có nhà thầu nộp hồ sơ, không cho phép giảm ngân sách xuống dưới giá dự thầu của các hồ sơ đã nộp
             var existingSubmissions = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
-                .Where(s => s.BidPackageId == id && s.Status != "Withdrawn")
+                .Where(s => s.BidPackageId == id && s.Status != BidSubmissionStatus.Withdrawn)
                 .ToListAsync();
 
             if (existingSubmissions.Any())
@@ -333,7 +345,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 var hasWinner = await _unitOfWork.Repository<BidSubmission>()
                     .Query()
-                    .AnyAsync(bs => bs.BidPackageId == id && (bs.Status == "Selected" || bs.Status == "Rejected"));
+                    .AnyAsync(bs => bs.BidPackageId == id && (bs.Status == BidSubmissionStatus.Selected || bs.Status == "Rejected"));
 
                 if (hasScores || hasWinner)
                 {
@@ -343,13 +355,21 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
-            // Nếu gia hạn thầu Closed -> Open: Bắt buộc Deadline phải được dời đến tương lai
+            // R2-1: Nếu gia hạn thầu Closed -> Open: Kiểm tra và cập nhật Deadline mới
             if (package.Status == BidPackageStatus.Closed && request.NewStatus == BidPackageStatus.Open)
             {
-                if (package.Deadline <= DateTime.UtcNow)
+                if (request.NewDeadline.HasValue)
+                {
+                    if (request.NewDeadline.Value <= DateTime.UtcNow)
+                    {
+                        return ApiResponse<BidPackageDto>.Fail("Thời hạn nộp thầu gia hạn mới (NewDeadline) phải lớn hơn thời điểm hiện tại.");
+                    }
+                    package.Deadline = request.NewDeadline.Value;
+                }
+                else if (package.Deadline <= DateTime.UtcNow)
                 {
                     return ApiResponse<BidPackageDto>.Fail(
-                        "Không thể mở lại gói thầu với thời hạn nộp thầu đã hết hạn. Vui lòng cập nhật gia hạn ngày đóng thầu (Deadline) trước khi mở lại.");
+                        "Gói thầu đã hết hạn nộp thầu. Để mở lại gói thầu (Closed -> Open), bắt buộc phải cung cấp thời hạn nộp thầu mới (NewDeadline) ở tương lai.");
                 }
             }
 
@@ -394,10 +414,31 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
+            var oldStatus = package.Status;
+            var oldDeadline = package.Deadline;
+
             package.Status = request.NewStatus;
             package.UpdatedAt = DateTime.UtcNow;
 
             _unitOfWork.Repository<BidPackage>().Update(package);
+
+            // R2-1 & R2-7: Ghi nhật ký kiểm toán AuditLog
+            var actionName = (oldStatus == BidPackageStatus.Closed && request.NewStatus == BidPackageStatus.Open && request.NewDeadline.HasValue)
+                ? "EXTEND_BID_PACKAGE_DEADLINE"
+                : "CHANGE_BID_PACKAGE_STATUS";
+
+            var auditLog = new AuditLog
+            {
+                UserId = userId,
+                Action = actionName,
+                EntityType = "BidPackage",
+                EntityId = id,
+                OldValues = JsonSerializer.Serialize(new { Status = oldStatus.ToString(), Deadline = oldDeadline }),
+                NewValues = JsonSerializer.Serialize(new { Status = package.Status.ToString(), Deadline = package.Deadline, Reason = request.Reason }),
+                Timestamp = DateTime.UtcNow
+            };
+            await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+
             await _unitOfWork.SaveChangesAsync();
 
             return ApiResponse<BidPackageDto>.Ok(MapToBidPackageDto(package), $"Chuyển trạng thái gói thầu sang '{request.NewStatus}' thành công.");
@@ -538,7 +579,7 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<List<PackageEvaluatorDto>>.Ok(dtos);
         }
 
-        public async Task<ApiResponse<PackageEvaluatorDto>> AssignEvaluatorAsync(int packageId, AssignEvaluatorRequest request, int currentUserId)
+        public async Task<ApiResponse<PackageEvaluatorDto>> AssignEvaluatorAsync(int packageId, AssignEvaluatorRequest request, int currentUserId, bool isAdmin)
         {
             var package = await _unitOfWork.Repository<BidPackage>().GetByIdAsync(packageId);
             if (package == null)
@@ -546,9 +587,22 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<PackageEvaluatorDto>.Fail("Không tìm thấy gói thầu.");
             }
 
+            // Kiểm tra quyền sở hữu gói thầu: Chỉ người tạo gói hoặc Admin mới được phân công chuyên gia
+            if (!isAdmin && package.CreatedBy != currentUserId)
+            {
+                return ApiResponse<PackageEvaluatorDto>.Fail("Chỉ người tạo gói thầu (Bên mời thầu) hoặc Admin mới có quyền phân công chuyên gia chấm thầu.");
+            }
+
             if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
             {
                 return ApiResponse<PackageEvaluatorDto>.Fail("Gói thầu đã có kết quả trao thầu hoặc đã ký hợp đồng, không thể thay đổi Tổ chuyên gia.");
+            }
+
+            // Căn cứ Luật Đấu thầu: Người tạo gói thầu (Bên mời thầu) không được làm thành viên Tổ chuyên gia của chính gói đó
+            if (request.EvaluatorId == package.CreatedBy)
+            {
+                return ApiResponse<PackageEvaluatorDto>.Fail(
+                    "Căn cứ Luật Đấu thầu: Người tạo gói thầu (Bên mời thầu) không được tham gia vào Tổ chuyên gia của chính gói thầu này nhằm bảo đảm tính độc lập khách quan.");
             }
 
             var evaluatorUser = await _unitOfWork.Repository<User>()
@@ -557,9 +611,35 @@ namespace ProcurementSystem.Infrastructure.Services
                 .ThenInclude(ur => ur.Role)
                 .FirstOrDefaultAsync(u => u.Id == request.EvaluatorId);
 
-            if (evaluatorUser == null)
+            if (evaluatorUser == null || !evaluatorUser.IsActive)
             {
-                return ApiResponse<PackageEvaluatorDto>.Fail("Người dùng không tồn tại.");
+                return ApiResponse<PackageEvaluatorDto>.Fail("Người dùng không tồn tại hoặc tài khoản đã bị vô hiệu hóa.");
+            }
+
+            // Chặn user thuộc vai trò Contractor hoặc đơn vị nhà thầu
+            if (evaluatorUser.UserRoles.Any(ur => ur.Role.Name == "Contractor"))
+            {
+                return ApiResponse<PackageEvaluatorDto>.Fail("Tài khoản có vai trò Nhà thầu không được phép tham gia Tổ chuyên gia chấm thầu.");
+            }
+
+            var isContractorEntity = await _unitOfWork.Repository<Contractor>()
+                .ExistsAsync(c => c.UserId == request.EvaluatorId);
+            if (isContractorEntity)
+            {
+                return ApiResponse<PackageEvaluatorDto>.Fail("Nhân sự thuộc đơn vị Nhà thầu không được phép tham gia Tổ chuyên gia chấm thầu.");
+            }
+
+            // Chặn user thuộc tổ chức/doanh nghiệp có tham gia dự thầu gói này
+            var biddingContractorUserIds = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Where(s => s.BidPackageId == packageId)
+                .Select(s => s.Contractor.UserId)
+                .ToListAsync();
+
+            if (biddingContractorUserIds.Contains(request.EvaluatorId))
+            {
+                return ApiResponse<PackageEvaluatorDto>.Fail(
+                    "Xung đột lợi ích: Người dùng thuộc doanh nghiệp tham gia dự thầu gói thầu này, không được phép làm giám khảo chấm thầu.");
             }
 
             var isEvaluator = evaluatorUser.UserRoles.Any(ur => ur.Role.Name == "Evaluator" || ur.Role.Name == "Admin");
@@ -574,6 +654,20 @@ namespace ProcurementSystem.Infrastructure.Services
             if (isAlreadyAssigned)
             {
                 return ApiResponse<PackageEvaluatorDto>.Fail("Giám khảo này đã được phân công vào Tổ chuyên gia của gói thầu.");
+            }
+
+            // Khi gói thầu đang ở Evaluating: Số lượng thành viên sau khi thêm phải đảm bảo là số lẻ >= 3
+            var currentCount = await _unitOfWork.Repository<BidPackageEvaluator>()
+                .CountAsync(pe => pe.BidPackageId == packageId);
+
+            if (package.Status == BidPackageStatus.Evaluating)
+            {
+                var newCount = currentCount + 1;
+                if (newCount < 3 || newCount % 2 == 0)
+                {
+                    return ApiResponse<PackageEvaluatorDto>.Fail(
+                        $"Gói thầu đang trong giai đoạn Chấm thầu. Số lượng thành viên Tổ chuyên gia bắt buộc phải là số lẻ >= 3 theo Luật Đấu thầu. Việc bổ sung 1 giám khảo sẽ khiến tổng số thành viên là {newCount} (số chẵn), không đáp ứng quy định.");
+                }
             }
 
             var packageEvaluator = new BidPackageEvaluator
@@ -612,6 +706,12 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Không tìm thấy gói thầu.");
             }
 
+            // Kiểm tra quyền sở hữu gói thầu: Chỉ người tạo gói hoặc Admin mới được xóa chuyên gia
+            if (!isAdmin && package.CreatedBy != currentUserId)
+            {
+                return ApiResponse<bool>.Fail("Chỉ người tạo gói thầu (Bên mời thầu) hoặc Admin mới có quyền xóa chuyên gia khỏi gói thầu.");
+            }
+
             if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
             {
                 return ApiResponse<bool>.Fail("Gói thầu đã có kết quả trao thầu hoặc đã ký hợp đồng, không thể thay đổi Tổ chuyên gia.");
@@ -634,6 +734,20 @@ namespace ProcurementSystem.Infrastructure.Services
             if (hasScored && package.Status == BidPackageStatus.Evaluating)
             {
                 return ApiResponse<bool>.Fail("Giám khảo này đã thực hiện chấm điểm hồ sơ dự thầu cho gói thầu này, không thể xóa khỏi Tổ chuyên gia.");
+            }
+
+            // Khi gói thầu đang ở Evaluating: Số lượng thành viên sau khi xóa phải đảm bảo là số lẻ >= 3
+            var currentCount = await _unitOfWork.Repository<BidPackageEvaluator>()
+                .CountAsync(pe => pe.BidPackageId == packageId);
+
+            if (package.Status == BidPackageStatus.Evaluating)
+            {
+                var newCount = currentCount - 1;
+                if (newCount < 3 || newCount % 2 == 0)
+                {
+                    return ApiResponse<bool>.Fail(
+                        $"Gói thầu đang trong giai đoạn Chấm thầu. Việc xóa giám khảo sẽ khiến Tổ chuyên gia còn {newCount} thành viên (không thỏa mãn quy định là số lẻ tối thiểu 3 người theo Luật Đấu thầu).");
+                }
             }
 
             _unitOfWork.Repository<BidPackageEvaluator>().Delete(assignment);
@@ -667,7 +781,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     UploadedAt = d.UploadedAt
                 }).ToList() ?? new List<BidDocumentDto>(),
                 SubmissionsCount = package.BidSubmissions?.Count ?? 0,
-                IsAwarded = package.BidSubmissions != null && package.BidSubmissions.Any(s => s.Status == "Selected")
+                IsAwarded = package.BidSubmissions != null && package.BidSubmissions.Any(s => s.Status == BidSubmissionStatus.Selected)
             };
         }
     }

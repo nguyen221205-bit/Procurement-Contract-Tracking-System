@@ -19,7 +19,7 @@ Hệ thống số hóa toàn diện quy trình khép kín qua 6 phân hệ cốt
 2. **Quản lý Kế hoạch Mời thầu (Bid Packages)**: Tạo lập hồ sơ mời thầu, đăng tải tài liệu HSMT, tự động sinh mã định danh và quản lý cỗ máy trạng thái vòng đời gói thầu (`Open` $\rightarrow$ `Closed` $\rightarrow$ `Evaluating` $\rightarrow$ `Contracted`).
 3. **Nộp Hồ sơ & Phòng vệ IDOR (Bid Submissions)**: Tiếp nhận hồ sơ đề xuất kỹ thuật, lưu trữ an toàn tệp tin và thiết lập cơ chế kiểm soát quyền sở hữu chống lỗ hổng IDOR khi tải tệp.
 4. **Hội đồng Thẩm định & Chấm điểm (Evaluation & Ranking)**: Thiết lập tiêu chí chấm thầu có trọng số ($\sum Weight = 100\%$), chấm điểm độc lập đa giám khảo và tự động xuất bảng xếp hạng nhà thầu trúng thầu.
-5. **Quản lý Hợp đồng & Nghiệm thu (Contracts & Milestones)**: Thiết lập hợp đồng kinh tế, quản lý tiến độ các mốc thanh toán, nghiệm thu bàn giao và cập nhật tiến độ giải ngân ngân sách thực tế.
+5. **Quản lý Hợp đồng & Nghiệm thu (Contracts & Milestones)**: Thiết lập hợp đồng kinh tế, quản lý tiến độ các mốc thanh toán, nghiệm thu bàn giao và cập nhật tiến độ giải ngân ngân sách thực tế. Hệ thống áp dụng cơ chế kiểm soát quyền sở hữu nghiêm ngặt (chống IDOR): chỉ tài khoản `Admin` hoặc `Procurement` tạo gói thầu mới có quyền tạo hợp đồng, sửa đổi điều khoản, thêm/sửa/xóa mốc, tải lên bản scan và phê duyệt nghiệm thu mốc thanh toán.
 6. **Báo cáo Điều hành Thời gian Thực (Executive Dashboard)**: Tổng hợp các chỉ số KPI tài chính, tỷ lệ tiết kiệm ngân sách qua đấu thầu và tiến độ giải ngân hợp đồng.
 
 ---
@@ -181,20 +181,31 @@ python scripts/testing/test_load_concurrency.py
    - Sao chép chuỗi JWT Token và dán vào nút **Authorize** ở góc trên (`Bearer <token>`).
 2. **Bước 2 (Tạo Gói Thầu Mới)**:
    - Gọi `POST /api/bid-packages` tạo gói thầu mới với ngân sách dự toán và thời hạn nộp thầu. Hệ thống tự động sinh mã `PKG-yyyyMMdd-XXXX` ở trạng thái `Open`.
-3. **Bước 3 (Thiết lập Tiêu chí Đánh giá)**:
-   - Gọi `POST /api/evaluations/packages/{id}/criteria` thiết lập bộ tiêu chí (Kỹ thuật: trọng số 60%, Tài chính: trọng số 40%).
+3. **Bước 3 (Thiết lập Tiêu chí Đánh giá - R2-3)**:
+   - Gọi `POST /api/evaluations/packages/{id}/criteria` thiết lập bộ tiêu chí (Kỹ thuật: trọng số 60%, `isPriceCriteria: false`; Tài chính: trọng số 40%, `isPriceCriteria: true`).
+   - *Quy tắc (R2-3)*: Mỗi gói thầu chỉ được phép thiết lập tối đa 1 tiêu chí Giá (`isPriceCriteria: true`). Tiêu chí này được tính điểm tự động theo công thức Luật Đấu thầu (`(minBidPrice / bidPrice) * MaxScore`), loại trừ việc nhận diện mong manh bằng chuỗi tên.
 4. **Bước 4 (Nhà thầu Nộp Hồ sơ Dự thầu)**:
    - Đăng nhập tài khoản nhà thầu `contractor1@test.com` lấy token vai trò `Contractor`.
    - Gọi `POST /api/bid-packages/{id}/submissions` đính kèm tệp đề xuất kỹ thuật (`multipart/form-data`).
-5. **Bước 5 (Đóng thầu & Chuyển sang Chấm điểm)**:
-   - Sử dụng token Admin gọi `PUT /api/bid-packages/{id}/status` chuyển trạng thái sang `Closed` (1), sau đó sang `Evaluating` (2).
-6. **Bước 6 (Hội đồng Giám khảo Chấm điểm)**:
+5. **Bước 5 (Đóng thầu, Gia hạn thầu & Chuyển sang Chấm điểm)**:
+   - Sử dụng token Admin/Procurement gọi `PUT /api/bid-packages/{id}/status` chuyển trạng thái sang `Closed` (1).
+   - *Gia hạn thầu (R2-1)*: Nếu cần mở lại gói thầu sang `Open` (0) khi đã quá hạn đóng thầu, truyền kèm tham số `newDeadline` ở tương lai. Hệ thống cập nhật thời hạn mới và lưu vết `AuditLog` (`EXTEND_BID_PACKAGE_DEADLINE`).
+   - Sau đó chuyển sang `Evaluating` (2) khi đã phân công đủ Tổ chuyên gia và hoàn thiện bộ tiêu chí.
+6. **Bước 6 (Hội đồng Giám khảo Chấm điểm - R2-2 & R2-3)**:
    - Đăng nhập tài khoản `evaluator@procurement.com` lấy token vai trò `Evaluator`.
-   - Gọi `POST /api/evaluations/submissions/{id}/scores` chấm điểm chi tiết theo từng tiêu chí (thang điểm 0 - 100).
+   - Gọi `POST /api/evaluations/submissions/{id}/scores` chấm điểm chi tiết theo từng tiêu chí chuyên môn (`isPriceCriteria == false`).
+   - *Ràng buộc R2-3*: Hệ thống tự động từ chối điểm chấm tay cho tiêu chí có `isPriceCriteria == true`.
+   - *Điều kiện hoàn tất R2-2*: Hồ sơ chỉ chuyển sang `Evaluated` khi toàn bộ giám khảo được phân công trong Tổ chuyên gia đều đã cho đủ điểm tất cả tiêu chí chấm tay.
 7. **Bước 7 (Xem Bảng Xếp hạng Điểm Trọng số)**:
    - Gọi `GET /api/evaluations/packages/{id}/summary` xem kết quả tính toán tự động điểm tổng hợp có trọng số và thứ hạng của các nhà thầu.
-8. **Bước 8 (Phê duyệt Kết quả Trúng thầu - Điều 61 Luật Đấu thầu 2023)**:
-   - Sử dụng token Admin gọi `POST /api/evaluations/packages/{id}/finalize?selectedSubmissionId={subId}` để trao thầu cho nhà thầu trúng thầu (xếp hạng 1, hoặc kèm lý do giải trình nếu chọn hạng khác). Hồ sơ chuyển sang `Selected`, gói thầu tự động chuyển sang `Awarded` (Đã trao thầu).
+8. **Bước 8 (Phê duyệt Kết quả Trúng thầu & Thu hồi Trao thầu - Điều 61, 64 Luật Đấu thầu 2023)**:
+   - Sử dụng token Admin/Procurement gọi `POST /api/evaluations/packages/{id}/finalize` với payload `selectedSubmissionId` (và `decisionReason` nếu chọn hạng != 1) để trao thầu cho nhà thầu trúng thầu. Hồ sơ chuyển sang `Selected`, gói thầu tự động chuyển sang `Awarded` (Đã trao thầu).
+   - *Thu hồi kết quả trúng thầu (R2-4)*: Trong trường hợp phát hiện sai sót pháp lý hoặc nhà thầu từ chối hoàn thiện hợp đồng trước khi hợp đồng có hiệu lực, gọi `POST /api/evaluations/packages/{id}/revoke-award` với `reason` bắt buộc ($\ge$ 5 ký tự). Điều kiện: Gói thầu chưa có hợp đồng ở trạng thái `Active` hoặc `Completed`. Hệ thống tự động:
+     - Chuyển gói thầu từ `Awarded` quay về `Evaluating`.
+     - Khôi phục toàn bộ hồ sơ dự thầu hợp lệ về trạng thái `Evaluated` và xóa lý do trao thầu.
+     - Hủy bỏ (xóa) toàn bộ hợp đồng `Draft` liên quan.
+     - Phát thông báo `Notification` và lưu vết `AuditLog` (`REVOKE_AWARD`).
+     - Khi hợp đồng bị `Terminated`, cho phép dùng luồng thu hồi này để trao thầu cho nhà thầu xếp hạng kế tiếp.
 9. **Bước 9 (Ký kết Hợp đồng & Giám sát Vòng đời)**:
    - Gọi `GET /api/evaluations/packages/{id}/awarded-bid` xác nhận thông tin nhà thầu trúng thầu (`isReadyForContract: true`).
    - Gọi `POST /api/contracts` tạo hợp đồng kinh tế (hệ thống tự động sinh số hiệu chuẩn `HD-{Năm}-{MãGói}-{STT}` nếu để trống, và kiểm soát giá trị hợp đồng $\le$ giá trúng thầu).

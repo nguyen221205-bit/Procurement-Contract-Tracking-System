@@ -51,6 +51,7 @@ export const CriteriaTemplateModal = ({
           name: item.name,
           maxScore: item.maxScore,
           weight: item.weight,
+          isPriceCriteria: Boolean(item.isPriceCriteria),
         });
       }
 

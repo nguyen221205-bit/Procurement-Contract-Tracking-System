@@ -137,12 +137,13 @@ namespace ProcurementSystem.API.Controllers
         /// <remarks>
         /// Luồng trạng thái hợp lệ:
         /// - **Open (0)**: Đang mở mời thầu
-        /// - **Closed (1)**: Đóng thầu, ngừng nhận hồ sơ
+        /// - **Closed (1)**: Đóng thầu, ngừng nhận hồ sơ (hỗ trợ mở lại sang Open kèm gia hạn NewDeadline)
         /// - **Evaluating (2)**: Đang chấm điểm và xếp hạng
-        /// - **Contracted (3)**: Đã phê duyệt trúng thầu và chuyển sang phân hệ hợp đồng
+        /// - **Awarded (3)**: Đã phê duyệt trúng thầu (do hệ thống tự động gán khi Finalize)
+        /// - **Contracted (4)**: Đã ký hợp đồng kinh tế (do hệ thống tự động gán khi kích hoạt hợp đồng)
         /// </remarks>
         /// <param name="id">Định danh gói thầu</param>
-        /// <param name="request">Mã trạng thái mới cần chuyển đổi</param>
+        /// <param name="request">Mã trạng thái mới, lý do đóng thầu trước hạn và thời hạn mới NewDeadline nếu gia hạn</param>
         /// <response code="200">Chuyển trạng thái thành công.</response>
         /// <response code="400">Bước chuyển trạng thái không hợp lệ theo quy tắc State Machine.</response>
         /// <response code="401">Chưa đăng nhập.</response>
@@ -248,7 +249,8 @@ namespace ProcurementSystem.API.Controllers
         public async Task<ActionResult<ApiResponse<PackageEvaluatorDto>>> AssignEvaluator(int id, [FromBody] AssignEvaluatorRequest request)
         {
             var currentUserId = GetCurrentUserId();
-            var result = await _bidPackageService.AssignEvaluatorAsync(id, request, currentUserId);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _bidPackageService.AssignEvaluatorAsync(id, request, currentUserId, isAdmin);
             if (!result.Success) return BadRequest(result);
             return Ok(result);
         }

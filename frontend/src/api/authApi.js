@@ -16,4 +16,12 @@ export const authApi = {
   refreshToken: async (token, refreshToken) => {
     return await axiosClient.post('/auth/refresh-token', { token, refreshToken });
   },
+
+  lookupTaxCode: async (taxCode) => {
+    return await axiosClient.get(`/auth/tax-lookup/${taxCode}`);
+  },
+
+  sendOtp: async (email, purpose = 'Register') => {
+    return await axiosClient.post('/auth/send-otp', { email, purpose });
+  },
 };

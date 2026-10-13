@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ProcurementSystem.Core.Enums;
+using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Data;
 using ProcurementSystem.Infrastructure.Entities;
 
@@ -10,7 +11,7 @@ namespace ProcurementSystem.API.BackgroundServices
 {
     /// <summary>
     /// Worker định kỳ kiểm tra hạn gói thầu, hợp đồng và mốc tiến độ để sinh cảnh báo tự động
-    /// Chạy 1 giờ/lần + chạy 1 lượt ngay khi ứng dụng khởi động. Có cơ chế chống duplicate notification (24h).
+    /// Chạy 1 giờ/lần + chạy 1 lượt ngay khi ứng dụng khởi động. Có cơ chế chống duplicate notification và email (24h).
     /// </summary>
     public class ContractExpiryNotificationWorker : BackgroundService
     {
@@ -61,6 +62,7 @@ namespace ProcurementSystem.API.BackgroundServices
         {
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
 
             var now = DateTime.UtcNow;
             var window24h = now.AddHours(-24);
@@ -73,7 +75,13 @@ namespace ProcurementSystem.API.BackgroundServices
                 .Distinct()
                 .ToListAsync(stoppingToken);
 
+            // Tra cứu map UserId -> Email để gửi email song song với Notification
+            var usersDict = await dbContext.Users
+                .AsNoTracking()
+                .ToDictionaryAsync(u => u.Id, u => u.Email, stoppingToken);
+
             var notificationsToAdd = new List<Notification>();
+            var emailsToSend = new List<(string Email, string Title, string Message)>();
 
             // Helper kiểm tra trùng lặp trong 24 giờ (cả trong DB lẫn trong mẻ notificationsToAdd hiện tại)
             async Task TryAddNotification(int userId, string title, string message, NotificationType type)
@@ -103,11 +111,17 @@ namespace ProcurementSystem.API.BackgroundServices
                         CreatedAt = DateTime.UtcNow,
                         IsRead = false
                     });
+
+                    // Thêm vào hàng đợi gửi email chống trùng 24h
+                    if (usersDict.TryGetValue(userId, out var email) && !string.IsNullOrWhiteSpace(email))
+                    {
+                        emailsToSend.Add((email, title, message));
+                    }
                 }
             }
 
             // =========================================================================
-            // A. CẢNH BÁO GÓI THẦU QUÁ DEADLINE NHƯNG VẪN ĐANG OPEN
+            // A. CẢNH BÁO VÀ TỰ ĐỘNG ĐÓNG GÓI THẦU QUÁ DEADLINE NHƯNG VẪN ĐANG OPEN
             // =========================================================================
             var overduePackages = await dbContext.BidPackages
                 .Where(bp => bp.Status == BidPackageStatus.Open && bp.Deadline < now)
@@ -115,8 +129,12 @@ namespace ProcurementSystem.API.BackgroundServices
 
             foreach (var bp in overduePackages)
             {
-                var title = $"[Cảnh báo] Gói thầu {bp.Code} đã hết hạn nộp hồ sơ";
-                var message = $"Gói thầu \"{bp.Name}\" đã kết thúc thời hạn tiếp nhận hồ sơ dự thầu lúc {bp.Deadline:dd/MM/yyyy HH:mm} UTC. Vui lòng đóng thầu để chuyển sang giai đoạn chấm điểm.";
+                // Tự động chuyển trạng thái đóng thầu (Closed) theo quy định Luật Đấu thầu
+                bp.Status = BidPackageStatus.Closed;
+                _logger.LogInformation("Gói thầu {Code} đã tự động đóng (Closed) do quá thời hạn nộp hồ sơ ({Deadline:dd/MM/yyyy HH:mm} UTC).", bp.Code, bp.Deadline);
+
+                var title = $"[Thông báo] Gói thầu {bp.Code} đã hết hạn và tự động đóng thầu";
+                var message = $"Gói thầu \"{bp.Name}\" đã kết thúc thời hạn tiếp nhận hồ sơ dự thầu lúc {bp.Deadline:dd/MM/yyyy HH:mm} UTC và đã được hệ thống tự động chuyển sang trạng thái Đóng thầu (Closed). Vui lòng phân công Tổ chuyên gia để tiến hành mở thầu và chấm điểm.";
 
                 // Gửi cho người tạo
                 if (bp.CreatedBy > 0)
@@ -228,12 +246,32 @@ namespace ProcurementSystem.API.BackgroundServices
                 }
             }
 
-            // Lưu toàn bộ thông báo mới sinh vào CSDL
-            if (notificationsToAdd.Count > 0)
+            // Lưu toàn bộ thông báo mới sinh vào CSDL (kèm trạng thái Closed của các gói thầu quá hạn nếu có)
+            if (notificationsToAdd.Count > 0 || overduePackages.Count > 0)
             {
-                await dbContext.Notifications.AddRangeAsync(notificationsToAdd, stoppingToken);
+                if (notificationsToAdd.Count > 0)
+                {
+                    await dbContext.Notifications.AddRangeAsync(notificationsToAdd, stoppingToken);
+                }
                 await dbContext.SaveChangesAsync(stoppingToken);
-                _logger.LogInformation("Đã sinh {Count} thông báo cảnh báo mới vào hệ thống.", notificationsToAdd.Count);
+                _logger.LogInformation("Đã lưu thông báo và cập nhật dữ liệu quét hạn vào hệ thống.");
+            }
+
+            // Gửi email cảnh báo chống trùng lặp (không làm sập worker nếu lỗi SMTP)
+            if (emailsToSend.Count > 0)
+            {
+                _logger.LogInformation("Bắt đầu gửi {Count} email cảnh báo tới các tài khoản liên quan...", emailsToSend.Count);
+                foreach (var (email, emailTitle, emailMessage) in emailsToSend)
+                {
+                    try
+                    {
+                        await emailService.SendEmailAsync(email, emailTitle, emailMessage, isHtml: false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi xảy ra khi gửi email cảnh báo tới {Email}", email);
+                    }
+                }
             }
         }
     }

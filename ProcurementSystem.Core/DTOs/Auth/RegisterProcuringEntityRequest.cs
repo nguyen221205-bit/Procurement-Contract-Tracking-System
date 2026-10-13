@@ -53,6 +53,13 @@ namespace ProcurementSystem.Core.DTOs.Auth
         public string? RepresentativePhone { get; set; }
 
         /// <summary>
+        /// Mã OTP xác thực email công vụ (6 chữ số)
+        /// </summary>
+        [Required(ErrorMessage = "Mã xác thực OTP là bắt buộc")]
+        [StringLength(6, MinimumLength = 6, ErrorMessage = "Mã OTP phải gồm đúng 6 chữ số")]
+        public string OtpCode { get; set; } = string.Empty;
+
+        /// <summary>
         /// File scan Quyết định thành lập / Giấy phép kinh doanh (PDF, JPG, PNG - Tối đa 15MB)
         /// </summary>
         [Required(ErrorMessage = "Tệp Quyết định thành lập / Giấy phép hoạt động là bắt buộc")]
@@ -75,6 +82,9 @@ namespace ProcurementSystem.Core.DTOs.Auth
         public string EstablishmentDecisionFileUrl { get; set; } = string.Empty;
         public string? AppointmentDecisionFileUrl { get; set; }
         public string VerificationStatus { get; set; } = "Pending";
+        public bool IsDigitallySigned { get; set; } = false;
+        public string? SignerInfo { get; set; }
+        public DateTime? SignDate { get; set; }
         public string VerificationMessage { get; set; } = string.Empty;
     }
 }

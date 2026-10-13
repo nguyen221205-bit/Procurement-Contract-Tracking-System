@@ -22,39 +22,39 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<AwardedBidInfoDto>> GetAwardedBidForContractAsync(int packageId);
 
         /// <summary>
-        /// Tạo hợp đồng từ kết quả trúng thầu (chỉ Admin/Procurement)
+        /// Tạo hợp đồng từ kết quả trúng thầu (chỉ Admin/Procurement phụ trách gói thầu)
         /// </summary>
-        Task<ApiResponse<ContractDto>> CreateContractFromAwardedBidAsync(CreateContractRequest request, int userId);
+        Task<ApiResponse<ContractDto>> CreateContractFromAwardedBidAsync(CreateContractRequest request, int userId, bool isAdmin);
 
         /// <summary>
-        /// Cập nhật điều khoản, giá trị, thời hạn hợp đồng
+        /// Cập nhật điều khoản, giá trị, thời hạn hợp đồng (chỉ Admin/Procurement phụ trách gói thầu)
         /// </summary>
-        Task<ApiResponse<ContractDto>> UpdateContractAsync(int id, UpdateContractRequest request, int userId);
+        Task<ApiResponse<ContractDto>> UpdateContractAsync(int id, UpdateContractRequest request, int userId, bool isAdmin);
 
         /// <summary>
-        /// Chuyển trạng thái hợp đồng (Draft → Active → Completed / Terminated)
+        /// Chuyển trạng thái hợp đồng (Draft → Active → Completed / Terminated) (chỉ Admin/Procurement phụ trách gói thầu)
         /// </summary>
-        Task<ApiResponse<ContractDto>> ChangeStatusAsync(int id, ChangeContractStatusRequest request, int userId);
+        Task<ApiResponse<ContractDto>> ChangeStatusAsync(int id, ChangeContractStatusRequest request, int userId, bool isAdmin);
 
         /// <summary>
-        /// Upload file PDF hợp đồng có chữ ký scan
+        /// Upload file PDF hợp đồng có chữ ký scan (chỉ Admin/Procurement phụ trách gói thầu)
         /// </summary>
-        Task<ApiResponse<string>> UploadScannedContractAsync(int contractId, IFormFile file, int userId);
+        Task<ApiResponse<string>> UploadScannedContractAsync(int contractId, IFormFile file, int userId, bool isAdmin);
 
         /// <summary>
-        /// Thêm mốc thanh toán nghiệm thu
+        /// Thêm mốc thanh toán nghiệm thu (chỉ Admin/Procurement phụ trách gói thầu)
         /// </summary>
-        Task<ApiResponse<ContractMilestoneDto>> AddMilestoneAsync(int contractId, CreateMilestoneRequest request, int userId);
+        Task<ApiResponse<ContractMilestoneDto>> AddMilestoneAsync(int contractId, CreateMilestoneRequest request, int userId, bool isAdmin);
 
         /// <summary>
-        /// Cập nhật mốc thanh toán nghiệm thu
+        /// Cập nhật mốc thanh toán nghiệm thu (chỉ Admin/Procurement phụ trách gói thầu)
         /// </summary>
-        Task<ApiResponse<ContractMilestoneDto>> UpdateMilestoneAsync(int contractId, int milestoneId, CreateMilestoneRequest request, int userId);
+        Task<ApiResponse<ContractMilestoneDto>> UpdateMilestoneAsync(int contractId, int milestoneId, CreateMilestoneRequest request, int userId, bool isAdmin);
 
         /// <summary>
-        /// Xóa mốc thanh toán
+        /// Xóa mốc thanh toán (chỉ Admin/Procurement phụ trách gói thầu)
         /// </summary>
-        Task<ApiResponse<bool>> DeleteMilestoneAsync(int contractId, int milestoneId, int userId);
+        Task<ApiResponse<bool>> DeleteMilestoneAsync(int contractId, int milestoneId, int userId, bool isAdmin);
 
         /// <summary>
         /// Tra cứu toàn bộ lịch sử hợp đồng theo mã nhà thầu (kiểm tra phân quyền chống IDOR)
@@ -72,8 +72,8 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<ProgressUpdateDto>> AddMilestoneProgressUpdateAsync(int milestoneId, CreateProgressUpdateRequest request, int userId);
 
         /// <summary>
-        /// Phê duyệt hoặc từ chối biên bản nghiệm thu mốc thanh toán
+        /// Phê duyệt hoặc từ chối biên bản nghiệm thu mốc thanh toán (chỉ Admin/Procurement phụ trách gói thầu)
         /// </summary>
-        Task<ApiResponse<MilestoneAcceptanceDto>> ApproveMilestoneAcceptanceAsync(int milestoneId, ApproveMilestoneAcceptanceRequest request, int userId);
+        Task<ApiResponse<MilestoneAcceptanceDto>> ApproveMilestoneAcceptanceAsync(int milestoneId, ApproveMilestoneAcceptanceRequest request, int userId, bool isAdmin);
     }
 }

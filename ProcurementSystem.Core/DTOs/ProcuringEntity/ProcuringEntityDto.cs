@@ -24,6 +24,11 @@ namespace ProcurementSystem.Core.DTOs.ProcuringEntity
         public string VerificationStatus { get; set; } = "Pending"; // Pending, Approved, Rejected
         public string? AdminNotes { get; set; }
 
+        public bool IsDigitalSigned { get; set; } = false;
+        public string? DigitalSignerName { get; set; }
+        public DateTime? DigitalSignDate { get; set; }
+        public string? DigitalSignMessage { get; set; }
+
         public int? ReviewedByUserId { get; set; }
         public string? ReviewedByUserName { get; set; }
         public DateTime? ReviewedAt { get; set; }

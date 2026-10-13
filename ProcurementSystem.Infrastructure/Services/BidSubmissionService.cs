@@ -108,6 +108,9 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // 7. Tạo hoặc cập nhật hồ sơ dự thầu (hỗ trợ nộp lại sau khi đã rút thầu Withdrawn)
+            var newlyUploadedFiles = new List<string>();
+            List<string>? oldFilePaths = null;
+
             await _unitOfWork.BeginTransactionAsync();
             try
             {
@@ -122,7 +125,13 @@ namespace ProcurementSystem.Infrastructure.Services
                     submission.Rank = null;
                     _unitOfWork.Repository<BidSubmission>().Update(submission);
 
-                    // Xóa các liên kết file cũ
+                    // Thu thập danh sách file cũ để xóa vật lý sau khi commit thành công
+                    oldFilePaths = submission.SubmissionFiles
+                        .Select(f => f.FilePath)
+                        .Where(p => !string.IsNullOrEmpty(p))
+                        .ToList();
+
+                    // Xóa các liên kết file cũ trong cơ sở dữ liệu
                     foreach (var oldFile in submission.SubmissionFiles.ToList())
                     {
                         _unitOfWork.Repository<SubmissionFile>().Delete(oldFile);
@@ -150,6 +159,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 {
                     var filePath = await _fileStorageService.SaveFileAsync(
                         files[i], $"submissions/{submission.Id}");
+                    newlyUploadedFiles.Add(filePath);
 
                     var submissionFile = new SubmissionFile
                     {
@@ -166,6 +176,22 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 await _unitOfWork.SaveChangesAsync();
                 await _unitOfWork.CommitTransactionAsync();
+
+                // Dọn dẹp các file vật lý cũ sau khi transaction đã commit thành công
+                if (oldFilePaths != null && oldFilePaths.Count > 0)
+                {
+                    foreach (var oldPath in oldFilePaths)
+                    {
+                        try
+                        {
+                            _fileStorageService.DeleteFile(oldPath);
+                        }
+                        catch
+                        {
+                            // Bỏ qua lỗi xóa file cũ để không làm gián đoạn phản hồi
+                        }
+                    }
+                }
 
                 // 9. Trả về kết quả
                 return ApiResponse<BidSubmissionDto>.Ok(new BidSubmissionDto
@@ -188,6 +214,20 @@ namespace ProcurementSystem.Infrastructure.Services
             catch (Exception)
             {
                 await _unitOfWork.RollbackTransactionAsync();
+
+                // Xóa các file mới tải lên trong mẻ này để chống file mồ côi
+                foreach (var newPath in newlyUploadedFiles)
+                {
+                    try
+                    {
+                        _fileStorageService.DeleteFile(newPath);
+                    }
+                    catch
+                    {
+                        // Bỏ qua lỗi xóa dọn dẹp
+                    }
+                }
+
                 throw;
             }
         }
@@ -409,6 +449,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 TotalScore = submission.TotalScore,
                 Rank = submission.Rank,
                 Status = submission.Status,
+                SelectionReason = submission.SelectionReason,
                 Files = submission.SubmissionFiles?.Select(MapFileToDto).ToList() ?? new()
             };
         }
@@ -428,6 +469,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 TotalScore = submission.TotalScore,
                 Rank = submission.Rank,
                 Status = submission.Status,
+                SelectionReason = submission.SelectionReason,
                 FileCount = submission.SubmissionFiles?.Count ?? 0
             };
         }

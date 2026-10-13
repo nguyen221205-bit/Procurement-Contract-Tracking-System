@@ -29,5 +29,10 @@ namespace ProcurementSystem.Core.Enums
         /// Nhà thầu đã rút hồ sơ dự thầu hợp lệ trước hạn đóng thầu
         /// </summary>
         public const string Withdrawn = "Withdrawn";
+
+        /// <summary>
+        /// Bị loại do không đáp ứng tư cách hợp lệ hoặc vi phạm quy định đấu thầu
+        /// </summary>
+        public const string Disqualified = "Disqualified";
     }
 }

@@ -13,5 +13,10 @@ namespace ProcurementSystem.Core.DTOs.BidPackage
         /// </summary>
         [MaxLength(1000, ErrorMessage = "Lý do không được vượt quá 1000 ký tự.")]
         public string? Reason { get; set; }
+
+        /// <summary>
+        /// Thời hạn nộp thầu mới (bắt buộc khi mở lại gói thầu Closed -> Open nếu thời hạn cũ đã hết)
+        /// </summary>
+        public DateTime? NewDeadline { get; set; }
     }
 }

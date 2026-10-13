@@ -43,6 +43,17 @@ namespace ProcurementSystem.Infrastructure.Entities
         [MaxLength(50)]
         public string VerificationStatus { get; set; } = "Pending"; // Pending, Approved, Rejected
 
+        // Thông tin Chữ ký số điện tử (USB Token / HSM PKCS#7 qua iText7)
+        public bool IsDigitalSigned { get; set; } = false;
+
+        [MaxLength(250)]
+        public string? DigitalSignerName { get; set; }
+
+        public DateTime? DigitalSignDate { get; set; }
+
+        [MaxLength(500)]
+        public string? DigitalSignMessage { get; set; }
+
         [MaxLength(1000)]
         public string? AdminNotes { get; set; }
 

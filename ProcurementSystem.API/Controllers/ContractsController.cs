@@ -166,10 +166,15 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<ContractDto>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var result = await _contractService.CreateContractFromAwardedBidAsync(request, userId.Value);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.CreateContractFromAwardedBidAsync(request, userId.Value, isAdmin);
 
             if (!result.Success)
             {
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
                 return BadRequest(result);
             }
 
@@ -199,10 +204,19 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<ContractDto>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var result = await _contractService.UpdateContractAsync(id, request, userId.Value);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.UpdateContractAsync(id, request, userId.Value, isAdmin);
 
             if (!result.Success)
             {
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
+                if (result.Message.Contains("Không tìm thấy"))
+                {
+                    return NotFound(result);
+                }
                 return BadRequest(result);
             }
 
@@ -240,10 +254,19 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<ContractDto>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var result = await _contractService.ChangeStatusAsync(id, request, userId.Value);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.ChangeStatusAsync(id, request, userId.Value, isAdmin);
 
             if (!result.Success)
             {
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
+                if (result.Message.Contains("Không tìm thấy"))
+                {
+                    return NotFound(result);
+                }
                 return BadRequest(result);
             }
 
@@ -278,10 +301,19 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var result = await _contractService.UploadScannedContractAsync(id, file, userId.Value);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.UploadScannedContractAsync(id, file, userId.Value, isAdmin);
 
             if (!result.Success)
             {
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
+                if (result.Message.Contains("Không tìm thấy"))
+                {
+                    return NotFound(result);
+                }
                 return BadRequest(result);
             }
 
@@ -320,10 +352,19 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<ContractMilestoneDto>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var result = await _contractService.AddMilestoneAsync(id, request, userId.Value);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.AddMilestoneAsync(id, request, userId.Value, isAdmin);
 
             if (!result.Success)
             {
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
+                if (result.Message.Contains("Không tìm thấy"))
+                {
+                    return NotFound(result);
+                }
                 return BadRequest(result);
             }
 
@@ -364,10 +405,15 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<ContractMilestoneDto>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var result = await _contractService.UpdateMilestoneAsync(id, milestoneId, request, userId.Value);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.UpdateMilestoneAsync(id, milestoneId, request, userId.Value, isAdmin);
 
             if (!result.Success)
             {
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
                 if (result.Message.Contains("Không tìm thấy"))
                 {
                     return NotFound(result);
@@ -399,10 +445,19 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<bool>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var result = await _contractService.DeleteMilestoneAsync(id, milestoneId, userId.Value);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.DeleteMilestoneAsync(id, milestoneId, userId.Value, isAdmin);
 
             if (!result.Success)
             {
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
+                if (result.Message.Contains("Không tìm thấy"))
+                {
+                    return NotFound(result);
+                }
                 return BadRequest(result);
             }
 
@@ -538,10 +593,15 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<MilestoneAcceptanceDto>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var result = await _contractService.ApproveMilestoneAcceptanceAsync(id, request, userId.Value);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.ApproveMilestoneAcceptanceAsync(id, request, userId.Value, isAdmin);
 
             if (!result.Success)
             {
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
                 if (result.Message.Contains("Không tìm thấy"))
                 {
                     return NotFound(result);

@@ -289,6 +289,48 @@ namespace ProcurementSystem.API.Controllers
             return Ok(result);
         }
 
+        /// <summary>
+        /// Nhập danh sách nhà thầu hàng loạt từ tệp Excel (.xlsx) (Chỉ Admin)
+        /// </summary>
+        /// <param name="file">Tệp bảng tính Excel (.xlsx) chứa danh sách nhà thầu theo mẫu chuẩn.</param>
+        /// <remarks>
+        /// Nghiệp vụ:
+        /// - Kiểm tra tính toàn vẹn của tệp (.xlsx, &lt;= 10MB).
+        /// - Bắt buộc: Tên doanh nghiệp, Mã số thuế, Email liên hệ.
+        /// - Kiểm tra trùng lặp mã số thuế và email (so với DB và giữa các dòng trong file).
+        /// - Báo cáo chi tiết số lượng thành công, thất bại và danh sách lỗi cụ thể theo từng số thứ tự dòng.
+        /// </remarks>
+        [HttpPost("import-excel")]
+        [Authorize(Roles = "Admin")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(typeof(ApiResponse<ImportContractorResultDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ImportContractorResultDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<ApiResponse<ImportContractorResultDto>>> ImportContractorsFromExcel(IFormFile file)
+        {
+            var result = await _contractorService.ImportContractorsFromExcelAsync(file);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Tải về tệp bảng tính Excel (.xlsx) mẫu để chuẩn bị dữ liệu nhập danh sách nhà thầu
+        /// </summary>
+        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        [HttpGet("import-template")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [Produces("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+        public async Task<IActionResult> DownloadImportTemplate()
+        {
+            var templateBytes = await _contractorService.GenerateImportTemplateExcelAsync();
+            var fileName = "Mau_Nhap_Danh_Sach_Nha_Thau.xlsx";
+            return File(templateBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+
         private int? GetCurrentUserId()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

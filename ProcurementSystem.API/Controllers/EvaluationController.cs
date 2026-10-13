@@ -39,11 +39,13 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
-        /// Tạo mới tiêu chí đánh giá cho gói thầu (tên, thang điểm, trọng số)
+        /// Tạo mới tiêu chí đánh giá cho gói thầu (tên, thang điểm, trọng số, cờ IsPriceCriteria)
         /// </summary>
         /// <remarks>
         /// Quyền hạn: Bắt buộc **Admin** hoặc **Procurement**.
-        /// Lưu ý: Tổng trọng số (Weight) của tất cả tiêu chí trong một gói thầu phải bảo đảm đạt 100%.
+        /// Lưu ý: 
+        /// - Tổng trọng số (Weight) của tất cả tiêu chí trong một gói thầu phải bảo đảm đạt 100%.
+        /// - Tiêu chí có **IsPriceCriteria = true** là tiêu chí Giá / Tài chính (hệ thống tự tính điểm từ giá dự thầu, tối đa 1 tiêu chí giá/gói).
         /// </remarks>
         /// <param name="packageId">Định danh gói thầu (BidPackageId)</param>
         /// <param name="request">Thông tin tiêu chí mới (tên, mô tả, trọng số, điểm tối đa)</param>
@@ -135,6 +137,7 @@ namespace ProcurementSystem.API.Controllers
         /// Tự động tính toán điểm tổng hợp theo công thức trọng số chuẩn:
         /// TotalScore = Sum(Tiêu chí điểm trung bình * Trọng số / 100)
         /// Hệ thống tự động cập nhật xếp hạng thứ hạng (Rank 1, 2, 3...) cho toàn bộ hồ sơ trong gói thầu.
+        /// Chú ý: Tiêu chí Giá (IsPriceCriteria = true) được tự động tính điểm theo công thức luật đấu thầu, không cho phép giám khảo chấm tay.
         /// Quyền hạn: **Admin**, **Evaluator**.
         /// </remarks>
         /// <param name="submissionId">Định danh hồ sơ dự thầu (BidSubmissionId)</param>
@@ -300,6 +303,104 @@ namespace ProcurementSystem.API.Controllers
             var isAdmin = User.IsInRole("Admin");
 
             var result = await _evaluationService.FinalizeEvaluationAsync(packageId, effectiveRequest, userId, isAdmin);
+            if (!result.Success) return BadRequest(result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Thu hồi quyết định phê duyệt trúng thầu của gói thầu (Revoke Award)
+        /// </summary>
+        /// <remarks>
+        /// Căn cứ quy trình kiểm toán và giải quyết kiến nghị đấu thầu:
+        /// Cho phép Bên mời thầu / Quản trị viên thu hồi quyết định trao thầu khi phát hiện sai sót hoặc nhà thầu trúng thầu từ chối hoàn thiện hợp đồng trước khi hợp đồng được kích hoạt (Active/Completed).
+        /// 
+        /// **Điều kiện thực hiện:**
+        /// - Bắt buộc cung cấp lý do thu hồi (**Reason**) tối thiểu 5 ký tự để lưu hồ sơ kiểm toán.
+        /// - Gói thầu đang ở trạng thái **Awarded** (hoặc **Contracted** khi toàn bộ hợp đồng liên quan đã bị chấm dứt - Terminated).
+        /// - Tuyệt đối không được phép thu hồi nếu gói thầu đã có hợp đồng đang ở trạng thái **Active** (Đang thực hiện) hoặc **Completed** (Hoàn thành).
+        /// 
+        /// **Tác động hệ thống:**
+        /// - Chuyển gói thầu từ **Awarded** quay về **Evaluating**.
+        /// - Khôi phục toàn bộ hồ sơ dự thầu hợp lệ về trạng thái **Evaluated** và xóa lý do lựa chọn của hồ sơ trúng thầu trước đó.
+        /// - Tự động hủy bỏ (xóa) toàn bộ hợp đồng ở trạng thái **Draft** liên quan đến gói thầu.
+        /// - Phát thông báo hệ thống (Notification) đến nhà thầu bị thu hồi và người tạo gói thầu.
+        /// - Ghi nhật ký kiểm toán hành động **REVOKE_AWARD**.
+        /// 
+        /// **Quyền hạn:** Bắt buộc **Admin** hoặc **Procurement** (người tạo gói thầu).
+        /// </remarks>
+        /// <param name="packageId">Định danh gói thầu (BidPackageId)</param>
+        /// <param name="request">Lý do thu hồi quyết định trao thầu</param>
+        /// <response code="200">Thu hồi kết quả phê duyệt trúng thầu thành công.</response>
+        /// <response code="400">Dữ liệu không hợp lệ, gói thầu không ở trạng thái Awarded hoặc đã có hợp đồng Active/Completed.</response>
+        /// <response code="401">Chưa đăng nhập.</response>
+        /// <response code="403">Từ chối truy cập (không có quyền Admin hoặc không phải người tạo gói thầu).</response>
+        [HttpPost("packages/{packageId:int}/revoke-award")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<ApiResponse<bool>>> RevokeAward(int packageId, [FromBody] RevokeAwardRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                return BadRequest(ApiResponse<bool>.Fail(errors));
+            }
+
+            var userId = GetCurrentUserId();
+            var isAdmin = User.IsInRole("Admin");
+
+            var result = await _evaluationService.RevokeAwardAsync(packageId, request, userId, isAdmin);
+            if (!result.Success) return BadRequest(result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Loại bỏ hồ sơ dự thầu do không đáp ứng tư cách hợp lệ hoặc vi phạm quy định (Disqualify Submission)
+        /// </summary>
+        /// <remarks>
+        /// Căn cứ Luật Đấu thầu:
+        /// Cho phép Bên mời thầu / Quản trị viên loại bỏ một hồ sơ dự thầu trong giai đoạn đóng thầu hoặc chấm điểm khi phát hiện không đáp ứng tính hợp lệ của HSDT, gian lận, hoặc không đủ tư cách tham dự thầu.
+        /// 
+        /// **Điều kiện thực hiện:**
+        /// - Bắt buộc cung cấp lý do loại bỏ (**Reason**) tối thiểu 5 ký tự.
+        /// - Gói thầu đang ở trạng thái **Closed** hoặc **Evaluating**.
+        /// - Hồ sơ chưa được phê duyệt trúng thầu (Selected) và chưa được nhà thầu rút lui (Withdrawn).
+        /// 
+        /// **Tác động hệ thống:**
+        /// - Đổi trạng thái hồ sơ sang **Disqualified**.
+        /// - Hồ sơ bị loại sẽ không được xếp hạng và không được tính vào công thức so sánh giá thấp nhất.
+        /// - Khi phê duyệt trao thầu (Finalize), trạng thái **Disqualified** được bảo toàn nguyên vẹn, không bị ghi đè thành **Rejected**.
+        /// - Phát thông báo cảnh báo (Notification) đến nhà thầu bị loại.
+        /// - Ghi nhật ký kiểm toán hành động **DISQUALIFY_SUBMISSION**.
+        /// 
+        /// **Quyền hạn:** Bắt buộc **Admin** hoặc **Procurement** (người tạo gói thầu).
+        /// </remarks>
+        /// <param name="submissionId">Định danh hồ sơ dự thầu (BidSubmissionId)</param>
+        /// <param name="request">Lý do loại bỏ hồ sơ dự thầu</param>
+        /// <response code="200">Loại bỏ hồ sơ dự thầu thành công.</response>
+        /// <response code="400">Dữ liệu không hợp lệ hoặc hồ sơ không thỏa mãn điều kiện loại bỏ.</response>
+        /// <response code="401">Chưa đăng nhập.</response>
+        /// <response code="403">Từ chối truy cập (không có quyền Admin hoặc không phải người tạo gói thầu).</response>
+        [HttpPost("submissions/{submissionId:int}/disqualify")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<ApiResponse<bool>>> DisqualifySubmission(int submissionId, [FromBody] DisqualifySubmissionRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                return BadRequest(ApiResponse<bool>.Fail(errors));
+            }
+
+            var userId = GetCurrentUserId();
+            var isAdmin = User.IsInRole("Admin");
+
+            var result = await _evaluationService.DisqualifySubmissionAsync(submissionId, request, userId, isAdmin);
             if (!result.Success) return BadRequest(result);
             return Ok(result);
         }

@@ -143,6 +143,8 @@ export const ScorecardForm = ({
     }));
   };
 
+  const manualCriteria = criteriaList.filter((c) => !c.isPriceCriteria);
+
   // Calculate projected weighted total score
   const calculateTotalWeightedScore = () => {
     let sum = 0;
@@ -154,25 +156,25 @@ export const ScorecardForm = ({
     return Math.round(sum * 100) / 100;
   };
 
-  // Count criteria with scores entered
-  const criteriaFilledCount = criteriaList.filter((c) => {
+  // Count criteria with scores entered (chỉ tính tiêu chí cần chấm tay)
+  const criteriaFilledCount = manualCriteria.filter((c) => {
     const s = scoresMap[c.id]?.score;
     return s !== '' && s !== undefined && !isNaN(s);
   }).length;
 
-  const isComplete = criteriaList.length > 0 && criteriaFilledCount === criteriaList.length;
+  const isComplete = manualCriteria.length > 0 && criteriaFilledCount === manualCriteria.length;
 
   // Submit Scorecard
   const handleSaveScorecard = async () => {
     if (readOnly || !isViewingOwnScorecard || !currentSubmission) return;
 
     if (!isComplete) {
-      toast.error(`Vui lòng nhập điểm đầy đủ cho toàn bộ ${criteriaList.length} tiêu chí.`);
+      toast.error(`Vui lòng nhập điểm đầy đủ cho toàn bộ ${manualCriteria.length} tiêu chí chuyên môn.`);
       return;
     }
 
     const payload = {
-      scores: criteriaList.map((c) => ({
+      scores: manualCriteria.map((c) => ({
         criteriaId: c.id,
         score: Number(scoresMap[c.id]?.score || 0),
         comment: scoresMap[c.id]?.comment?.trim() || null,
@@ -454,7 +456,14 @@ export const ScorecardForm = ({
                               {idx + 1}
                             </td>
                             <td className="py-3.5 px-4">
-                              <p className="font-bold text-slate-800 text-xs">{crit.name}</p>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-bold text-slate-800 text-xs">{crit.name}</p>
+                                {crit.isPriceCriteria && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                    Tự động (Giá)
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[11px] text-slate-400">
                                 Thang điểm tối đa: {formatNumber(crit.maxScore)} điểm
                               </span>
@@ -465,36 +474,50 @@ export const ScorecardForm = ({
                               </span>
                             </td>
                             <td className="py-3.5 px-4 text-center">
-                              <div className="relative inline-block w-28">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max={crit.maxScore}
-                                  step="0.5"
-                                  placeholder="0.0"
-                                  disabled={isFormReadOnly}
-                                  value={item.score}
-                                  onChange={(e) => handleScoreChange(crit.id, e.target.value, crit.maxScore)}
-                                  className="w-full px-3 py-1.5 text-center text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
-                                />
-                              </div>
+                              {crit.isPriceCriteria ? (
+                                <div className="w-28 py-1.5 px-2 bg-amber-50/70 border border-amber-200 rounded-lg text-center text-[10px] font-semibold text-amber-800 mx-auto">
+                                  Hệ thống tự tính
+                                </div>
+                              ) : (
+                                <div className="relative inline-block w-28">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={crit.maxScore}
+                                    step="0.5"
+                                    placeholder="0.0"
+                                    disabled={isFormReadOnly}
+                                    value={item.score}
+                                    onChange={(e) => handleScoreChange(crit.id, e.target.value, crit.maxScore)}
+                                    className="w-full px-3 py-1.5 text-center text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
+                                  />
+                                </div>
+                              )}
                             </td>
                             <td className="py-3.5 px-4 text-right font-bold text-blue-700">
-                              {item.score !== '' ? formatNumber(weightedScore) : '—'}
+                              {crit.isPriceCriteria
+                                ? <span className="text-[11px] text-amber-700 font-semibold italic">Tự tính</span>
+                                : item.score !== '' ? formatNumber(weightedScore) : '—'}
                             </td>
                           </tr>
                           {/* Dòng nhận xét cho tiêu chí */}
                           <tr className="bg-slate-50/30">
                             <td colSpan={5} className="px-4 pb-3 pt-0">
                               <div className="pl-8">
-                                <input
-                                  type="text"
-                                  placeholder="Ghi chú / Nhận xét chuyên môn cho tiêu chí này (tùy chọn)..."
-                                  disabled={isFormReadOnly}
-                                  value={item.comment}
-                                  onChange={(e) => handleCommentChange(crit.id, e.target.value)}
-                                  className="w-full px-3 py-1 text-[11px] text-slate-600 bg-white/70 border border-slate-200 rounded-md focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-400 disabled:bg-transparent disabled:border-transparent"
-                                />
+                                {crit.isPriceCriteria ? (
+                                  <p className="text-[11px] text-amber-700/80 italic py-1">
+                                    Tiêu chí Giá / Tài chính được tự động chấm điểm theo công thức tỷ lệ nghịch giá dự thầu (Luật Đấu thầu).
+                                  </p>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    placeholder="Ghi chú / Nhận xét chuyên môn cho tiêu chí này (tùy chọn)..."
+                                    disabled={isFormReadOnly}
+                                    value={item.comment}
+                                    onChange={(e) => handleCommentChange(crit.id, e.target.value)}
+                                    className="w-full px-3 py-1 text-[11px] text-slate-600 bg-white/70 border border-slate-200 rounded-md focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-400 disabled:bg-transparent disabled:border-transparent"
+                                  />
+                                )}
                               </div>
                             </td>
                           </tr>

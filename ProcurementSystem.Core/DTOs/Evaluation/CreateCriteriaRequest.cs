@@ -15,5 +15,11 @@ namespace ProcurementSystem.Core.DTOs.Evaluation
         [Required(ErrorMessage = "Trọng số là bắt buộc.")]
         [Range(0.01, 100.00, ErrorMessage = "Trọng số phải lớn hơn 0.")]
         public decimal Weight { get; set; } = 1;
+
+        /// <summary>
+        /// Đánh dấu là tiêu chí đánh giá Giá / Tài chính (hệ thống tự động tính điểm theo công thức luật đấu thầu).
+        /// Mỗi gói thầu chỉ được phép thiết lập tối đa 1 tiêu chí giá.
+        /// </summary>
+        public bool IsPriceCriteria { get; set; } = false;
     }
 }

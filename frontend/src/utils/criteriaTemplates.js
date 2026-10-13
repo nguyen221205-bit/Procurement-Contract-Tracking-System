@@ -29,7 +29,7 @@ export const CRITERIA_PACKAGE_TEMPLATES = [
     description: 'Phần cứng, máy chủ, thiết bị viễn thông.',
     items: [
       { name: 'Đáp ứng thông số kỹ thuật', maxScore: 100, weight: 45 },
-      { name: 'Chi phí & Giá dự thầu', maxScore: 100, weight: 30 },
+      { name: 'Chi phí & Giá dự thầu', maxScore: 100, weight: 30, isPriceCriteria: true },
       { name: 'Năng lực nhà cung cấp', maxScore: 100, weight: 15 },
       { name: 'Bảo hành & Hỗ trợ kỹ thuật', maxScore: 100, weight: 10 },
     ],
@@ -42,7 +42,7 @@ export const CRITERIA_PACKAGE_TEMPLATES = [
       { name: 'Biện pháp thi công & Kỹ thuật', maxScore: 100, weight: 40 },
       { name: 'Năng lực thiết bị & Máy móc', maxScore: 100, weight: 25 },
       { name: 'Tiến độ & An toàn lao động', maxScore: 100, weight: 20 },
-      { name: 'Chi phí & Giá dự thầu', maxScore: 100, weight: 15 },
+      { name: 'Chi phí & Giá dự thầu', maxScore: 100, weight: 15, isPriceCriteria: true },
     ],
   },
 ];

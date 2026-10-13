@@ -177,11 +177,11 @@ namespace ProcurementSystem.Infrastructure.Services
                     "Vui lòng thực hiện 'Phê duyệt trúng thầu' (Finalize Evaluation) trước khi tạo hợp đồng.");
             }
 
-            // Kiểm tra đã có hợp đồng chưa
+            // Kiểm tra đã có hợp đồng chưa (bỏ qua hợp đồng đã Terminated)
             var existingContract = await _unitOfWork.Repository<Contract>()
                 .Query()
                 .AsNoTracking()
-                .FirstOrDefaultAsync(c => c.BidPackageId == packageId);
+                .FirstOrDefaultAsync(c => c.BidPackageId == packageId && c.Status != ContractStatus.Terminated);
 
             // Đếm tổng số hợp đồng để sinh số thứ tự tự động
             var contractCount = await _unitOfWork.Repository<Contract>()
@@ -226,7 +226,7 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<ContractDto>> CreateContractFromAwardedBidAsync(
-            CreateContractRequest request, int userId)
+            CreateContractRequest request, int userId, bool isAdmin)
         {
             // 1. Kiểm tra gói thầu tồn tại
             var bidPackage = await _unitOfWork.Repository<BidPackage>()
@@ -237,6 +237,12 @@ namespace ProcurementSystem.Infrastructure.Services
             if (bidPackage == null)
             {
                 return ApiResponse<ContractDto>.Fail("Gói thầu không tồn tại.");
+            }
+
+            // Kiểm tra quyền sở hữu gói thầu (chỉ Admin hoặc Procurement tạo gói mới được lập hợp đồng)
+            if (!isAdmin && bidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<ContractDto>.Forbidden("Bạn chỉ có quyền tạo hợp đồng cho gói thầu do chính mình phụ trách.");
             }
 
             // 2. Kiểm tra nhà thầu được duyệt trúng thầu (Selected)
@@ -255,14 +261,14 @@ namespace ProcurementSystem.Infrastructure.Services
                     "Chỉ tạo được hợp đồng cho nhà thầu đã được duyệt.");
             }
 
-            // 3. Kiểm tra gói thầu chưa có hợp đồng (quan hệ 1-1)
+            // 3. Kiểm tra gói thầu chưa có hợp đồng đang hoạt động (quan hệ 1-1, bỏ qua hợp đồng đã Terminated)
             var existingContract = await _unitOfWork.Repository<Contract>()
-                .ExistsAsync(c => c.BidPackageId == request.BidPackageId);
+                .ExistsAsync(c => c.BidPackageId == request.BidPackageId && c.Status != ContractStatus.Terminated);
 
             if (existingContract)
             {
                 return ApiResponse<ContractDto>.Fail(
-                    "Gói thầu này đã có hợp đồng. Mỗi gói thầu chỉ được phép ký tối đa 1 hợp đồng chính thức.");
+                    "Gói thầu này đã có hợp đồng đang thực hiện hoặc dự thảo. Mỗi gói thầu chỉ được phép ký tối đa 1 hợp đồng chính thức còn hiệu lực.");
             }
 
             // 4. Kiểm tra thời hạn hợp lý
@@ -347,7 +353,7 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<ContractDto>> UpdateContractAsync(
-            int id, UpdateContractRequest request, int userId)
+            int id, UpdateContractRequest request, int userId, bool isAdmin)
         {
             var contract = await _unitOfWork.Repository<Contract>()
                 .Query()
@@ -361,15 +367,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<ContractDto>.Fail("Không tìm thấy hợp đồng.");
             }
 
-            // P2-6: Kiểm tra quyền quản lý hợp đồng (Procurement chỉ thao tác trên hợp đồng thuộc gói do mình phụ trách)
-            var userRoles = await _unitOfWork.Repository<UserRole>()
-                .Query()
-                .Include(ur => ur.Role)
-                .Where(ur => ur.UserId == userId)
-                .Select(ur => ur.Role.Name)
-                .ToListAsync();
-
-            var isAdmin = userRoles.Contains("Admin");
+            // Kiểm tra quyền quản lý hợp đồng (chỉ Admin hoặc Procurement tạo gói mới được cập nhật)
             if (!isAdmin && contract.BidPackage.CreatedBy != userId)
             {
                 return ApiResponse<ContractDto>.Forbidden("Bạn chỉ có quyền quản trị hợp đồng thuộc gói thầu do chính mình phụ trách.");
@@ -415,7 +413,7 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<ContractDto>> ChangeStatusAsync(
-            int id, ChangeContractStatusRequest request, int userId)
+            int id, ChangeContractStatusRequest request, int userId, bool isAdmin)
         {
             var contract = await _unitOfWork.Repository<Contract>()
                 .Query()
@@ -427,6 +425,12 @@ namespace ProcurementSystem.Infrastructure.Services
             if (contract == null)
             {
                 return ApiResponse<ContractDto>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            // Kiểm tra quyền sở hữu hợp đồng (chỉ Admin hoặc Procurement tạo gói mới được đổi trạng thái)
+            if (!isAdmin && contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<ContractDto>.Forbidden("Bạn chỉ có quyền thay đổi trạng thái hợp đồng thuộc gói thầu do chính mình phụ trách.");
             }
 
             // Kiểm tra luồng trạng thái hợp lệ
@@ -516,15 +520,22 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<string>> UploadScannedContractAsync(
-            int contractId, IFormFile file, int userId)
+            int contractId, IFormFile file, int userId, bool isAdmin)
         {
             var contract = await _unitOfWork.Repository<Contract>()
                 .Query()
+                .Include(c => c.BidPackage)
                 .FirstOrDefaultAsync(c => c.Id == contractId);
 
             if (contract == null)
             {
                 return ApiResponse<string>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            // Kiểm tra quyền sở hữu hợp đồng (chỉ Admin hoặc Procurement tạo gói mới được tải lên bản scan)
+            if (!isAdmin && contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<string>.Forbidden("Bạn chỉ có quyền tải lên bản scan hợp đồng cho gói thầu do chính mình phụ trách.");
             }
 
             // P2-8: Validate định dạng PDF và dung lượng tối đa 20MB
@@ -539,11 +550,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<string>.Fail("Dung lượng tệp scan không được vượt quá 20MB.");
             }
 
-            // Xóa file cũ nếu đã tồn tại
-            if (!string.IsNullOrWhiteSpace(contract.ScannedFilePath))
-            {
-                _fileStorageService.DeleteFile(contract.ScannedFilePath);
-            }
+            var oldFilePath = contract.ScannedFilePath;
 
             // Lưu file mới
             var filePath = await _fileStorageService.SaveFileAsync(
@@ -553,22 +560,51 @@ namespace ProcurementSystem.Infrastructure.Services
             contract.UpdatedAt = DateTime.UtcNow;
 
             _unitOfWork.Repository<Contract>().Update(contract);
-            await _unitOfWork.SaveChangesAsync();
+            try
+            {
+                await _unitOfWork.SaveChangesAsync();
+            }
+            catch
+            {
+                // Nếu lưu DB thất bại, dọn dẹp ngay file mới tải lên để chống file mồ côi
+                _fileStorageService.DeleteFile(filePath);
+                throw;
+            }
+
+            // Xóa file cũ sau khi đã lưu DB thành công
+            if (!string.IsNullOrWhiteSpace(oldFilePath))
+            {
+                try
+                {
+                    _fileStorageService.DeleteFile(oldFilePath);
+                }
+                catch
+                {
+                    // Bỏ qua lỗi xóa file cũ
+                }
+            }
 
             return ApiResponse<string>.Ok(filePath, "Upload file scan hợp đồng thành công.");
         }
 
         public async Task<ApiResponse<ContractMilestoneDto>> AddMilestoneAsync(
-            int contractId, CreateMilestoneRequest request, int userId)
+            int contractId, CreateMilestoneRequest request, int userId, bool isAdmin)
         {
             var contract = await _unitOfWork.Repository<Contract>()
                 .Query()
+                .Include(c => c.BidPackage)
                 .Include(c => c.Milestones)
                 .FirstOrDefaultAsync(c => c.Id == contractId);
 
             if (contract == null)
             {
                 return ApiResponse<ContractMilestoneDto>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            // Kiểm tra quyền sở hữu hợp đồng (chỉ Admin hoặc Procurement tạo gói mới được thêm mốc)
+            if (!isAdmin && contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<ContractMilestoneDto>.Forbidden("Bạn chỉ có quyền thêm mốc thanh toán cho hợp đồng do chính mình phụ trách.");
             }
 
             // Chỉ thêm mốc khi hợp đồng còn Draft hoặc Active
@@ -615,16 +651,23 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<ContractMilestoneDto>> UpdateMilestoneAsync(
-            int contractId, int milestoneId, CreateMilestoneRequest request, int userId)
+            int contractId, int milestoneId, CreateMilestoneRequest request, int userId, bool isAdmin)
         {
             var contract = await _unitOfWork.Repository<Contract>()
                 .Query()
+                .Include(c => c.BidPackage)
                 .Include(c => c.Milestones)
                 .FirstOrDefaultAsync(c => c.Id == contractId);
 
             if (contract == null)
             {
                 return ApiResponse<ContractMilestoneDto>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            // Kiểm tra quyền sở hữu hợp đồng (chỉ Admin hoặc Procurement tạo gói mới được cập nhật mốc)
+            if (!isAdmin && contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<ContractMilestoneDto>.Forbidden("Bạn chỉ có quyền cập nhật mốc thanh toán cho hợp đồng do chính mình phụ trách.");
             }
 
             if (contract.Status == ContractStatus.Completed || contract.Status == ContractStatus.Terminated)
@@ -681,16 +724,23 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<bool>> DeleteMilestoneAsync(
-            int contractId, int milestoneId, int userId)
+            int contractId, int milestoneId, int userId, bool isAdmin)
         {
             var contract = await _unitOfWork.Repository<Contract>()
                 .Query()
+                .Include(c => c.BidPackage)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == contractId);
 
             if (contract == null)
             {
                 return ApiResponse<bool>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            // Kiểm tra quyền sở hữu hợp đồng (chỉ Admin hoặc Procurement tạo gói mới được xóa mốc)
+            if (!isAdmin && contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<bool>.Forbidden("Bạn chỉ có quyền xóa mốc thanh toán của hợp đồng do chính mình phụ trách.");
             }
 
             var milestone = await _unitOfWork.Repository<ContractMilestone>()
@@ -927,16 +977,23 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<MilestoneAcceptanceDto>> ApproveMilestoneAcceptanceAsync(
-            int milestoneId, ApproveMilestoneAcceptanceRequest request, int userId)
+            int milestoneId, ApproveMilestoneAcceptanceRequest request, int userId, bool isAdmin)
         {
             var milestone = await _unitOfWork.Repository<ContractMilestone>()
                 .Query()
                 .Include(m => m.Contract)
+                    .ThenInclude(c => c.BidPackage)
                 .FirstOrDefaultAsync(m => m.Id == milestoneId);
 
             if (milestone == null)
             {
                 return ApiResponse<MilestoneAcceptanceDto>.Fail("Không tìm thấy mốc thanh toán nghiệm thu.");
+            }
+
+            // Kiểm tra quyền sở hữu hợp đồng (chỉ Admin hoặc Procurement tạo gói mới được nghiệm thu mốc)
+            if (!isAdmin && milestone.Contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<MilestoneAcceptanceDto>.Forbidden("Bạn chỉ có quyền nghiệm thu mốc thanh toán cho hợp đồng do chính mình phụ trách.");
             }
 
             if (milestone.Contract.Status != ContractStatus.Active)

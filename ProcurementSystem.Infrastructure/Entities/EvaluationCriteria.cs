@@ -19,6 +19,11 @@ namespace ProcurementSystem.Infrastructure.Entities
         [Column(TypeName = "decimal(5,2)")]
         public decimal Weight { get; set; } = 1;
 
+        /// <summary>
+        /// Đánh dấu là tiêu chí đánh giá Giá / Tài chính (hệ thống tự động tính điểm theo công thức luật đấu thầu)
+        /// </summary>
+        public bool IsPriceCriteria { get; set; } = false;
+
         // Navigation properties
         [ForeignKey("BidPackageId")]
         public virtual BidPackage BidPackage { get; set; } = null!;

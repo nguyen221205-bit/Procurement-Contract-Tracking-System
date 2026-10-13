@@ -66,10 +66,12 @@ uploads/*
 **/uploads/*
 !**/uploads/.gitkeep
 
-# Environment files
+# Environment & Secret files
 .env
 appsettings.Development.json
 appsettings.Production.json
+ProcurementSystem.API/appsettings.json
+!ProcurementSystem.API/appsettings.Example.json
 
 # OS files
 .DS_Store

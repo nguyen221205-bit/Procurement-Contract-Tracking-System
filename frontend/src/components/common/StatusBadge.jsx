@@ -6,6 +6,7 @@ import {
   ROLE_CONFIG,
   CONTRACTOR_VERIFICATION_CONFIG,
   EVALUATOR_PROPOSAL_CONFIG,
+  SUBMISSION_STATUS_CONFIG,
 } from '../../utils/constants';
 
 export const StatusBadge = ({ status, type = 'auto' }) => {
@@ -23,14 +24,17 @@ export const StatusBadge = ({ status, type = 'auto' }) => {
     config = CONTRACTOR_VERIFICATION_CONFIG[status];
   } else if (type === 'evaluator_proposal') {
     config = EVALUATOR_PROPOSAL_CONFIG[status];
+  } else if (type === 'submission') {
+    config = SUBMISSION_STATUS_CONFIG[status];
   } else if (type === 'user_status') {
     const isActive = status === true || status === 'true' || status === 'Active';
     config = isActive
       ? { label: 'Đang hoạt động', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
       : { label: 'Đã bị khóa', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' };
   } else {
-    // Auto lookup order: Contract -> Package -> Milestone -> Role -> Contractor -> EvaluatorProposal
+    // Auto lookup order: Submission -> Contract -> Package -> Milestone -> Role -> Contractor -> EvaluatorProposal
     config =
+      SUBMISSION_STATUS_CONFIG[status] ||
       CONTRACT_STATUS_CONFIG[status] ||
       PACKAGE_STATUS_CONFIG[status] ||
       MILESTONE_STATUS_CONFIG[status] ||

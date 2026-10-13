@@ -198,6 +198,29 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.ToTable("BidPackages");
                 });
 
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.BidPackageEvaluator", b =>
+                {
+                    b.Property<int>("BidPackageId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EvaluatorId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("AssignedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("BidPackageId", "EvaluatorId");
+
+                    b.HasIndex("AssignedBy");
+
+                    b.HasIndex("EvaluatorId");
+
+                    b.ToTable("BidPackageEvaluators");
+                });
+
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.BidSubmission", b =>
                 {
                     b.Property<int>("Id")
@@ -209,11 +232,18 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.Property<int>("BidPackageId")
                         .HasColumnType("int");
 
+                    b.Property<decimal?>("BidPrice")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<int>("ContractorId")
                         .HasColumnType("int");
 
                     b.Property<int?>("Rank")
                         .HasColumnType("int");
+
+                    b.Property<string>("SelectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -288,7 +318,8 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BidPackageId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[Status] <> 3");
 
                     b.HasIndex("ContractNumber")
                         .IsUnique();
@@ -358,6 +389,20 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("DigitalSignDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DigitalSignMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("DigitalSignerName")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<bool>("IsDigitalSigned")
+                        .HasColumnType("bit");
+
                     b.Property<decimal>("Rating")
                         .HasColumnType("decimal(5,2)");
 
@@ -367,6 +412,11 @@ namespace ProcurementSystem.Infrastructure.Migrations
 
                     b.Property<int>("UserId")
                         .HasColumnType("int");
+
+                    b.Property<string>("VerificationStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.HasKey("Id");
 
@@ -386,6 +436,11 @@ namespace ProcurementSystem.Infrastructure.Migrations
 
                     b.Property<int>("BidPackageId")
                         .HasColumnType("int");
+
+                    b.Property<bool>("IsPriceCriteria")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<decimal>("MaxScore")
                         .HasColumnType("decimal(5,2)");
@@ -444,6 +499,90 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.ToTable("EvaluationScores");
                 });
 
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.EvaluatorProposal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AdminNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("CertificateFile")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("CertificateName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int?>("ExperienceYears")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("ProposerUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Specialization")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Workplace")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedUserId");
+
+                    b.HasIndex("Email");
+
+                    b.HasIndex("ProposerUserId");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("EvaluatorProposals");
+                });
+
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.Notification", b =>
                 {
                     b.Property<int>("Id")
@@ -481,6 +620,112 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Notifications");
+                });
+
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ProcuringEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("AdminNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("AppointmentDecisionFile")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("BudgetCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DigitalSignDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DigitalSignMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("DigitalSignerName")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("EstablishmentDecisionFile")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsDigitalSigned")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("OrganizationName")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("OrganizationType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RepresentativeName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RepresentativePhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("RepresentativeTitle")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TaxCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VerificationStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("TaxCode");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.HasIndex("VerificationStatus");
+
+                    b.ToTable("ProcuringEntities");
                 });
 
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ProgressUpdate", b =>
@@ -693,6 +938,32 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.Navigation("Creator");
                 });
 
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.BidPackageEvaluator", b =>
+                {
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "Assigner")
+                        .WithMany()
+                        .HasForeignKey("AssignedBy")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.BidPackage", "BidPackage")
+                        .WithMany("PackageEvaluators")
+                        .HasForeignKey("BidPackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "Evaluator")
+                        .WithMany()
+                        .HasForeignKey("EvaluatorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Assigner");
+
+                    b.Navigation("BidPackage");
+
+                    b.Navigation("Evaluator");
+                });
+
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.BidSubmission", b =>
                 {
                     b.HasOne("ProcurementSystem.Infrastructure.Entities.BidPackage", "BidPackage")
@@ -715,8 +986,8 @@ namespace ProcurementSystem.Infrastructure.Migrations
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.Contract", b =>
                 {
                     b.HasOne("ProcurementSystem.Infrastructure.Entities.BidPackage", "BidPackage")
-                        .WithOne("Contract")
-                        .HasForeignKey("ProcurementSystem.Infrastructure.Entities.Contract", "BidPackageId")
+                        .WithMany("Contracts")
+                        .HasForeignKey("BidPackageId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -791,6 +1062,31 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.Navigation("Evaluator");
                 });
 
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.EvaluatorProposal", b =>
+                {
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "CreatedUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "ProposerUser")
+                        .WithMany()
+                        .HasForeignKey("ProposerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CreatedUser");
+
+                    b.Navigation("ProposerUser");
+
+                    b.Navigation("ReviewedByUser");
+                });
+
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.Notification", b =>
                 {
                     b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "User")
@@ -798,6 +1094,24 @@ namespace ProcurementSystem.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ProcuringEntity", b =>
+                {
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "User")
+                        .WithOne("ProcuringEntity")
+                        .HasForeignKey("ProcurementSystem.Infrastructure.Entities.ProcuringEntity", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ReviewedByUser");
 
                     b.Navigation("User");
                 });
@@ -849,9 +1163,11 @@ namespace ProcurementSystem.Infrastructure.Migrations
 
                     b.Navigation("BidSubmissions");
 
-                    b.Navigation("Contract");
+                    b.Navigation("Contracts");
 
                     b.Navigation("EvaluationCriteria");
+
+                    b.Navigation("PackageEvaluators");
                 });
 
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.BidSubmission", b =>
@@ -895,6 +1211,8 @@ namespace ProcurementSystem.Infrastructure.Migrations
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.User", b =>
                 {
                     b.Navigation("Contractor");
+
+                    b.Navigation("ProcuringEntity");
 
                     b.Navigation("UserRoles");
                 });

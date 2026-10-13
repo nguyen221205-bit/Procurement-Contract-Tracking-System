@@ -11,8 +11,13 @@ using ProcurementSystem.Infrastructure.Repositories;
 using ProcurementSystem.Infrastructure.Seeders;
 using ProcurementSystem.Infrastructure.Services;
 using ProcurementSystem.API.BackgroundServices;
+using ProcurementSystem.Infrastructure.Interceptors;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// HttpContextAccessor
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<AuditSaveChangesInterceptor>();
 
 // ==========================================
 // 1. DATABASE - Microsoft SQL Server + EF Core
@@ -21,8 +26,9 @@ var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING"
     ?? builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString));
+builder.Services.AddDbContext<AppDbContext>((sp, options) =>
+    options.UseSqlServer(connectionString)
+           .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
 // ==========================================
 // 2. DEPENDENCY INJECTION
@@ -30,9 +36,13 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+// Memory Cache
+builder.Services.AddMemoryCache();
+
 // Auth Services
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IOtpService, OtpService>();
 
 // Contractor Services
 builder.Services.AddHttpClient<ITaxLookupService, TaxLookupService>();
@@ -65,6 +75,7 @@ builder.Services.AddScoped<IReportService, ReportService>();
 // Audit & Notification Services
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Background Workers (Cronjob cảnh báo hạn 1 giờ/lần + startup)
 builder.Services.AddHostedService<ContractExpiryNotificationWorker>();
@@ -187,13 +198,17 @@ builder.Services.AddSwaggerGen(options =>
 // ==========================================
 // 6. CORS
 // ==========================================
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? new[] { "http://localhost:5173", "http://localhost:3000" };
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
 });
 
@@ -233,7 +248,7 @@ var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
 if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
 
 // CORS
-app.UseCors("AllowAll");
+app.UseCors("AllowFrontend");
 
 // Authentication & Authorization
 app.UseAuthentication();
