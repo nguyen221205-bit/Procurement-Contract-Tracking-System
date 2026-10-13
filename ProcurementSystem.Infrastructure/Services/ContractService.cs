@@ -550,11 +550,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<string>.Fail("Dung lượng tệp scan không được vượt quá 20MB.");
             }
 
-            // Xóa file cũ nếu đã tồn tại
-            if (!string.IsNullOrWhiteSpace(contract.ScannedFilePath))
-            {
-                _fileStorageService.DeleteFile(contract.ScannedFilePath);
-            }
+            var oldFilePath = contract.ScannedFilePath;
 
             // Lưu file mới
             var filePath = await _fileStorageService.SaveFileAsync(
@@ -564,7 +560,29 @@ namespace ProcurementSystem.Infrastructure.Services
             contract.UpdatedAt = DateTime.UtcNow;
 
             _unitOfWork.Repository<Contract>().Update(contract);
-            await _unitOfWork.SaveChangesAsync();
+            try
+            {
+                await _unitOfWork.SaveChangesAsync();
+            }
+            catch
+            {
+                // Nếu lưu DB thất bại, dọn dẹp ngay file mới tải lên để chống file mồ côi
+                _fileStorageService.DeleteFile(filePath);
+                throw;
+            }
+
+            // Xóa file cũ sau khi đã lưu DB thành công
+            if (!string.IsNullOrWhiteSpace(oldFilePath))
+            {
+                try
+                {
+                    _fileStorageService.DeleteFile(oldFilePath);
+                }
+                catch
+                {
+                    // Bỏ qua lỗi xóa file cũ
+                }
+            }
 
             return ApiResponse<string>.Ok(filePath, "Upload file scan hợp đồng thành công.");
         }

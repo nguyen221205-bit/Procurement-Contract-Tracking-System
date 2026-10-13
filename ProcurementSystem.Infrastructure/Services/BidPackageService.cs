@@ -579,7 +579,7 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<List<PackageEvaluatorDto>>.Ok(dtos);
         }
 
-        public async Task<ApiResponse<PackageEvaluatorDto>> AssignEvaluatorAsync(int packageId, AssignEvaluatorRequest request, int currentUserId)
+        public async Task<ApiResponse<PackageEvaluatorDto>> AssignEvaluatorAsync(int packageId, AssignEvaluatorRequest request, int currentUserId, bool isAdmin)
         {
             var package = await _unitOfWork.Repository<BidPackage>().GetByIdAsync(packageId);
             if (package == null)
@@ -587,9 +587,22 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<PackageEvaluatorDto>.Fail("Không tìm thấy gói thầu.");
             }
 
+            // Kiểm tra quyền sở hữu gói thầu: Chỉ người tạo gói hoặc Admin mới được phân công chuyên gia
+            if (!isAdmin && package.CreatedBy != currentUserId)
+            {
+                return ApiResponse<PackageEvaluatorDto>.Fail("Chỉ người tạo gói thầu (Bên mời thầu) hoặc Admin mới có quyền phân công chuyên gia chấm thầu.");
+            }
+
             if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
             {
                 return ApiResponse<PackageEvaluatorDto>.Fail("Gói thầu đã có kết quả trao thầu hoặc đã ký hợp đồng, không thể thay đổi Tổ chuyên gia.");
+            }
+
+            // Căn cứ Luật Đấu thầu: Người tạo gói thầu (Bên mời thầu) không được làm thành viên Tổ chuyên gia của chính gói đó
+            if (request.EvaluatorId == package.CreatedBy)
+            {
+                return ApiResponse<PackageEvaluatorDto>.Fail(
+                    "Căn cứ Luật Đấu thầu: Người tạo gói thầu (Bên mời thầu) không được tham gia vào Tổ chuyên gia của chính gói thầu này nhằm bảo đảm tính độc lập khách quan.");
             }
 
             var evaluatorUser = await _unitOfWork.Repository<User>()
@@ -598,9 +611,35 @@ namespace ProcurementSystem.Infrastructure.Services
                 .ThenInclude(ur => ur.Role)
                 .FirstOrDefaultAsync(u => u.Id == request.EvaluatorId);
 
-            if (evaluatorUser == null)
+            if (evaluatorUser == null || !evaluatorUser.IsActive)
             {
-                return ApiResponse<PackageEvaluatorDto>.Fail("Người dùng không tồn tại.");
+                return ApiResponse<PackageEvaluatorDto>.Fail("Người dùng không tồn tại hoặc tài khoản đã bị vô hiệu hóa.");
+            }
+
+            // Chặn user thuộc vai trò Contractor hoặc đơn vị nhà thầu
+            if (evaluatorUser.UserRoles.Any(ur => ur.Role.Name == "Contractor"))
+            {
+                return ApiResponse<PackageEvaluatorDto>.Fail("Tài khoản có vai trò Nhà thầu không được phép tham gia Tổ chuyên gia chấm thầu.");
+            }
+
+            var isContractorEntity = await _unitOfWork.Repository<Contractor>()
+                .ExistsAsync(c => c.UserId == request.EvaluatorId);
+            if (isContractorEntity)
+            {
+                return ApiResponse<PackageEvaluatorDto>.Fail("Nhân sự thuộc đơn vị Nhà thầu không được phép tham gia Tổ chuyên gia chấm thầu.");
+            }
+
+            // Chặn user thuộc tổ chức/doanh nghiệp có tham gia dự thầu gói này
+            var biddingContractorUserIds = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Where(s => s.BidPackageId == packageId)
+                .Select(s => s.Contractor.UserId)
+                .ToListAsync();
+
+            if (biddingContractorUserIds.Contains(request.EvaluatorId))
+            {
+                return ApiResponse<PackageEvaluatorDto>.Fail(
+                    "Xung đột lợi ích: Người dùng thuộc doanh nghiệp tham gia dự thầu gói thầu này, không được phép làm giám khảo chấm thầu.");
             }
 
             var isEvaluator = evaluatorUser.UserRoles.Any(ur => ur.Role.Name == "Evaluator" || ur.Role.Name == "Admin");
@@ -615,6 +654,20 @@ namespace ProcurementSystem.Infrastructure.Services
             if (isAlreadyAssigned)
             {
                 return ApiResponse<PackageEvaluatorDto>.Fail("Giám khảo này đã được phân công vào Tổ chuyên gia của gói thầu.");
+            }
+
+            // Khi gói thầu đang ở Evaluating: Số lượng thành viên sau khi thêm phải đảm bảo là số lẻ >= 3
+            var currentCount = await _unitOfWork.Repository<BidPackageEvaluator>()
+                .CountAsync(pe => pe.BidPackageId == packageId);
+
+            if (package.Status == BidPackageStatus.Evaluating)
+            {
+                var newCount = currentCount + 1;
+                if (newCount < 3 || newCount % 2 == 0)
+                {
+                    return ApiResponse<PackageEvaluatorDto>.Fail(
+                        $"Gói thầu đang trong giai đoạn Chấm thầu. Số lượng thành viên Tổ chuyên gia bắt buộc phải là số lẻ >= 3 theo Luật Đấu thầu. Việc bổ sung 1 giám khảo sẽ khiến tổng số thành viên là {newCount} (số chẵn), không đáp ứng quy định.");
+                }
             }
 
             var packageEvaluator = new BidPackageEvaluator
@@ -653,6 +706,12 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Không tìm thấy gói thầu.");
             }
 
+            // Kiểm tra quyền sở hữu gói thầu: Chỉ người tạo gói hoặc Admin mới được xóa chuyên gia
+            if (!isAdmin && package.CreatedBy != currentUserId)
+            {
+                return ApiResponse<bool>.Fail("Chỉ người tạo gói thầu (Bên mời thầu) hoặc Admin mới có quyền xóa chuyên gia khỏi gói thầu.");
+            }
+
             if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
             {
                 return ApiResponse<bool>.Fail("Gói thầu đã có kết quả trao thầu hoặc đã ký hợp đồng, không thể thay đổi Tổ chuyên gia.");
@@ -675,6 +734,20 @@ namespace ProcurementSystem.Infrastructure.Services
             if (hasScored && package.Status == BidPackageStatus.Evaluating)
             {
                 return ApiResponse<bool>.Fail("Giám khảo này đã thực hiện chấm điểm hồ sơ dự thầu cho gói thầu này, không thể xóa khỏi Tổ chuyên gia.");
+            }
+
+            // Khi gói thầu đang ở Evaluating: Số lượng thành viên sau khi xóa phải đảm bảo là số lẻ >= 3
+            var currentCount = await _unitOfWork.Repository<BidPackageEvaluator>()
+                .CountAsync(pe => pe.BidPackageId == packageId);
+
+            if (package.Status == BidPackageStatus.Evaluating)
+            {
+                var newCount = currentCount - 1;
+                if (newCount < 3 || newCount % 2 == 0)
+                {
+                    return ApiResponse<bool>.Fail(
+                        $"Gói thầu đang trong giai đoạn Chấm thầu. Việc xóa giám khảo sẽ khiến Tổ chuyên gia còn {newCount} thành viên (không thỏa mãn quy định là số lẻ tối thiểu 3 người theo Luật Đấu thầu).");
+                }
             }
 
             _unitOfWork.Repository<BidPackageEvaluator>().Delete(assignment);

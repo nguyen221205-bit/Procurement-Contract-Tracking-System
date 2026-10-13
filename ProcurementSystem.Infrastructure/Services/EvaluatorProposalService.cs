@@ -155,8 +155,26 @@ namespace ProcurementSystem.Infrastructure.Services
                 CreatedAt = DateTime.UtcNow
             };
 
-            await _unitOfWork.Repository<EvaluatorProposal>().AddAsync(proposal);
-            await _unitOfWork.SaveChangesAsync();
+            try
+            {
+                await _unitOfWork.Repository<EvaluatorProposal>().AddAsync(proposal);
+                await _unitOfWork.SaveChangesAsync();
+            }
+            catch
+            {
+                if (!string.IsNullOrEmpty(fileUrl))
+                {
+                    try
+                    {
+                        _fileStorageService.DeleteFile(fileUrl);
+                    }
+                    catch
+                    {
+                        // Ignore
+                    }
+                }
+                throw;
+            }
 
             // 5. Gửi thông báo đến các Admin
             var adminUsers = await _unitOfWork.Repository<User>()

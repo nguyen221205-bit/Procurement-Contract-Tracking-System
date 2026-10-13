@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Report;
@@ -223,10 +224,133 @@ namespace ProcurementSystem.Infrastructure.Services
             return memoryStream.ToArray();
         }
 
+        public async Task<byte[]> ExportContractorsExcelAsync()
+        {
+            var contractors = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .Include(c => c.User)
+                .OrderBy(c => c.Id)
+                .AsNoTracking()
+                .ToListAsync();
+
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Danh sách nhà thầu");
+
+            // Tiêu đề các cột
+            var headers = new[]
+            {
+                "ID", "Tên doanh nghiệp", "Mã số thuế", "Địa chỉ",
+                "Người đại diện", "Email", "Số điện thoại", "Điểm uy tín (sao)",
+                "Trạng thái thẩm định", "Ngày đăng ký"
+            };
+
+            for (int col = 0; col < headers.Length; col++)
+            {
+                var cell = worksheet.Cell(1, col + 1);
+                cell.Value = headers[col];
+                cell.Style.Font.Bold = true;
+                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E40AF");
+                cell.Style.Font.FontColor = XLColor.White;
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            }
+
+            // Ghi dữ liệu từng dòng
+            int row = 2;
+            foreach (var c in contractors)
+            {
+                worksheet.Cell(row, 1).Value = c.Id;
+                worksheet.Cell(row, 2).Value = c.CompanyName;
+                worksheet.Cell(row, 3).Value = c.TaxCode ?? string.Empty;
+                worksheet.Cell(row, 4).Value = c.Address ?? string.Empty;
+                worksheet.Cell(row, 5).Value = c.User?.FullName ?? string.Empty;
+                worksheet.Cell(row, 6).Value = c.User?.Email ?? string.Empty;
+                worksheet.Cell(row, 7).Value = c.User?.Phone ?? string.Empty;
+                worksheet.Cell(row, 8).Value = (double)c.Rating;
+                worksheet.Cell(row, 9).Value = c.VerificationStatus;
+                worksheet.Cell(row, 10).Value = c.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss");
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var memoryStream = new MemoryStream();
+            workbook.SaveAs(memoryStream);
+            return memoryStream.ToArray();
+        }
+
+        public async Task<byte[]> ExportContractsExcelAsync()
+        {
+            var contracts = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.BidPackage)
+                .Include(c => c.Contractor)
+                .OrderByDescending(c => c.CreatedAt)
+                .AsNoTracking()
+                .ToListAsync();
+
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Danh sách hợp đồng");
+
+            var headers = new[]
+            {
+                "ID", "Số hợp đồng", "Mã gói thầu", "Tên gói thầu",
+                "Nhà thầu thi công", "Mã số thuế", "Giá trị hợp đồng (VNĐ)",
+                "Ngân sách dự toán (VNĐ)", "Tiết kiệm (VNĐ)", "Ngày bắt đầu",
+                "Ngày kết thúc", "Trạng thái", "Ngày ký"
+            };
+
+            for (int col = 0; col < headers.Length; col++)
+            {
+                var cell = worksheet.Cell(1, col + 1);
+                cell.Value = headers[col];
+                cell.Style.Font.Bold = true;
+                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#166534");
+                cell.Style.Font.FontColor = XLColor.White;
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            }
+
+            int row = 2;
+            foreach (var c in contracts)
+            {
+                var budget = c.BidPackage?.Budget ?? 0;
+                var val = c.Value;
+                var savings = budget > val ? budget - val : 0;
+
+                worksheet.Cell(row, 1).Value = c.Id;
+                worksheet.Cell(row, 2).Value = c.ContractNumber;
+                worksheet.Cell(row, 3).Value = c.BidPackage?.Code ?? string.Empty;
+                worksheet.Cell(row, 4).Value = c.BidPackage?.Name ?? string.Empty;
+                worksheet.Cell(row, 5).Value = c.Contractor?.CompanyName ?? string.Empty;
+                worksheet.Cell(row, 6).Value = c.Contractor?.TaxCode ?? string.Empty;
+                worksheet.Cell(row, 7).Value = (double)val;
+                worksheet.Cell(row, 8).Value = (double)budget;
+                worksheet.Cell(row, 9).Value = (double)savings;
+                worksheet.Cell(row, 10).Value = c.StartDate.ToString("yyyy-MM-dd");
+                worksheet.Cell(row, 11).Value = c.EndDate.ToString("yyyy-MM-dd");
+                worksheet.Cell(row, 12).Value = c.Status.ToString();
+                worksheet.Cell(row, 13).Value = c.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss");
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var memoryStream = new MemoryStream();
+            workbook.SaveAs(memoryStream);
+            return memoryStream.ToArray();
+        }
+
         private static string EscapeCsv(object? value)
         {
             if (value == null) return string.Empty;
             var str = value.ToString() ?? string.Empty;
+
+            // Chống CSV / Formula Injection (CWE-1236):
+            // Các ô bắt đầu bằng =, +, -, @ hoặc tab/CR phải được tiền tố bằng dấu nháy đơn '
+            if (str.Length > 0 && (str[0] == '=' || str[0] == '+' || str[0] == '-' || str[0] == '@' || str[0] == '\t'))
+            {
+                str = "'" + str;
+            }
+
             if (str.Contains(',') || str.Contains('"') || str.Contains('\n') || str.Contains('\r'))
             {
                 return $"\"{str.Replace("\"", "\"\"")}\"";

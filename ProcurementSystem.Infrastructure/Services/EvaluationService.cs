@@ -453,10 +453,22 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Where(s => s.BidSubmissionId == submissionId)
                 .AsNoTracking();
 
-            // Nguyên tắc độc lập chấm điểm (NĐ 24/2024/NĐ-CP): Trong giai đoạn Evaluating, giám khảo chỉ được xem điểm của chính mình
-            if (submission.BidPackage.Status == BidPackageStatus.Evaluating && !isInternalStaff)
+            // Nguyên tắc độc lập chấm điểm (NĐ 24/2024/NĐ-CP & Luật Đấu thầu):
+            // Trong thời gian chấm thầu (Evaluating), thành viên Tổ chuyên gia chỉ được xem điểm đánh giá của chính mình
+            // để bảo đảm tính độc lập, khách quan (không bị ảnh hưởng hoặc gây áp lực từ điểm của giám khảo khác).
+            if (submission.BidPackage.Status == BidPackageStatus.Evaluating)
             {
-                query = query.Where(s => s.EvaluatorId == currentUserId);
+                var isPackageEvaluator = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .ExistsAsync(pe => pe.BidPackageId == submission.BidPackageId && pe.EvaluatorId == currentUserId);
+
+                if (isPackageEvaluator)
+                {
+                    query = query.Where(s => s.EvaluatorId == currentUserId);
+                }
+                else if (!isInternalStaff)
+                {
+                    query = query.Where(s => s.EvaluatorId == currentUserId);
+                }
             }
 
             var scores = await query

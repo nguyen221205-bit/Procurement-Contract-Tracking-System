@@ -231,8 +231,8 @@ catch {
 try {
     # Kiểm tra quyền xem hợp đồng của nhà thầu khác chống IDOR
     try {
-        # Contractor 1 cố tình xem danh sách hợp đồng của Contractor 2 (Id = 2)
-        $res = Invoke-RestMethod -Uri "$baseUrl/api/contracts/contractor/2" -Method Get -Headers $cont1Headers
+        # Contractor 1 (Id = 2) cố tình xem danh sách hợp đồng của nhà thầu khác (Id = 1)
+        $res = Invoke-RestMethod -Uri "$baseUrl/api/contracts/contractor/1" -Method Get -Headers $cont1Headers
         Record-TestResult "NEG-06" "IDORAuthorization" "Chặn nhà thầu xem trộm danh sách hợp đồng của nhà thầu khác (HTTP 403)" "HTTP 403" "HTTP 200" $false "Hệ thống để lộ thông tin hợp đồng nhà thầu khác!"
     }
     catch {

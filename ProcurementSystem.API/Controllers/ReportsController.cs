@@ -77,5 +77,33 @@ namespace ProcurementSystem.API.Controllers
             var fileName = $"Danh_sach_hop_dong_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
             return File(csvBytes, "text/csv; charset=utf-8", fileName);
         }
+
+        /// <summary>
+        /// Xuất danh sách toàn bộ nhà thầu ra file Excel định dạng .xlsx
+        /// </summary>
+        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        [HttpGet("contractors/export-excel")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [Produces("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+        public async Task<IActionResult> ExportContractorsExcel()
+        {
+            var excelBytes = await _reportService.ExportContractorsExcelAsync();
+            var fileName = $"Danh_sach_nha_thau_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
+            return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+
+        /// <summary>
+        /// Xuất danh sách toàn bộ hợp đồng ra file Excel định dạng .xlsx
+        /// </summary>
+        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        [HttpGet("contracts/export-excel")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [Produces("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+        public async Task<IActionResult> ExportContractsExcel()
+        {
+            var excelBytes = await _reportService.ExportContractsExcelAsync();
+            var fileName = $"Danh_sach_hop_dong_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
+            return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
     }
 }
