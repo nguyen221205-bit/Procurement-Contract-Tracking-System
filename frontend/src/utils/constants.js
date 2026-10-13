@@ -126,5 +126,24 @@ export const EVALUATOR_PROPOSAL_CONFIG = {
   Rejected: { label: 'Đã từ chối', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
 };
 
+// Bid Submission Status (Submitted, Evaluated, Selected, Rejected, Withdrawn, Disqualified)
+export const SUBMISSION_STATUS = {
+  SUBMITTED: 'Submitted',
+  EVALUATED: 'Evaluated',
+  SELECTED: 'Selected',
+  REJECTED: 'Rejected',
+  WITHDRAWN: 'Withdrawn',
+  DISQUALIFIED: 'Disqualified',
+};
+
+export const SUBMISSION_STATUS_CONFIG = {
+  Submitted: { label: 'Chờ chấm điểm', badgeColor: 'bg-slate-100 text-slate-700 border-slate-200' },
+  Evaluated: { label: 'Đã chấm điểm', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  Selected: { label: 'Đã trúng thầu', badgeColor: 'bg-amber-50 text-amber-800 border-amber-300' },
+  Rejected: { label: 'Không trúng thầu', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
+  Withdrawn: { label: 'Đã rút hồ sơ', badgeColor: 'bg-purple-50 text-purple-700 border-purple-200' },
+  Disqualified: { label: 'Bị loại', badgeColor: 'bg-red-50 text-red-700 border-red-200' },
+};
+
 
 

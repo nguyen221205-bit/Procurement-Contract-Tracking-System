@@ -23,7 +23,7 @@ namespace ProcurementSystem.Infrastructure.Entities
         public int? Rank { get; set; }
 
         [MaxLength(50)]
-        public string Status { get; set; } = "Submitted"; // Submitted, Evaluated, Selected, Rejected
+        public string Status { get; set; } = BidSubmissionStatus.Submitted; // Submitted, Evaluated, Selected, Rejected, Withdrawn, Disqualified
 
         [MaxLength(1000)]
         public string? SelectionReason { get; set; }

@@ -123,10 +123,6 @@ export const UserDetailModal = ({
                 <Building2 className="w-4 h-4 text-emerald-600" />
                 <span>Hồ sơ năng lực Doanh nghiệp</span>
               </div>
-              <div className="flex items-center space-x-1 bg-white px-2 py-0.5 rounded border border-emerald-200 text-xs font-bold text-amber-600">
-                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                <span>{user.contractor.rating?.toFixed(1) || '5.0'}</span>
-              </div>
             </div>
 
             <div className="space-y-1.5 text-xs">

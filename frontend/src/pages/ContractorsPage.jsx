@@ -144,7 +144,7 @@ export const ContractorsPage = () => {
                 Quản lý Nhà thầu & Hồ sơ Năng lực
               </h1>
               <p className="text-xs text-slate-500">
-                Thẩm định giấy phép kinh doanh, xét duyệt tư cách tham gia đấu thầu và đánh giá uy tín nhà thầu
+                Thẩm định giấy phép kinh doanh và xét duyệt tư cách tham gia đấu thầu của nhà thầu
               </p>
             </div>
           </div>
@@ -288,7 +288,6 @@ export const ContractorsPage = () => {
                   <th className="py-3 px-4">Nhà thầu / Doanh nghiệp</th>
                   <th className="py-3 px-4">Đại diện & Liên hệ</th>
                   <th className="py-3 px-4">Giấy phép ĐKKD</th>
-                  <th className="py-3 px-4 text-center">Uy tín</th>
                   <th className="py-3 px-4 text-center">Trạng thái</th>
                   <th className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
@@ -355,14 +354,6 @@ export const ContractorsPage = () => {
                       ) : (
                         <span className="text-slate-400 italic text-[11px]">Chưa tải lên</span>
                       )}
-                    </td>
-
-                    {/* Điểm uy tín */}
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="inline-flex items-center space-x-1 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60 font-bold text-amber-700 text-xs">
-                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                        <span>{c.rating?.toFixed(1) || '0.0'}</span>
-                      </div>
                     </td>
 
                     {/* Trạng thái */}

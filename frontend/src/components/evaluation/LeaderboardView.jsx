@@ -472,6 +472,14 @@ export const LeaderboardView = ({
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-100 text-rose-800">
                           Không đạt
                         </span>
+                      ) : sub.status === 'Withdrawn' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-800">
+                          Đã rút
+                        </span>
+                      ) : sub.status === 'Disqualified' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-100 text-red-800">
+                          Bị loại
+                        </span>
                       ) : (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
                           Chờ chấm

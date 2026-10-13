@@ -110,6 +110,10 @@ namespace ProcurementSystem.Infrastructure.Data
                 .HasForeignKey(ec => ec.BidPackageId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            modelBuilder.Entity<EvaluationCriteria>()
+                .Property(ec => ec.IsPriceCriteria)
+                .HasDefaultValue(false);
+
             // EvaluationScore
             modelBuilder.Entity<EvaluationScore>()
                 .HasOne(es => es.BidSubmission)
@@ -159,9 +163,15 @@ namespace ProcurementSystem.Infrastructure.Data
             // Contract
             modelBuilder.Entity<Contract>()
                 .HasOne(c => c.BidPackage)
-                .WithOne(bp => bp.Contract)
-                .HasForeignKey<Contract>(c => c.BidPackageId)
+                .WithMany(bp => bp.Contracts)
+                .HasForeignKey(c => c.BidPackageId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Mỗi gói thầu chỉ có tối đa 1 hợp đồng chưa bị chấm dứt (Terminated = 3) tại một thời điểm
+            modelBuilder.Entity<Contract>()
+                .HasIndex(c => c.BidPackageId)
+                .IsUnique()
+                .HasFilter("[Status] <> 3");
 
             modelBuilder.Entity<Contract>()
                 .HasOne(c => c.Contractor)

@@ -409,6 +409,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 TotalScore = submission.TotalScore,
                 Rank = submission.Rank,
                 Status = submission.Status,
+                SelectionReason = submission.SelectionReason,
                 Files = submission.SubmissionFiles?.Select(MapFileToDto).ToList() ?? new()
             };
         }
@@ -428,6 +429,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 TotalScore = submission.TotalScore,
                 Rank = submission.Rank,
                 Status = submission.Status,
+                SelectionReason = submission.SelectionReason,
                 FileCount = submission.SubmissionFiles?.Count ?? 0
             };
         }

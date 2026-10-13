@@ -68,6 +68,21 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     ALTER TABLE [Contractors] ADD [DigitalSignMessage] NVARCHAR(500) NULL;
                 END
 
+                -- R2-3: Bảo đảm cột IsPriceCriteria luôn tồn tại trên bảng EvaluationCriteria
+                IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[EvaluationCriteria]') AND name = 'IsPriceCriteria')
+                BEGIN
+                    ALTER TABLE [EvaluationCriteria] ADD [IsPriceCriteria] BIT NOT NULL CONSTRAINT DF_EvaluationCriteria_IsPriceCriteria DEFAULT 0;
+                END
+                -- Migrate dữ liệu cũ: Các tiêu chí có tên liên quan đến Giá / Tài chính / Chi phí chuyển sang IsPriceCriteria = 1
+                UPDATE [EvaluationCriteria]
+                SET [IsPriceCriteria] = 1
+                WHERE [IsPriceCriteria] = 0 AND (
+                    [Name] LIKE N'%Giá%' OR [Name] LIKE N'%giá%' OR
+                    [Name] LIKE N'%Tài chính%' OR [Name] LIKE N'%tài chính%' OR
+                    [Name] LIKE N'%Chi phí%' OR [Name] LIKE N'%chi phí%' OR
+                    [Name] LIKE N'%Price%' OR [Name] LIKE N'%price%'
+                );
+
                 -- Bảo đảm bảng EvaluatorProposals luôn tồn tại
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'EvaluatorProposals')
                 BEGIN

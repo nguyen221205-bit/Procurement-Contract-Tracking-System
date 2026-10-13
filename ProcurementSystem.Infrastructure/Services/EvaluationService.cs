@@ -29,7 +29,8 @@ namespace ProcurementSystem.Infrastructure.Services
                     BidPackageId = c.BidPackageId,
                     Name = c.Name,
                     MaxScore = c.MaxScore,
-                    Weight = c.Weight
+                    Weight = c.Weight,
+                    IsPriceCriteria = c.IsPriceCriteria
                 })
                 .ToListAsync();
 
@@ -66,6 +67,18 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Rào chặn nghiệp vụ: Tổng trọng số các tiêu chí trong gói thầu không được vượt quá 100%
+            // R2-3: Mỗi gói thầu tối đa 1 tiêu chí Giá / Tài chính
+            if (request.IsPriceCriteria)
+            {
+                var hasPriceCriteria = await _unitOfWork.Repository<EvaluationCriteria>()
+                    .ExistsAsync(c => c.BidPackageId == packageId && c.IsPriceCriteria);
+                if (hasPriceCriteria)
+                {
+                    return ApiResponse<EvaluationCriteriaDto>.Fail("Gói thầu đã có 1 tiêu chí đánh giá Giá / Tài chính. Mỗi gói thầu chỉ được phép thiết lập tối đa 1 tiêu chí giá.");
+                }
+            }
+
+            // Rào chặn nghiệp vụ: Tổng trọng số các tiêu chí trong gói thầu không được vượt quá 100%
             var currentTotalWeight = await _unitOfWork.Repository<EvaluationCriteria>()
                 .Query()
                 .Where(c => c.BidPackageId == packageId)
@@ -90,7 +103,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 BidPackageId = packageId,
                 Name = request.Name.Trim(),
                 MaxScore = request.MaxScore,
-                Weight = request.Weight
+                Weight = request.Weight,
+                IsPriceCriteria = request.IsPriceCriteria
             };
 
             await _unitOfWork.Repository<EvaluationCriteria>().AddAsync(entity);
@@ -102,7 +116,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 BidPackageId = entity.BidPackageId,
                 Name = entity.Name,
                 MaxScore = entity.MaxScore,
-                Weight = entity.Weight
+                Weight = entity.Weight,
+                IsPriceCriteria = entity.IsPriceCriteria
             };
 
             return ApiResponse<EvaluationCriteriaDto>.Ok(dto, "Tạo tiêu chí đánh giá thành công.");
@@ -140,6 +155,17 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<EvaluationCriteriaDto>.Fail("Trọng số phải lớn hơn 0.");
             }
 
+            // R2-3: Mỗi gói thầu tối đa 1 tiêu chí Giá / Tài chính
+            if (request.IsPriceCriteria)
+            {
+                var hasOtherPriceCriteria = await _unitOfWork.Repository<EvaluationCriteria>()
+                    .ExistsAsync(c => c.BidPackageId == criteria.BidPackageId && c.Id != criteriaId && c.IsPriceCriteria);
+                if (hasOtherPriceCriteria)
+                {
+                    return ApiResponse<EvaluationCriteriaDto>.Fail("Gói thầu đã có 1 tiêu chí đánh giá Giá / Tài chính khác. Mỗi gói thầu chỉ được phép thiết lập tối đa 1 tiêu chí giá.");
+                }
+            }
+
             // Rào chặn nghiệp vụ: Tổng trọng số các tiêu chí khác trong gói thầu không được vượt quá 100%
             var otherTotalWeight = await _unitOfWork.Repository<EvaluationCriteria>()
                 .Query()
@@ -173,6 +199,7 @@ namespace ProcurementSystem.Infrastructure.Services
             criteria.Name = request.Name.Trim();
             criteria.MaxScore = request.MaxScore;
             criteria.Weight = request.Weight;
+            criteria.IsPriceCriteria = request.IsPriceCriteria;
 
             _unitOfWork.Repository<EvaluationCriteria>().Update(criteria);
             await _unitOfWork.SaveChangesAsync();
@@ -183,7 +210,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 BidPackageId = criteria.BidPackageId,
                 Name = criteria.Name,
                 MaxScore = criteria.MaxScore,
-                Weight = criteria.Weight
+                Weight = criteria.Weight,
+                IsPriceCriteria = criteria.IsPriceCriteria
             };
 
             return ApiResponse<EvaluationCriteriaDto>.Ok(dto, "Cập nhật tiêu chí đánh giá thành công.");
@@ -237,9 +265,9 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Kiểm tra trạng thái hồ sơ dự thầu
-            if (submission.Status == BidSubmissionStatus.Withdrawn)
+            if (submission.Status == BidSubmissionStatus.Withdrawn || submission.Status == BidSubmissionStatus.Disqualified)
             {
-                return ApiResponse<List<EvaluationScoreDto>>.Fail("Không thể chấm điểm hồ sơ dự thầu đã rút lui khỏi gói thầu.");
+                return ApiResponse<List<EvaluationScoreDto>>.Fail($"Không thể chấm điểm hồ sơ dự thầu đã ở trạng thái '{submission.Status}'.");
             }
 
             if (submission.Status == BidSubmissionStatus.Selected || submission.Status == BidSubmissionStatus.Rejected)
@@ -352,6 +380,13 @@ namespace ProcurementSystem.Infrastructure.Services
                 if (!criteriaMap.TryGetValue(scoreItem.CriteriaId, out var criteria))
                 {
                     return ApiResponse<List<EvaluationScoreDto>>.Fail($"Tiêu chí có mã ID {scoreItem.CriteriaId} không thuộc gói thầu này.");
+                }
+
+                // R2-3: Tiêu chí Giá được hệ thống tự động tính điểm từ giá dự thầu theo Luật Đấu thầu, không cho phép giám khảo chấm tay
+                if (criteria.IsPriceCriteria)
+                {
+                    return ApiResponse<List<EvaluationScoreDto>>.Fail(
+                        $"Tiêu chí '{criteria.Name}' là tiêu chí Giá / Tài chính được hệ thống tự động tính điểm từ giá dự thầu theo công thức luật đấu thầu. Giám khảo không được phép chấm điểm thủ công cho tiêu chí này.");
                 }
 
                 if (scoreItem.Score < 0 || scoreItem.Score > criteria.MaxScore)
@@ -533,7 +568,7 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Căn cứ NĐ 24/2024/NĐ-CP: Toàn bộ hồ sơ dự thầu hợp lệ phải hoàn tất đánh giá đủ điều kiện
-            var activeSubmissions = submissions.Where(s => s.Status != BidSubmissionStatus.Withdrawn && s.Status != "Disqualified").ToList();
+            var activeSubmissions = submissions.Where(s => s.Status != BidSubmissionStatus.Withdrawn && s.Status != BidSubmissionStatus.Disqualified).ToList();
             var incompleteSubmissions = activeSubmissions.Where(s => s.Status != BidSubmissionStatus.Evaluated).ToList();
             if (incompleteSubmissions.Any())
             {
@@ -551,19 +586,20 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
-            // Đánh dấu hồ sơ trúng thầu và từ chối các hồ sơ còn lại
+            // Đánh dấu hồ sơ trúng thầu và từ chối các hồ sơ hợp lệ còn lại (bảo toàn nguyên vẹn trạng thái Withdrawn và Disqualified)
             foreach (var sub in submissions)
             {
                 if (sub.Id == request.SelectedSubmissionId)
                 {
                     sub.Status = BidSubmissionStatus.Selected;
                     sub.SelectionReason = request.DecisionReason;
+                    _unitOfWork.Repository<BidSubmission>().Update(sub);
                 }
-                else
+                else if (sub.Status != BidSubmissionStatus.Withdrawn && sub.Status != BidSubmissionStatus.Disqualified)
                 {
                     sub.Status = BidSubmissionStatus.Rejected;
+                    _unitOfWork.Repository<BidSubmission>().Update(sub);
                 }
-                _unitOfWork.Repository<BidSubmission>().Update(sub);
             }
 
             // Cập nhật trạng thái gói thầu sang Awarded (Đã trao thầu theo Điều 61, 64 Luật Đấu thầu 2023)
@@ -594,6 +630,242 @@ namespace ProcurementSystem.Infrastructure.Services
             await _unitOfWork.SaveChangesAsync();
 
             return ApiResponse<bool>.Ok(true, $"Đã phê duyệt nhà thầu (Mã hồ sơ: #{request.SelectedSubmissionId}) trúng thầu thành công. Gói thầu đã chuyển sang trạng thái 'Awarded' và sẵn sàng để ký hợp đồng.");
+        }
+
+        public async Task<ApiResponse<bool>> RevokeAwardAsync(int packageId, RevokeAwardRequest request, int userId, bool isAdmin)
+        {
+            if (string.IsNullOrWhiteSpace(request?.Reason) || request.Reason.Trim().Length < 5)
+            {
+                return ApiResponse<bool>.Fail("Lý do thu hồi kết quả trao thầu là bắt buộc và phải có ít nhất 5 ký tự.");
+            }
+
+            var package = await _unitOfWork.Repository<BidPackage>()
+                .Query()
+                .FirstOrDefaultAsync(bp => bp.Id == packageId);
+
+            if (package == null)
+            {
+                return ApiResponse<bool>.Fail("Không tìm thấy gói thầu.");
+            }
+
+            if (!isAdmin && package.CreatedBy != userId)
+            {
+                return ApiResponse<bool>.Fail("Bạn không có quyền thu hồi kết quả trao thầu cho gói thầu này.");
+            }
+
+            // Kiểm tra các hợp đồng liên quan đến gói thầu
+            var contracts = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.Milestones)
+                .Where(c => c.BidPackageId == packageId)
+                .ToListAsync();
+
+            var hasActiveOrCompletedContract = contracts.Any(c => c.Status == ContractStatus.Active || c.Status == ContractStatus.Completed);
+            if (hasActiveOrCompletedContract)
+            {
+                return ApiResponse<bool>.Fail(
+                    "Không thể thu hồi kết quả trao thầu vì gói thầu đã có hợp đồng ở trạng thái Đang thực hiện (Active) hoặc Hoàn thành (Completed). " +
+                    "Căn cứ Điều 64 Luật Đấu thầu 2023, quyết định trúng thầu đã chuyển hóa thành nghĩa vụ hợp đồng có hiệu lực pháp lý.");
+            }
+
+            // Kiểm tra trạng thái gói thầu: chỉ cho phép khi Awarded, hoặc Contracted nếu toàn bộ hợp đồng đã Terminated
+            var allContractsTerminated = contracts.Any() && contracts.All(c => c.Status == ContractStatus.Terminated);
+            if (package.Status != BidPackageStatus.Awarded && !(package.Status == BidPackageStatus.Contracted && allContractsTerminated))
+            {
+                return ApiResponse<bool>.Fail(
+                    $"Chỉ có thể thu hồi kết quả trao thầu khi gói thầu ở trạng thái 'Awarded' (hoặc 'Contracted' khi toàn bộ hợp đồng đã bị chấm dứt - Terminated). Trạng thái hiện tại: '{package.Status}'.");
+            }
+
+            // Hủy bỏ toàn bộ hợp đồng Draft liên quan đến gói thầu
+            var draftContracts = contracts.Where(c => c.Status == ContractStatus.Draft).ToList();
+            foreach (var draft in draftContracts)
+            {
+                _unitOfWork.Repository<Contract>().Delete(draft);
+            }
+
+            // Tìm hồ sơ trúng thầu hiện tại để lấy thông tin ghi nhận audit & notification
+            var submissions = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Include(s => s.Contractor)
+                    .ThenInclude(c => c.User)
+                .Where(s => s.BidPackageId == packageId)
+                .ToListAsync();
+
+            var winningSubmission = submissions.FirstOrDefault(s => s.Status == BidSubmissionStatus.Selected);
+
+            // Khôi phục trạng thái toàn bộ hồ sơ dự thầu về Evaluated (ngoại trừ hồ sơ đã rút Withdrawn hoặc Disqualified)
+            foreach (var sub in submissions)
+            {
+                if (sub.Status == BidSubmissionStatus.Selected)
+                {
+                    sub.Status = BidSubmissionStatus.Evaluated;
+                    sub.SelectionReason = null;
+                    _unitOfWork.Repository<BidSubmission>().Update(sub);
+                }
+                else if (sub.Status == BidSubmissionStatus.Rejected && sub.TotalScore.HasValue)
+                {
+                    // Khôi phục các hồ sơ bị Rejected do quyết định trao thầu trước đó
+                    sub.Status = BidSubmissionStatus.Evaluated;
+                    _unitOfWork.Repository<BidSubmission>().Update(sub);
+                }
+            }
+
+            // Cập nhật trạng thái gói thầu quay về Evaluating
+            var oldStatus = package.Status;
+            package.Status = BidPackageStatus.Evaluating;
+            package.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Repository<BidPackage>().Update(package);
+
+            // Gửi thông báo đến tài khoản nhà thầu bị thu hồi trao thầu
+            if (winningSubmission?.Contractor?.UserId != null)
+            {
+                var notifContractor = new Notification
+                {
+                    UserId = winningSubmission.Contractor.UserId,
+                    Title = $"Thu hồi quyết định trao thầu gói {package.Code}",
+                    Message = $"Quyết định phê duyệt trúng thầu của doanh nghiệp bạn đối với gói thầu '{package.Name}' ({package.Code}) đã bị thu hồi. Lý do: {request.Reason.Trim()}",
+                    Type = NotificationType.Warning,
+                    CreatedAt = DateTime.UtcNow,
+                    IsRead = false
+                };
+                await _unitOfWork.Repository<Notification>().AddAsync(notifContractor);
+            }
+
+            // Nếu người thu hồi là Admin và không phải người tạo gói, gửi thông báo cho người tạo gói thầu
+            if (isAdmin && package.CreatedBy != userId)
+            {
+                var notifCreator = new Notification
+                {
+                    UserId = package.CreatedBy,
+                    Title = $"Kết quả trao thầu gói {package.Code} đã bị thu hồi",
+                    Message = $"Quản trị viên đã thực hiện thu hồi quyết định phê duyệt trúng thầu gói thầu '{package.Name}' ({package.Code}). Lý do: {request.Reason.Trim()}",
+                    Type = NotificationType.Warning,
+                    CreatedAt = DateTime.UtcNow,
+                    IsRead = false
+                };
+                await _unitOfWork.Repository<Notification>().AddAsync(notifCreator);
+            }
+
+            // Ghi nhật ký kiểm toán (Audit Log)
+            var auditLog = new AuditLog
+            {
+                UserId = userId,
+                Action = "REVOKE_AWARD",
+                EntityType = "BidPackage",
+                EntityId = packageId,
+                OldValues = JsonSerializer.Serialize(new
+                {
+                    Status = oldStatus.ToString(),
+                    RevokedSubmissionId = winningSubmission?.Id,
+                    WinningContractorId = winningSubmission?.ContractorId,
+                    WinningContractorName = winningSubmission?.Contractor?.CompanyName
+                }),
+                NewValues = JsonSerializer.Serialize(new
+                {
+                    Status = BidPackageStatus.Evaluating.ToString(),
+                    Reason = request.Reason.Trim()
+                }),
+                Timestamp = DateTime.UtcNow
+            };
+            await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+
+            await _unitOfWork.SaveChangesAsync();
+
+            return ApiResponse<bool>.Ok(true, "Thu hồi kết quả phê duyệt trúng thầu thành công. Gói thầu đã chuyển về trạng thái 'Evaluating' để tiếp tục thẩm định hoặc lựa chọn nhà thầu khác.");
+        }
+
+        public async Task<ApiResponse<bool>> DisqualifySubmissionAsync(int submissionId, DisqualifySubmissionRequest request, int userId, bool isAdmin)
+        {
+            if (string.IsNullOrWhiteSpace(request?.Reason) || request.Reason.Trim().Length < 5)
+            {
+                return ApiResponse<bool>.Fail("Lý do loại bỏ hồ sơ dự thầu là bắt buộc và phải có ít nhất 5 ký tự.");
+            }
+
+            var submission = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Include(s => s.BidPackage)
+                .Include(s => s.Contractor)
+                .FirstOrDefaultAsync(s => s.Id == submissionId);
+
+            if (submission == null)
+            {
+                return ApiResponse<bool>.Fail("Không tìm thấy hồ sơ dự thầu.");
+            }
+
+            if (!isAdmin && submission.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<bool>.Fail("Bạn không có quyền loại bỏ hồ sơ dự thầu này.");
+            }
+
+            if (submission.BidPackage.Status != BidPackageStatus.Closed && submission.BidPackage.Status != BidPackageStatus.Evaluating)
+            {
+                return ApiResponse<bool>.Fail(
+                    $"Chỉ có thể loại bỏ hồ sơ dự thầu khi gói thầu ở giai đoạn đóng thầu hoặc đang chấm điểm ('Closed' hoặc 'Evaluating'). Trạng thái hiện tại: '{submission.BidPackage.Status}'.");
+            }
+
+            if (submission.Status == BidSubmissionStatus.Selected)
+            {
+                return ApiResponse<bool>.Fail("Không thể loại bỏ hồ sơ dự thầu đã được phê duyệt trúng thầu (Selected). Vui lòng thực hiện thu hồi trao thầu trước.");
+            }
+
+            if (submission.Status == BidSubmissionStatus.Withdrawn)
+            {
+                return ApiResponse<bool>.Fail("Hồ sơ dự thầu này đã được nhà thầu rút lui trước đó.");
+            }
+
+            if (submission.Status == BidSubmissionStatus.Disqualified)
+            {
+                return ApiResponse<bool>.Fail("Hồ sơ dự thầu này đã ở trạng thái bị loại trước đó.");
+            }
+
+            var oldStatus = submission.Status;
+            submission.Status = BidSubmissionStatus.Disqualified;
+            submission.SelectionReason = $"Bị loại: {request.Reason.Trim()}";
+            submission.Rank = null;
+            _unitOfWork.Repository<BidSubmission>().Update(submission);
+
+            // Ghi nhật ký kiểm toán (Audit Log)
+            var auditLog = new AuditLog
+            {
+                UserId = userId,
+                Action = "DISQUALIFY_SUBMISSION",
+                EntityType = "BidSubmission",
+                EntityId = submissionId,
+                OldValues = JsonSerializer.Serialize(new { Status = oldStatus }),
+                NewValues = JsonSerializer.Serialize(new
+                {
+                    Status = BidSubmissionStatus.Disqualified,
+                    Reason = request.Reason.Trim(),
+                    BidPackageId = submission.BidPackageId
+                }),
+                Timestamp = DateTime.UtcNow
+            };
+            await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+
+            // Gửi thông báo đến nhà thầu
+            if (submission.Contractor?.UserId != null)
+            {
+                var notifContractor = new Notification
+                {
+                    UserId = submission.Contractor.UserId,
+                    Title = $"Hồ sơ dự thầu bị loại - Gói {submission.BidPackage.Code}",
+                    Message = $"Hồ sơ dự thầu của doanh nghiệp bạn đối với gói thầu '{submission.BidPackage.Name}' ({submission.BidPackage.Code}) đã bị loại khỏi quá trình đánh giá. Lý do: {request.Reason.Trim()}",
+                    Type = NotificationType.Warning,
+                    CreatedAt = DateTime.UtcNow,
+                    IsRead = false
+                };
+                await _unitOfWork.Repository<Notification>().AddAsync(notifContractor);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+
+            // Tính toán lại xếp hạng cho gói thầu nếu đang trong giai đoạn chấm điểm
+            if (submission.BidPackage.Status == BidPackageStatus.Evaluating)
+            {
+                await CalculateRankingsForPackageAsync(submission.BidPackageId);
+            }
+
+            return ApiResponse<bool>.Ok(true, $"Đã loại bỏ hồ sơ dự thầu #{submissionId} khỏi quá trình xét thầu.");
         }
 
         public async Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId)
@@ -732,10 +1004,10 @@ namespace ProcurementSystem.Infrastructure.Services
                     "Gói thầu chưa có kết quả phê duyệt trúng thầu chính thức. Vui lòng hoàn tất quá trình đánh giá và phê duyệt nhà thầu trúng thầu trước khi lập hợp đồng.");
             }
 
-            // Kiểm tra xem gói thầu này đã được lập hợp đồng trong hệ thống chưa
+            // Kiểm tra xem gói thầu này đã được lập hợp đồng trong hệ thống chưa (bỏ qua hợp đồng đã Terminated)
             var existingContract = await _unitOfWork.Repository<Contract>()
                 .Query()
-                .Where(c => c.BidPackageId == packageId)
+                .Where(c => c.BidPackageId == packageId && c.Status != ContractStatus.Terminated)
                 .AsNoTracking()
                 .Select(c => new
                 {
@@ -786,7 +1058,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Query()
                 .Where(c => c.BidPackageId == packageId)
                 .AsNoTracking()
-                .Select(c => new { c.Id, c.Name, c.Weight, c.MaxScore })
+                .Select(c => new { c.Id, c.Name, c.Weight, c.MaxScore, c.IsPriceCriteria })
                 .ToListAsync();
 
             if (!criteriaList.Any()) return;
@@ -800,49 +1072,56 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Where(s => s.BidPackageId == packageId)
                 .ToListAsync();
 
-            // Đếm số giám khảo được phân công cho gói thầu để xác định điều kiện hoàn tất chấm điểm
-            var assignedEvaluatorsCount = await _unitOfWork.Repository<BidPackageEvaluator>()
+            // R2-2: Lấy danh sách ID các giám khảo chính thức được phân công trong Tổ chuyên gia
+            var assignedEvaluatorIds = await _unitOfWork.Repository<BidPackageEvaluator>()
                 .Query()
-                .CountAsync(pe => pe.BidPackageId == packageId);
-
-            var criteriaCount = criteriaList.Count;
-            var requiredScoreCount = (assignedEvaluatorsCount > 0 ? assignedEvaluatorsCount : 1) * criteriaCount;
+                .Where(pe => pe.BidPackageId == packageId)
+                .Select(pe => pe.EvaluatorId)
+                .ToListAsync();
 
             // Tìm giá dự thầu thấp nhất giữa các hồ sơ hợp lệ có giá dự thầu để áp dụng công thức chấm điểm Giá (Điều 29 NĐ 24/2024/NĐ-CP)
             var activeSubmissionsWithPrice = submissions
-                .Where(s => s.Status != BidSubmissionStatus.Withdrawn && s.Status != "Disqualified" && s.BidPrice.HasValue && s.BidPrice.Value > 0)
+                .Where(s => s.Status != BidSubmissionStatus.Withdrawn && s.Status != BidSubmissionStatus.Disqualified && s.BidPrice.HasValue && s.BidPrice.Value > 0)
                 .ToList();
             decimal? minBidPrice = activeSubmissionsWithPrice.Any()
                 ? activeSubmissionsWithPrice.Min(s => s.BidPrice!.Value)
                 : null;
 
-            bool IsPriceCriteria(string name)
-            {
-                var lower = name.ToLowerInvariant();
-                return lower.Contains("giá") || lower.Contains("tài chính") || lower.Contains("chi phí") || lower.Contains("price");
-            }
+            // R2-3: Danh sách các tiêu chí cần chấm tay (tiêu chí có IsPriceCriteria == true được tính toán tự động từ giá dự thầu)
+            var manualCriteria = criteriaList.Where(c => !c.IsPriceCriteria).ToList();
 
             foreach (var sub in submissions)
             {
                 // Bỏ qua nếu hồ sơ đã rút hoặc bị loại
-                if (sub.Status == BidSubmissionStatus.Withdrawn || sub.Status == "Disqualified") continue;
+                if (sub.Status == BidSubmissionStatus.Withdrawn || sub.Status == BidSubmissionStatus.Disqualified) continue;
 
-                if (!sub.EvaluationScores.Any()) continue;
+                if (!sub.EvaluationScores.Any())
+                {
+                    if (sub.Status == BidSubmissionStatus.Evaluated)
+                    {
+                        sub.Status = BidSubmissionStatus.Submitted;
+                    }
+                    sub.Rank = null;
+                    sub.TotalScore = null;
+                    _unitOfWork.Repository<BidSubmission>().Update(sub);
+                    continue;
+                }
 
                 // Tính điểm chuẩn hóa từng tiêu chí về thang 100 theo MaxScore (P1-1)
                 decimal weightedScoreSum = 0;
                 foreach (var criteria in criteriaList)
                 {
                     decimal criteriaScore;
-                    // Nếu là tiêu chí Giá: Tự động tính điểm tỷ lệ nghịch theo Luật Đấu thầu
-                    if (IsPriceCriteria(criteria.Name) && minBidPrice.HasValue && sub.BidPrice.HasValue && sub.BidPrice.Value > 0)
+                    // R2-3: Nếu là tiêu chí Giá: Tự động tính điểm tỷ lệ nghịch theo Luật Đấu thầu
+                    if (criteria.IsPriceCriteria && minBidPrice.HasValue && sub.BidPrice.HasValue && sub.BidPrice.Value > 0)
                     {
                         criteriaScore = Math.Round((minBidPrice.Value / sub.BidPrice.Value) * criteria.MaxScore, 2);
                     }
                     else
                     {
+                        // Chỉ tính điểm của các giám khảo thuộc Tổ chuyên gia (bỏ qua điểm của người ngoài tổ)
                         var scoresForCriteria = sub.EvaluationScores
-                            .Where(es => es.CriteriaId == criteria.Id)
+                            .Where(es => es.CriteriaId == criteria.Id && (assignedEvaluatorIds.Count == 0 || assignedEvaluatorIds.Contains(es.EvaluatorId)))
                             .Select(es => es.Score)
                             .ToList();
 
@@ -861,11 +1140,34 @@ namespace ProcurementSystem.Infrastructure.Services
                 var finalTotalScore = weightedScoreSum / totalWeight;
                 sub.TotalScore = Math.Round(finalTotalScore, 2);
 
-                // Căn cứ NĐ 24/2024/NĐ-CP: CHỈ gán trạng thái 'Evaluated' khi ĐỦ 100% giám khảo chấm đủ 100% tiêu chí
-                if (sub.EvaluationScores.Count >= requiredScoreCount && sub.Status != BidSubmissionStatus.Selected && sub.Status != BidSubmissionStatus.Rejected)
+                // R2-2: Căn cứ NĐ 24/2024/NĐ-CP: Điều kiện "chấm đủ":
+                // 1. Phải có Tổ chuyên gia (assignedEvaluatorIds.Count > 0)
+                // 2. Với MỖI giám khảo trong assignedEvaluatorIds, giám khảo đó PHẢI chấm đủ TẤT CẢ các tiêu chí cần chấm tay (manualCriteria)
+                // Cặp (EvaluatorId, CriteriaId) phải tồn tại đầy đủ
+                bool isFullyEvaluated = assignedEvaluatorIds.Any() && assignedEvaluatorIds.All(evalId =>
+                    manualCriteria.All(crit =>
+                        sub.EvaluationScores.Any(es => es.EvaluatorId == evalId && es.CriteriaId == crit.Id)
+                    )
+                );
+
+                if (isFullyEvaluated)
                 {
-                    sub.Status = BidSubmissionStatus.Evaluated;
+                    if (sub.Status != BidSubmissionStatus.Selected && sub.Status != BidSubmissionStatus.Rejected)
+                    {
+                        sub.Status = BidSubmissionStatus.Evaluated;
+                    }
                 }
+                else
+                {
+                    // Nếu chưa chấm đủ thì không được giữ trạng thái Evaluated và không được xếp Rank
+                    if (sub.Status == BidSubmissionStatus.Evaluated)
+                    {
+                        sub.Status = BidSubmissionStatus.Submitted;
+                    }
+                    sub.Rank = null;
+                }
+
+                _unitOfWork.Repository<BidSubmission>().Update(sub);
             }
 
             // P2-9: Tự động sắp xếp phân hạng Rank 1, 2, 3... cho các hồ sơ đã hoàn tất đánh giá:

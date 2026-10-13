@@ -13,7 +13,9 @@ import {
   Award,
   Layers,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  RotateCcw,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { evaluationApi } from '../api/evaluationApi';
@@ -47,6 +49,11 @@ export const EvaluationPage = () => {
   const [candidateWinner, setCandidateWinner] = useState(null);
   const [candidateHasTie, setCandidateHasTie] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+
+  // Revoke Award Modal state (R2-4)
+  const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
+  const [revokeReason, setRevokeReason] = useState('');
+  const [revoking, setRevoking] = useState(false);
 
   const isAdminOrProcurement = hasRole(['Admin', 'Procurement']);
   const isEvaluatorOrAdmin = hasRole(['Admin', 'Evaluator']);
@@ -132,6 +139,31 @@ export const EvaluationPage = () => {
       toast.error(msg);
     } finally {
       setFinalizing(false);
+    }
+  };
+
+  // Handle revoke award (R2-4)
+  const handleConfirmRevoke = async () => {
+    if (!revokeReason.trim() || revokeReason.trim().length < 5) {
+      toast.error('Vui lòng nhập lý do thu hồi quyết định trao thầu (tối thiểu 5 ký tự).');
+      return;
+    }
+    try {
+      setRevoking(true);
+      const res = await evaluationApi.revokeAward(packageId, revokeReason.trim());
+      if (res?.success) {
+        toast.success('Thu hồi kết quả phê duyệt trúng thầu thành công!');
+        setIsRevokeModalOpen(false);
+        setRevokeReason('');
+        await fetchData(true);
+      } else {
+        toast.error(res?.message || 'Có lỗi xảy ra khi thu hồi kết quả.');
+      }
+    } catch (err) {
+      const msg = err.message || 'Không thể thu hồi kết quả trao thầu.';
+      toast.error(msg);
+    } finally {
+      setRevoking(false);
     }
   };
 
@@ -241,12 +273,28 @@ export const EvaluationPage = () => {
               </p>
             </div>
           </div>
-          {summary?.winningScore !== null && summary?.winningScore !== undefined && (
-            <div className="flex items-center gap-2 shrink-0 bg-white/90 px-3.5 py-1.5 rounded-xl border border-emerald-200">
-              <span className="text-[11px] text-emerald-700 font-medium">Điểm trúng thầu:</span>
-              <span className="text-sm font-black text-emerald-800">{formatNumber(summary.winningScore)} / 100</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {summary?.winningScore !== null && summary?.winningScore !== undefined && (
+              <div className="flex items-center gap-2 bg-white/90 px-3.5 py-1.5 rounded-xl border border-emerald-200">
+                <span className="text-[11px] text-emerald-700 font-medium">Điểm trúng thầu:</span>
+                <span className="text-sm font-black text-emerald-800">{formatNumber(summary.winningScore)} / 100</span>
+              </div>
+            )}
+            {isAdminOrProcurement && (
+              <button
+                type="button"
+                onClick={() => {
+                  setRevokeReason('');
+                  setIsRevokeModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+                title="Thu hồi quyết định trao thầu để tổ chức thẩm định lại"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                <span>Thu hồi trao thầu</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -405,6 +453,85 @@ export const EvaluationPage = () => {
         loading={finalizing}
         hasTie={candidateHasTie}
       />
+
+      {/* REVOKE AWARD MODAL (R2-4) */}
+      {isRevokeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-800">
+                  Thu hồi quyết định phê duyệt trao thầu
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Gói thầu: <strong className="text-slate-700">{packageData.name}</strong> ({packageData.code})
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 space-y-1">
+              <p className="font-semibold flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                Căn cứ Điều 64 Luật Đấu thầu 2023 & Quy chuẩn hệ thống:
+              </p>
+              <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-amber-900">
+                <li>Chỉ được thu hồi khi gói thầu <strong>chưa kích hoạt hợp đồng (Active / Completed)</strong>.</li>
+                <li>Gói thầu sẽ quay lại trạng thái <strong>Evaluating (Chấm điểm)</strong>.</li>
+                <li>Toàn bộ hồ sơ hợp lệ sẽ được khôi phục về trạng thái <strong>Evaluated</strong> để tiếp tục xét duyệt hoặc trao thầu cho nhà thầu khác.</li>
+                <li>Hợp đồng dự thảo (Draft) nếu có sẽ tự động bị hủy bỏ.</li>
+              </ul>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700">
+                Lý do / Căn cứ thu hồi trao thầu <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={revokeReason}
+                onChange={(e) => setRevokeReason(e.target.value)}
+                placeholder="Nhập chi tiết lý do thu hồi quyết định trao thầu (ví dụ: Nhà thầu không hoàn thiện bảo đảm thực hiện hợp đồng theo thời hạn, hoặc phát hiện sai sót số liệu...)"
+                rows={4}
+                className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition-all text-slate-800"
+              />
+              <span className="text-[10px] text-slate-400 block text-right">
+                Tối thiểu 5 ký tự (Hiện tại: {revokeReason.trim().length})
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsRevokeModalOpen(false)}
+                disabled={revoking}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRevoke}
+                disabled={revoking || revokeReason.trim().length < 5}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+              >
+                {revoking ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang xử lý...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Xác nhận thu hồi</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

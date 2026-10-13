@@ -15,6 +15,7 @@ namespace ProcurementSystem.Core.DTOs.BidSubmission
         public decimal? TotalScore { get; set; }
         public int? Rank { get; set; }
         public string Status { get; set; } = string.Empty;
+        public string? SelectionReason { get; set; }
         public int FileCount { get; set; }
     }
 }

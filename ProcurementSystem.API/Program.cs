@@ -11,8 +11,13 @@ using ProcurementSystem.Infrastructure.Repositories;
 using ProcurementSystem.Infrastructure.Seeders;
 using ProcurementSystem.Infrastructure.Services;
 using ProcurementSystem.API.BackgroundServices;
+using ProcurementSystem.Infrastructure.Interceptors;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// HttpContextAccessor
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<AuditSaveChangesInterceptor>();
 
 // ==========================================
 // 1. DATABASE - Microsoft SQL Server + EF Core
@@ -21,8 +26,9 @@ var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING"
     ?? builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString));
+builder.Services.AddDbContext<AppDbContext>((sp, options) =>
+    options.UseSqlServer(connectionString)
+           .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
 // ==========================================
 // 2. DEPENDENCY INJECTION

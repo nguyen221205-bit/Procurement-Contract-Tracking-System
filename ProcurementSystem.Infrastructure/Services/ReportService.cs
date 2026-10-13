@@ -37,8 +37,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 .AsNoTracking();
 
             var totalSubmissions = await submissionsQuery.CountAsync();
-            var evaluatedSubmissions = await submissionsQuery.CountAsync(s => s.Status == "Evaluated" || s.Status == "Selected" || s.Status == "Rejected");
-            var selectedSubmissions = await submissionsQuery.CountAsync(s => s.Status == "Selected");
+            var evaluatedSubmissions = await submissionsQuery.CountAsync(s => s.Status == BidSubmissionStatus.Evaluated || s.Status == BidSubmissionStatus.Selected || s.Status == BidSubmissionStatus.Rejected);
+            var selectedSubmissions = await submissionsQuery.CountAsync(s => s.Status == BidSubmissionStatus.Selected);
 
             var totalContractors = await _unitOfWork.Repository<Contractor>()
                 .Query()

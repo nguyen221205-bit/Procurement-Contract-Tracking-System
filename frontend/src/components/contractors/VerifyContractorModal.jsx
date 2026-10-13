@@ -117,20 +117,11 @@ export const VerifyContractorModal = ({
 
         {/* Khối thông tin chi tiết Pháp lý & Liên hệ */}
         <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/80 space-y-3 text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <span className="text-slate-400 block font-medium">Mã số thuế:</span>
-              <span className="font-mono font-bold text-slate-800 text-sm">
-                {contractor.taxCode || 'Chưa cập nhật'}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-400 block font-medium">Đánh giá uy tín:</span>
-              <span className="inline-flex items-center space-x-1 font-bold text-amber-600">
-                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                <span>{contractor.rating?.toFixed(1) || '0.0'} / 5.0</span>
-              </span>
-            </div>
+          <div>
+            <span className="text-slate-400 block font-medium">Mã số thuế:</span>
+            <span className="font-mono font-bold text-slate-800 text-sm">
+              {contractor.taxCode || 'Chưa cập nhật'}
+            </span>
           </div>
 
           <div className="space-y-1">

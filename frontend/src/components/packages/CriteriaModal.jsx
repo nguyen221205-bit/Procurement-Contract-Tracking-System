@@ -18,6 +18,7 @@ export const CriteriaModal = ({
     name: '',
     maxScore: 100,
     weight: '',
+    isPriceCriteria: false,
   });
 
   const [loading, setLoading] = useState(false);
@@ -29,6 +30,7 @@ export const CriteriaModal = ({
         name: initialData.name || '',
         maxScore: initialData.maxScore || 100,
         weight: initialData.weight || '',
+        isPriceCriteria: Boolean(initialData.isPriceCriteria),
       });
     } else {
       // Khi tạo mới: Gợi ý trọng số còn lại để đủ 100% (nếu còn dư)
@@ -37,6 +39,7 @@ export const CriteriaModal = ({
         name: '',
         maxScore: 100,
         weight: remainingWeight > 0 ? remainingWeight : '',
+        isPriceCriteria: false,
       });
     }
     setErrors({});
@@ -44,9 +47,10 @@ export const CriteriaModal = ({
 
   if (!isOpen) return null;
 
-  // Xử lý chọn nhanh gợi ý tên tiêu chí mẫu lẻ (Chỉ điền tên, KHÔNG áp đặt điểm/trọng số)
+  // Xử lý chọn nhanh gợi ý tên tiêu chí mẫu lẻ
   const handleSelectSuggestion = (suggestedName) => {
-    setFormData((prev) => ({ ...prev, name: suggestedName }));
+    const isPrice = suggestedName.toLowerCase().includes('giá') || suggestedName.toLowerCase().includes('chi phí');
+    setFormData((prev) => ({ ...prev, name: suggestedName, isPriceCriteria: isPrice }));
     if (errors.name) {
       setErrors((prev) => ({ ...prev, name: null }));
     }
@@ -104,6 +108,7 @@ export const CriteriaModal = ({
         name: formData.name.trim(),
         maxScore: Number(formData.maxScore),
         weight: Number(formData.weight),
+        isPriceCriteria: Boolean(formData.isPriceCriteria),
       };
 
       if (isEditing) {
@@ -255,6 +260,24 @@ export const CriteriaModal = ({
               </div>
               {errors.weight && <p className="text-rose-500 text-[11px]">{errors.weight}</p>}
             </div>
+          </div>
+
+          {/* Đánh dấu Tiêu chí Giá / Tài chính (R2-3) */}
+          <div className="p-3 bg-slate-50/80 border border-slate-200 rounded-xl space-y-1">
+            <label className="flex items-center space-x-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.isPriceCriteria}
+                onChange={(e) => handleInputChange('isPriceCriteria', e.target.checked)}
+                className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
+              />
+              <span className="font-semibold text-slate-800 text-xs">
+                Là tiêu chí đánh giá Giá / Tài chính (tính điểm tự động)
+              </span>
+            </label>
+            <p className="text-[11px] text-slate-500 pl-6.5">
+              Hệ thống sẽ tự động tính điểm theo công thức luật đấu thầu (tỷ lệ nghịch với giá dự thầu). Giám khảo không cần chấm tay. Mỗi gói thầu tối đa 1 tiêu chí giá.
+            </p>
           </div>
 
           {/* Dự báo tổng trọng số */}
