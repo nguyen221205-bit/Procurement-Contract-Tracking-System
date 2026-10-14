@@ -10,4 +10,12 @@ export const reportApi = {
   exportContractsCsv: async () => {
     return await axiosClient.get('/reports/contracts/export', { responseType: 'blob' });
   },
+  exportContractorsExcel: async () => {
+    return await axiosClient.get('/reports/contractors/export-excel', { responseType: 'blob' });
+  },
+  exportContractsExcel: async () => {
+    return await axiosClient.get('/reports/contracts/export-excel', { responseType: 'blob' });
+  },
 };
+
+export default reportApi;

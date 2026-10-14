@@ -32,6 +32,20 @@ export const contractorApi = {
       responseType: 'blob',
     });
   },
+
+  // Tải về file Excel mẫu để nhập danh sách nhà thầu (.xlsx)
+  getImportTemplate: async () => {
+    return await axiosClient.get('/contractors/import-template', {
+      responseType: 'blob',
+    });
+  },
+
+  // Tải lên tệp Excel chứa danh sách nhà thầu để import hàng loạt
+  importExcel: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return await axiosClient.post('/contractors/import-excel', formData);
+  },
 };
 
 export default contractorApi;
