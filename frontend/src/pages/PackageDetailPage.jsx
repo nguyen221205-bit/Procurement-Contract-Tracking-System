@@ -27,6 +27,7 @@ import {
   UserCheck,
   UserMinus,
   Ban,
+  RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -39,6 +40,7 @@ import ConfirmModal from '../components/common/ConfirmModal';
 import CriteriaModal from '../components/packages/CriteriaModal';
 import CriteriaTemplateModal from '../components/packages/CriteriaTemplateModal';
 import AssignEvaluatorModal from '../components/packages/AssignEvaluatorModal';
+import ReopenPackageModal from '../components/packages/ReopenPackageModal';
 import SubmitBidModal from '../components/submissions/SubmitBidModal';
 import DisqualifySubmissionModal from '../components/evaluation/DisqualifySubmissionModal';
 import { PACKAGE_TYPES, ROLES } from '../utils/constants';
@@ -71,6 +73,7 @@ export const PackageDetailPage = () => {
     confirmVariant: 'primary',
   });
   const [statusLoading, setStatusLoading] = useState(false);
+  const [isReopenModalOpen, setIsReopenModalOpen] = useState(false);
 
   // Withdraw Submission Modal State (Contractor)
   const [withdrawModal, setWithdrawModal] = useState(false);
@@ -1137,6 +1140,18 @@ export const PackageDetailPage = () => {
                       <Scale className="w-4 h-4" />
                       <span>Chuyển sang Chấm điểm</span>
                     </button>
+
+                    {canManageStatus && (
+                      <button
+                        type="button"
+                        onClick={() => setIsReopenModalOpen(true)}
+                        className="w-full py-2.5 px-4 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition shadow-2xs flex items-center justify-center space-x-2 cursor-pointer"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        <span>Mở lại & Gia hạn nộp thầu</span>
+                      </button>
+                    )}
+
                     {totalWeight !== 100 ? (
                       <p className="text-[11px] text-amber-600 font-medium text-center">
                         Cần hoàn thiện tiêu chí đúng 100% trước khi mở chấm thầu (Hiện tại: {totalWeight}%).
@@ -1497,6 +1512,15 @@ export const PackageDetailPage = () => {
         submission={disqualifyTarget}
         onSuccess={loadPackageData}
       />
+
+      {/* Reopen Package Modal */}
+      <ReopenPackageModal
+        isOpen={isReopenModalOpen}
+        onClose={() => setIsReopenModalOpen(false)}
+        pkg={pkg}
+        onSuccess={loadPackageData}
+      />
+
     </div>
   );
 };

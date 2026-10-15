@@ -20,7 +20,8 @@ import {
   ChevronRight,
   Eye,
   SlidersHorizontal,
-  Download
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { contractApi } from '../api/contractApi';
@@ -58,18 +59,20 @@ export const ContractsPage = () => {
   const handleExportContracts = async () => {
     try {
       setExporting(true);
-      toast.loading('Đang xuất danh sách hợp đồng ra file CSV...', { id: 'export-contracts' });
-      const response = await reportApi.exportContractsCsv();
-      const blob = new Blob([response], { type: 'text/csv;charset=utf-8;' });
+      toast.loading('Đang xuất danh sách hợp đồng ra file Excel...', { id: 'export-contracts' });
+      const blobData = await reportApi.exportContractsExcel();
+      const blob = new Blob([blobData], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Danh_sach_hop_dong_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `Danh_sach_hop_dong_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      toast.success('Xuất danh sách hợp đồng thành công!', { id: 'export-contracts' });
+      toast.success('Xuất file Excel hợp đồng (.xlsx) thành công!', { id: 'export-contracts' });
     } catch (err) {
       toast.error('Lỗi khi xuất danh sách hợp đồng: ' + (err.message || 'Lỗi kết nối'), { id: 'export-contracts' });
     } finally {
@@ -168,10 +171,10 @@ export const ContractsPage = () => {
                 onClick={handleExportContracts}
                 disabled={exporting}
                 className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
-                title="Xuất danh sách hợp đồng ra file CSV (Excel tiếng Việt)"
+                title="Xuất danh sách hợp đồng ra file Excel (.xlsx) chuẩn ClosedXML"
               >
-                <Download className={`w-4 h-4 ${exporting ? 'animate-bounce' : ''}`} />
-                <span>Xuất Excel</span>
+                <FileSpreadsheet className={`w-4 h-4 ${exporting ? 'animate-bounce' : ''}`} />
+                <span>Xuất Excel (.xlsx)</span>
               </button>
 
               <button

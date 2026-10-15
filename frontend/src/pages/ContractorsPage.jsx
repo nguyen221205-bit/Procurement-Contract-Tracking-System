@@ -6,12 +6,15 @@ import { formatDate } from '../utils/formatters';
 import StatusBadge from '../components/common/StatusBadge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import VerifyContractorModal from '../components/contractors/VerifyContractorModal';
+import ImportContractorsModal from '../components/contractors/ImportContractorsModal';
 import toast from 'react-hot-toast';
 import {
   Building2,
   Search,
   Filter,
   Download,
+  Upload,
+  FileSpreadsheet,
   Star,
   FileCheck2,
   CheckCircle2,
@@ -41,9 +44,11 @@ export const ContractorsPage = () => {
   const [statusFilter, setStatusFilter] = useState(''); // '', 'Pending', 'Approved', 'Rejected'
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Modal thẩm định
+  // Modal thẩm định & Import Excel
   const [selectedContractor, setSelectedContractor] = useState(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   // Tải danh sách nhà thầu
   const fetchContractors = useCallback(async () => {
@@ -113,6 +118,31 @@ export const ContractorsPage = () => {
     }
   };
 
+  // Xử lý xuất Excel (.xlsx) chuẩn ClosedXML
+  const handleExportExcel = async () => {
+    try {
+      setExportingExcel(true);
+      toast.loading('Đang xuất danh sách nhà thầu ra file Excel...', { id: 'export-excel' });
+      const blobData = await reportApi.exportContractorsExcel();
+      const blob = new Blob([blobData], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Danh_sach_nha_thau_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('Xuất file Excel (.xlsx) thành công!', { id: 'export-excel' });
+    } catch (err) {
+      toast.error('Lỗi khi xuất file Excel: ' + (err.message || 'Lỗi kết nối'), { id: 'export-excel' });
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
   // Xem tệp GPKD trực tiếp
   const handleQuickViewLicense = async (e, contractorId) => {
     e.stopPropagation();
@@ -150,14 +180,36 @@ export const ContractorsPage = () => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-2.5">
+        <div className="flex items-center space-x-2.5 flex-wrap gap-y-2">
+          {currentUser?.role === 'Admin' && (
+            <button
+              type="button"
+              onClick={() => setIsImportModalOpen(true)}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-2xs transition cursor-pointer"
+            >
+              <Upload className="w-4 h-4 text-slate-500" />
+              <span>Nhập từ Excel</span>
+            </button>
+          )}
+
           <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={exportingExcel}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl shadow-2xs transition disabled:opacity-50 cursor-pointer"
+          >
+            <FileSpreadsheet className={`w-4 h-4 ${exportingExcel ? 'animate-bounce' : ''}`} />
+            <span>{exportingExcel ? 'Đang xuất...' : 'Xuất Excel (.xlsx)'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleExportCsv}
             disabled={exporting}
-            className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-2xs transition disabled:opacity-50"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-2xs transition disabled:opacity-50 cursor-pointer"
           >
             <Download className="w-4 h-4 text-slate-500" />
-            <span>{exporting ? 'Đang xuất...' : 'Xuất danh sách (CSV)'}</span>
+            <span>{exporting ? 'Đang xuất...' : 'Xuất CSV'}</span>
           </button>
         </div>
       </div>
@@ -419,6 +471,16 @@ export const ContractorsPage = () => {
         isOpen={Boolean(selectedContractor)}
         onClose={() => setSelectedContractor(null)}
         contractor={selectedContractor}
+        onSuccess={() => {
+          fetchContractors();
+          fetchPendingCount();
+        }}
+      />
+
+      {/* Modal Nhập danh sách nhà thầu từ Excel */}
+      <ImportContractorsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
         onSuccess={() => {
           fetchContractors();
           fetchPendingCount();

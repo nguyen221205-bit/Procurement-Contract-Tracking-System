@@ -44,6 +44,15 @@ export const bidPackageApi = {
   removeEvaluator: async (packageId, evaluatorId) => {
     return await axiosClient.delete(`/bid-packages/${packageId}/evaluators/${evaluatorId}`);
   },
+
+  // Mở lại gói thầu đã đóng (Closed -> Open) kèm thời hạn mới và lý do gia hạn
+  reopenPackage: async (id, data) => {
+    return await axiosClient.put(`/bid-packages/${id}/status`, {
+      newStatus: 0, // 0 = Open trong Enum BidPackageStatus
+      newDeadline: data.newDeadline,
+      reason: data.reason,
+    });
+  },
 };
 
 export default bidPackageApi;
