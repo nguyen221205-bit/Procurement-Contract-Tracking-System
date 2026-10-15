@@ -15,9 +15,11 @@ import {
   AlertCircle,
   Scale,
   ShieldCheck,
-  ChevronDown
+  ChevronDown,
+  Ban
 } from 'lucide-react';
 import { formatCurrency, formatDate, formatNumber } from '../../utils/formatters';
+import DisqualifySubmissionModal from './DisqualifySubmissionModal';
 
 export const LeaderboardView = ({
   packageData,
@@ -26,7 +28,10 @@ export const LeaderboardView = ({
   summary,
   onFinalizeClick,
   isAdminOrProcurement = false,
+  isReadyToAward = true,
+  onDisqualifySuccess,
 }) => {
+  const [disqualifyTarget, setDisqualifyTarget] = useState(null);
   // Sort rankings by rank
   const sortedRankings = [...rankings].sort((a, b) => {
     if (a.rank && b.rank) return a.rank - b.rank;
@@ -175,15 +180,26 @@ export const LeaderboardView = ({
             </div>
 
             {/* Nút hành động Trao thầu */}
-            <div className="md:col-span-4 flex items-end justify-start md:justify-end pt-2 md:pt-6">
+            <div className="md:col-span-4 flex flex-col items-start md:items-end justify-end pt-2 md:pt-6 space-y-1">
               <button
                 type="button"
                 onClick={() => onFinalizeClick && onFinalizeClick(currentlyChosenWinner, hasTie)}
-                className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 rounded-xl shadow-xs transition-transform hover:scale-[1.02] cursor-pointer flex-shrink-0"
+                disabled={!isReadyToAward}
+                title={!isReadyToAward ? 'Cần hoàn tất chấm điểm 100% hồ sơ theo Nghị định 24/2024/NĐ-CP' : 'Phê duyệt trao thầu'}
+                className={`w-full md:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-bold text-white rounded-xl shadow-xs transition-transform flex-shrink-0 ${
+                  isReadyToAward
+                    ? 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 hover:scale-[1.02] cursor-pointer'
+                    : 'bg-slate-300 cursor-not-allowed opacity-60'
+                }`}
               >
                 <Award className="w-4 h-4 text-amber-200" />
                 <span>Phê duyệt Trao thầu</span>
               </button>
+              {!isReadyToAward && (
+                <span className="text-[10px] text-amber-700 font-medium">
+                  Chờ hoàn tất chấm điểm toàn bộ hồ sơ
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -492,25 +508,43 @@ export const LeaderboardView = ({
                       {formatDate(sub.submittedAt)}
                     </td>
 
-                    {/* Nút Quyết định Trao thầu trực tiếp trên từng dòng */}
+                    {/* Cột Thao tác: Quyết định Trao thầu & Loại bỏ hồ sơ */}
                     {!isPackageAwarded && isEvaluating && isAdminOrProcurement && (
                       <td className="py-3 px-4 text-center bg-amber-50/20">
-                        {hasScore ? (
-                          <button
-                            type="button"
-                            onClick={() => onFinalizeClick && onFinalizeClick(sub, hasTie)}
-                            className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs ${
-                              isRank1
-                                ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                                : 'bg-white hover:bg-amber-50 text-amber-800 border border-amber-300'
-                            }`}
-                          >
-                            <Award className="w-3.5 h-3.5" />
-                            <span>{isRank1 ? 'Trao thầu (Đề xuất)' : 'Chọn trao thầu'}</span>
-                          </button>
-                        ) : (
-                          <span className="text-[11px] text-slate-400">Cần chấm điểm trước</span>
-                        )}
+                        <div className="flex items-center justify-center space-x-1.5">
+                          {hasScore ? (
+                            <button
+                              type="button"
+                              onClick={() => onFinalizeClick && onFinalizeClick(sub, hasTie)}
+                              disabled={!isReadyToAward}
+                              title={!isReadyToAward ? 'Cần hoàn tất chấm điểm 100% hồ sơ theo Nghị định 24/2024/NĐ-CP' : 'Trao thầu'}
+                              className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl transition-all shadow-2xs ${
+                                !isReadyToAward
+                                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                  : isRank1
+                                  ? 'bg-amber-500 hover:bg-amber-600 text-white cursor-pointer'
+                                  : 'bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 cursor-pointer'
+                              }`}
+                            >
+                              <Award className="w-3.5 h-3.5" />
+                              <span>{isRank1 ? 'Trao thầu' : 'Chọn'}</span>
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-400">Chờ chấm</span>
+                          )}
+
+                          {/* Nút Loại bỏ hồ sơ vi phạm (R2-5) */}
+                          {sub.status !== 'Disqualified' && sub.status !== 'Withdrawn' && (
+                            <button
+                              type="button"
+                              onClick={() => setDisqualifyTarget(sub)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+                              title="Loại bỏ hồ sơ không hợp lệ (Disqualify)"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -520,6 +554,16 @@ export const LeaderboardView = ({
           </table>
         </div>
       </div>
+
+      {/* Modal Loại Bỏ Hồ Sơ Dự Thầu (R2-5) */}
+      <DisqualifySubmissionModal
+        isOpen={Boolean(disqualifyTarget)}
+        onClose={() => setDisqualifyTarget(null)}
+        submission={disqualifyTarget}
+        onSuccess={() => {
+          onDisqualifySuccess?.();
+        }}
+      />
     </div>
   );
 };

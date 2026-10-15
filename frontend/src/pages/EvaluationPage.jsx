@@ -25,6 +25,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import ScorecardForm from '../components/evaluation/ScorecardForm';
 import LeaderboardView from '../components/evaluation/LeaderboardView';
 import FinalizeWinnerModal from '../components/evaluation/FinalizeWinnerModal';
+import CommitteeScoringProgress from '../components/evaluation/CommitteeScoringProgress';
 import { formatCurrency, formatNumber } from '../utils/formatters';
 
 export const EvaluationPage = () => {
@@ -433,14 +434,29 @@ export const EvaluationPage = () => {
       )}
 
       {activeTab === 'leaderboard' && (
-        <LeaderboardView
-          packageData={packageData}
-          rankings={rankings}
-          criteriaList={criteriaList}
-          summary={summary}
-          onFinalizeClick={handleOpenFinalizeModal}
-          isAdminOrProcurement={isAdminOrProcurement}
-        />
+        <div className="space-y-6">
+          {/* Widget Tiến độ chấm điểm của Tổ Chuyên Gia (R2-2 & R2-12) */}
+          {!isAwarded && (
+            <CommitteeScoringProgress
+              evaluators={evaluators}
+              rankings={rankings}
+            />
+          )}
+
+          <LeaderboardView
+            packageData={packageData}
+            rankings={rankings}
+            criteriaList={criteriaList}
+            summary={summary}
+            onFinalizeClick={handleOpenFinalizeModal}
+            isAdminOrProcurement={isAdminOrProcurement}
+            isReadyToAward={
+              rankings.filter((s) => s.status !== 'Withdrawn' && s.status !== 'Disqualified').length > 0 &&
+              rankings.filter((s) => s.status !== 'Withdrawn' && s.status !== 'Disqualified').every((s) => s.status === 'Evaluated')
+            }
+            onDisqualifySuccess={() => fetchData(true)}
+          />
+        </div>
       )}
 
       {/* FINALIZE WINNER MODAL */}

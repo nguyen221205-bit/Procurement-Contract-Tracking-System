@@ -315,6 +315,9 @@ export const CreateContractModal = ({
                   </span>
                 )}
               </div>
+              <p className="text-[10px] text-slate-500 italic">
+                * Quy chế: Cho phép lập hợp đồng thay thế nếu hợp đồng trước đó của gói thầu đã bị Chấm dứt (Terminated).
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                 <div>
                   <span className="text-slate-500 block">Tên doanh nghiệp:</span>

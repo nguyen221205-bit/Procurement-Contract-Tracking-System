@@ -10,6 +10,8 @@ export const AssignEvaluatorModal = ({
   isOpen,
   onClose,
   packageId,
+  pkg = null,
+  submissions = [],
   existingEvaluators = [],
   onSuccess,
 }) => {
@@ -45,6 +47,12 @@ export const AssignEvaluatorModal = ({
   if (!isOpen) return null;
 
   const existingIds = new Set(existingEvaluators.map((e) => e.evaluatorId));
+  const bannedIds = new Set();
+  if (pkg?.createdBy) bannedIds.add(pkg.createdBy);
+  if (pkg?.createdById) bannedIds.add(pkg.createdById);
+  submissions.forEach((s) => {
+    if (s.contractorUserId) bannedIds.add(s.contractorUserId);
+  });
 
   const filteredCandidates = candidates.filter((c) => {
     const term = searchTerm.toLowerCase();
@@ -142,18 +150,21 @@ export const AssignEvaluatorModal = ({
           ) : (
             filteredCandidates.map((evaluator) => {
               const isAssigned = existingIds.has(evaluator.id);
+              const isBanned = bannedIds.has(evaluator.id);
               const isSelected = selectedEvaluatorId === evaluator.id;
 
               return (
                 <div
                   key={evaluator.id}
                   onClick={() => {
-                    if (!isAssigned) {
+                    if (!isAssigned && !isBanned) {
                       setSelectedEvaluatorId(evaluator.id);
                     }
                   }}
                   className={`p-3.5 rounded-xl border text-left transition flex items-center justify-between ${
-                    isAssigned
+                    isBanned
+                      ? 'bg-rose-50/40 border-rose-200 opacity-60 cursor-not-allowed'
+                      : isAssigned
                       ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
                       : isSelected
                       ? 'bg-sky-50/70 border-sky-500 ring-2 ring-sky-500/20 cursor-pointer'
@@ -163,7 +174,9 @@ export const AssignEvaluatorModal = ({
                   <div className="flex items-center space-x-3 truncate pr-2">
                     <div
                       className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs flex-shrink-0 ${
-                        isSelected
+                        isBanned
+                          ? 'bg-rose-100 text-rose-600'
+                          : isSelected
                           ? 'bg-sky-600 text-white'
                           : isAssigned
                           ? 'bg-slate-200 text-slate-500'
@@ -175,7 +188,12 @@ export const AssignEvaluatorModal = ({
                     <div className="truncate">
                       <div className="text-xs font-bold text-slate-900 flex items-center space-x-2">
                         <span className="truncate">{evaluator.fullName}</span>
-                        {isAssigned && (
+                        {isBanned && (
+                          <span className="text-[10px] font-semibold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full" title="Người tạo gói thầu hoặc Nhà thầu tham gia dự thầu">
+                            Xung đột lợi ích (Bị cấm)
+                          </span>
+                        )}
+                        {isAssigned && !isBanned && (
                           <span className="text-[10px] font-semibold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
                             Đã trong tổ
                           </span>
@@ -188,7 +206,9 @@ export const AssignEvaluatorModal = ({
                   </div>
 
                   <div className="flex-shrink-0">
-                    {isAssigned ? (
+                    {isBanned ? (
+                      <span className="text-[10px] text-rose-600 font-bold">Không hợp lệ</span>
+                    ) : isAssigned ? (
                       <Check className="w-4 h-4 text-slate-400" />
                     ) : (
                       <div

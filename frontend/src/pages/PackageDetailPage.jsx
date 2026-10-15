@@ -26,6 +26,7 @@ import {
   Users,
   UserCheck,
   UserMinus,
+  Ban,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -39,6 +40,7 @@ import CriteriaModal from '../components/packages/CriteriaModal';
 import CriteriaTemplateModal from '../components/packages/CriteriaTemplateModal';
 import AssignEvaluatorModal from '../components/packages/AssignEvaluatorModal';
 import SubmitBidModal from '../components/submissions/SubmitBidModal';
+import DisqualifySubmissionModal from '../components/evaluation/DisqualifySubmissionModal';
 import { PACKAGE_TYPES, ROLES } from '../utils/constants';
 import { formatVND, formatCurrency, formatDate, formatDateTime } from '../utils/formatters';
 import { downloadSecureFile } from '../utils/fileDownload';
@@ -80,6 +82,7 @@ export const PackageDetailPage = () => {
   // View Submission Details Modal (Admin/Procurement/Evaluator/Contractor)
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [submissionDetailLoading, setSubmissionDetailLoading] = useState(false);
+  const [disqualifyTarget, setDisqualifyTarget] = useState(null);
 
   // Criteria Management States (Admin / Procurement)
   const [criteriaModalState, setCriteriaModalState] = useState({ isOpen: false, initialData: null });
@@ -845,14 +848,23 @@ export const PackageDetailPage = () => {
                               <span className="text-slate-400">-</span>
                             )}
                           </td>
-                          <td className="py-3 px-4 text-right">
+                          <td className="py-3 px-4 text-right space-x-1">
                             <button
                               onClick={() => handleViewSubmissionDetail(sub.id)}
-                              className="p-1.5 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition"
+                              className="p-1.5 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition cursor-pointer"
                               title="Xem chi tiết tệp hồ sơ"
                             >
                               <Eye className="w-4 h-4" />
                             </button>
+                            {canManageStatus && sub.status !== 'Disqualified' && sub.status !== 'Withdrawn' && (
+                              <button
+                                onClick={() => setDisqualifyTarget(sub)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                title="Loại bỏ hồ sơ không hợp lệ (Disqualify)"
+                              >
+                                <Ban className="w-4 h-4" />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1452,6 +1464,8 @@ export const PackageDetailPage = () => {
         isOpen={isAssignEvaluatorModalOpen}
         onClose={() => setIsAssignEvaluatorModalOpen(false)}
         packageId={pkg?.id}
+        pkg={pkg}
+        submissions={submissions}
         existingEvaluators={evaluators}
         onSuccess={loadPackageData}
       />
@@ -1473,6 +1487,14 @@ export const PackageDetailPage = () => {
         isOpen={isSubmitBidModalOpen}
         onClose={() => setIsSubmitBidModalOpen(false)}
         pkg={pkg}
+        onSuccess={loadPackageData}
+      />
+
+      {/* Disqualify Submission Modal (R2-5) */}
+      <DisqualifySubmissionModal
+        isOpen={Boolean(disqualifyTarget)}
+        onClose={() => setDisqualifyTarget(null)}
+        submission={disqualifyTarget}
         onSuccess={loadPackageData}
       />
     </div>
