@@ -10,6 +10,7 @@ import {
   EyeOff,
   ArrowRight
 } from 'lucide-react';
+import ForceChangePasswordModal from '../components/common/ForceChangePasswordModal';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showForceChangeModal, setShowForceChangeModal] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,6 +27,10 @@ export const LoginPage = () => {
 
     const result = await login(email, password);
     if (result.success) {
+      if (result.user?.mustChangePassword) {
+        setShowForceChangeModal(true);
+        return;
+      }
       const userRoles = result.user.roles || [];
       if (userRoles.includes(ROLES.ADMIN)) {
         navigate('/dashboard');
@@ -32,6 +38,11 @@ export const LoginPage = () => {
         navigate('/packages');
       }
     }
+  };
+
+  const handlePasswordChanged = () => {
+    setShowForceChangeModal(false);
+    navigate('/packages');
   };
 
   return (
@@ -125,6 +136,12 @@ export const LoginPage = () => {
           </form>
         </div>
       </div>
+
+      <ForceChangePasswordModal
+        isOpen={showForceChangeModal}
+        onClose={() => setShowForceChangeModal(false)}
+        onPasswordChanged={handlePasswordChanged}
+      />
     </div>
   );
 };

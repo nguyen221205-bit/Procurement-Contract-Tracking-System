@@ -26,6 +26,7 @@ namespace ProcurementSystem.Core.DTOs.Auth
 
         [Required(ErrorMessage = "Mã số thuế là bắt buộc")]
         [MaxLength(20)]
+        [RegularExpression(@"^\d{10}(-\d{3})?$", ErrorMessage = "Mã số thuế không đúng định dạng chuẩn (10 chữ số hoặc 13 chữ số dạng xxxxxxxxxx-xxx).")]
         public string TaxCode { get; set; } = string.Empty;
 
         [MaxLength(500)]
