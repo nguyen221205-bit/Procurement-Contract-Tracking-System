@@ -83,8 +83,8 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<BidSubmissionDto>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement") || User.IsInRole("Evaluator");
-            var result = await _bidSubmissionService.GetSubmissionByIdAsync(id, userId.Value, isInternalStaff);
+            var roles = GetCurrentUserRoles();
+            var result = await _bidSubmissionService.GetSubmissionByIdAsync(id, userId.Value, roles);
 
             if (!result.Success)
             {
@@ -118,12 +118,16 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<List<BidSubmissionSummaryDto>>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var isInternalStaff = true;
+            var roles = GetCurrentUserRoles();
             var result = await _bidSubmissionService.GetSubmissionsByPackageAsync(
-                bidPackageId, userId.Value, isInternalStaff);
+                bidPackageId, userId.Value, roles);
 
             if (!result.Success)
             {
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
                 return BadRequest(result);
             }
 
@@ -210,8 +214,8 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement") || User.IsInRole("Evaluator");
-            var result = await _bidSubmissionService.GetSubmissionFileForDownloadAsync(fileId, userId.Value, isInternalStaff);
+            var roles = GetCurrentUserRoles();
+            var result = await _bidSubmissionService.GetSubmissionFileForDownloadAsync(fileId, userId.Value, roles);
 
             if (!result.Success)
             {
@@ -229,6 +233,11 @@ namespace ProcurementSystem.API.Controllers
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             return int.TryParse(userIdClaim, out int userId) ? userId : null;
+        }
+
+        private IList<string> GetCurrentUserRoles()
+        {
+            return User.FindAll(ClaimTypes.Role).Select(r => r.Value).ToList();
         }
     }
 }

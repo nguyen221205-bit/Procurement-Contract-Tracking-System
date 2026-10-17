@@ -211,6 +211,20 @@ python scripts/testing/test_load_concurrency.py
    - Gọi `POST /api/contracts` tạo hợp đồng kinh tế (hệ thống tự động sinh số hiệu chuẩn `HD-{Năm}-{MãGói}-{STT}` nếu để trống, và kiểm soát giá trị hợp đồng $\le$ giá trúng thầu).
    - Kích hoạt hợp đồng `Draft -> Active` (yêu cầu đính kèm file scan hợp đồng PDF và tổng tỷ lệ thanh toán các mốc đạt 100%). Khi hợp đồng chính thức có hiệu lực (`Active`), hệ thống tự động cập nhật gói thầu sang `Contracted`.
    - Gọi `GET /api/reports/dashboard` để quan sát số liệu KPI tài chính, tỷ lệ tiết kiệm và tiến độ giải ngân được cập nhật theo thời gian thực.
+10. **Bước 10 (Các tính năng & API Quản trị Nâng cao - Vòng 3)**:
+    - **Thay thế giám khảo Tổ chuyên gia (`POST /api/bid-packages/{id}/evaluators/replace`)**: Thay thế nguyên tử thành viên trong 1 transaction, đảm bảo bảo toàn số lẻ $\ge 3$, kiểm tra xung đột lợi ích, bảo lưu điểm cũ trong AuditLog nhưng loại trừ khỏi bảng xếp hạng, tự động tính lại thứ hạng.
+    - **Bảo mật Sealed-Bid & Độc lập chấm điểm (N14)**: Trong giai đoạn `Evaluating`, giám khảo chỉ được xem điểm do chính mình chấm; ẩn `TotalScore` và `Rank` ở các endpoint `/rankings` và `/summary` cho đến khi có quyết định trao thầu.
+    - **Truất quyền dự thầu (`POST /api/evaluations/submissions/{id}/disqualify`)**: Truất quyền nhà thầu vi phạm kèm lý do pháp lý lưu vào trường `DisqualificationReason` riêng biệt.
+    - **Thu hồi trao thầu & Bảo vệ Hợp đồng Terminated (N16, R3-4, R3-5)**: Khi hợp đồng bị `Terminated`, hồ sơ của nhà thầu đó tự động bị `Disqualified` không thể tự động chọn lại; đồng thời xóa vật lý các file scan hợp đồng mồ côi sau khi xóa bản ghi Draft.
+    - **Nhập nhà thầu từ Excel an toàn (`POST /api/contractors/import-excel`)**: Tạo mật khẩu ngẫu nhiên bảo mật cao bằng `RandomNumberGenerator`, trạng thái ban đầu `Pending`, `Rating = 0`, gửi email thông báo và kích hoạt cờ `MustChangePassword = true`.
+    - **Bắt buộc đổi mật khẩu lần đầu (`POST /api/auth/change-password`)**: `MustChangePasswordMiddleware` tự động phong tỏa mọi API nghiệp vụ (403 Forbidden) cho đến khi người dùng đổi mật khẩu mới thành công.
+    - **Tự động cập nhật điểm uy tín (`Rating`)**: Tự động gọi `RecalculateContractorRatingAsync` tính lại điểm tín nhiệm nhà thầu khi hợp đồng chuyển sang `Terminated`, `Completed` hoặc mốc nghiệm thu bị từ chối.
+    - **Báo cáo chuyên sâu cấp quản trị (R3-10)**:
+      - `GET /api/reports/procurement-summary`: Báo cáo thống kê mua sắm theo năm & phân loại gói thầu (Hàng hóa, Xây dựng, Dịch vụ).
+      - `GET /api/reports/contractor-performance`: Báo cáo tỷ lệ trúng/trượt thầu và năng lực các nhà thầu.
+      - `GET /api/reports/contracts-progress`: Báo cáo tỷ lệ mốc hoàn thành đúng hạn và danh sách hợp đồng sắp đến hạn / quá hạn.
+      - `GET /api/reports/contractors/export-excel` & `GET /api/reports/contracts/export-excel`: Xuất dữ liệu báo cáo sang Excel chuẩn ClosedXML.
+    - **Kiểm toán an toàn (R3-6, R3-7)**: Cấu hình `UseForwardedHeaders` chống giả mạo IP qua `X-Forwarded-For`; thống nhất Interceptor tự động ghi nhận dữ liệu CUD và Service chỉ ghi nhận các sự kiện nghiệp vụ chuyên biệt (`IMPORT_CONTRACTORS`, `REVOKE_AWARD`, `DISQUALIFY_SUBMISSION`, `REPLACE_EVALUATOR`, `EXTEND_BID_PACKAGE_DEADLINE`).
 
 ---
 

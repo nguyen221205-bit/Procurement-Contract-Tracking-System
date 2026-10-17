@@ -348,11 +348,8 @@ namespace ProcurementSystem.Infrastructure.Interceptors
             var httpContext = _httpContextAccessor?.HttpContext;
             if (httpContext == null) return null;
 
-            var forwardedHeader = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(forwardedHeader))
-            {
-                return forwardedHeader.Split(',')[0].Trim();
-            }
+            // N18 / R3-7: Sử dụng RemoteIpAddress đã được chuẩn hóa và bảo vệ qua UseForwardedHeaders middleware.
+            // Tuyệt đối không đọc trực tiếp header X-Forwarded-For chưa được kiểm chứng để chống giả mạo IP trong AuditLog.
             return httpContext.Connection?.RemoteIpAddress?.ToString();
         }
 

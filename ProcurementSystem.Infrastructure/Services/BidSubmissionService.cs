@@ -233,7 +233,7 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<BidSubmissionDto>> GetSubmissionByIdAsync(
-            int id, int userId, bool isInternalStaff)
+            int id, int userId, IList<string> userRoles)
         {
             var submission = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
@@ -248,6 +248,18 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidSubmissionDto>.Fail("Không tìm thấy hồ sơ dự thầu.");
             }
 
+            var isAdmin = userRoles.Contains("Admin");
+            var isProcurement = userRoles.Contains("Procurement");
+            var isEvaluator = userRoles.Contains("Evaluator");
+            var isInternalStaff = isAdmin || isProcurement || isEvaluator;
+
+            // Kiểm tra tư cách nhà thầu sở hữu hồ sơ
+            var contractor = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.UserId == userId);
+            var isOwner = contractor != null && contractor.Id == submission.ContractorId;
+
             // Bảo mật Sealed-Bid: Căn cứ Điều 16 Luật Đấu thầu 2023, hồ sơ phải được niêm phong khi gói thầu còn Open
             if (submission.BidPackage.Status == BidPackageStatus.Open)
             {
@@ -257,12 +269,7 @@ namespace ProcurementSystem.Infrastructure.Services
                         "Căn cứ Điều 16 Luật Đấu thầu 2023: Hồ sơ dự thầu đang trong thời hạn niêm phong bảo mật. Nhân sự nội bộ không được phép mở xem hồ sơ trước thời điểm đóng thầu.");
                 }
 
-                var contractor = await _unitOfWork.Repository<Contractor>()
-                    .Query()
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(c => c.UserId == userId);
-
-                if (contractor == null || contractor.Id != submission.ContractorId)
+                if (!isOwner)
                 {
                     return ApiResponse<BidSubmissionDto>.Forbidden("Bạn không có quyền xem hồ sơ dự thầu này.");
                 }
@@ -270,25 +277,60 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidSubmissionDto>.Ok(MapToDto(submission));
             }
 
-            // Gói thầu đã đóng/chấm điểm: Nhân sự nội bộ được xem; Nhà thầu chỉ xem hồ sơ của mình
-            if (!isInternalStaff)
+            // Gói thầu đã đóng/chấm điểm: Kiểm soát IDOR chi tiết theo quyền hạn
+            var hasAccess = false;
+            if (isAdmin)
             {
-                var contractor = await _unitOfWork.Repository<Contractor>()
-                    .Query()
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(c => c.UserId == userId);
-
-                if (contractor == null || contractor.Id != submission.ContractorId)
+                hasAccess = true;
+            }
+            else if (isProcurement && submission.BidPackage.CreatedBy == userId)
+            {
+                // Bên mời thầu phụ trách gói thầu này
+                hasAccess = true;
+            }
+            else if (isEvaluator)
+            {
+                // Chỉ chuyên gia được phân công vào tổ chuyên gia của gói thầu
+                var isAssigned = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .ExistsAsync(pe => pe.BidPackageId == submission.BidPackageId && pe.EvaluatorId == userId);
+                if (isAssigned)
                 {
-                    return ApiResponse<BidSubmissionDto>.Forbidden("Bạn không có quyền xem hồ sơ dự thầu này.");
+                    hasAccess = true;
                 }
             }
+            else if (isOwner)
+            {
+                hasAccess = true;
+            }
 
-            return ApiResponse<BidSubmissionDto>.Ok(MapToDto(submission));
+            if (!hasAccess)
+            {
+                return ApiResponse<BidSubmissionDto>.Forbidden("Bạn không có quyền xem hồ sơ dự thầu này.");
+            }
+
+            var dto = MapToDto(submission);
+
+            // Bảo mật điểm số chấm thầu:
+            // Khi gói thầu đang Evaluating: Ẩn TotalScore và Rank tạm thời với Evaluator và Contractor
+            if (submission.BidPackage.Status == BidPackageStatus.Evaluating)
+            {
+                if (!isAdmin && !(isProcurement && submission.BidPackage.CreatedBy == userId))
+                {
+                    dto.TotalScore = null;
+                    dto.Rank = null;
+                }
+            }
+            else if (submission.BidPackage.Status == BidPackageStatus.Closed || submission.BidPackage.Status == BidPackageStatus.Open)
+            {
+                dto.TotalScore = null;
+                dto.Rank = null;
+            }
+
+            return ApiResponse<BidSubmissionDto>.Ok(dto);
         }
 
         public async Task<ApiResponse<List<BidSubmissionSummaryDto>>> GetSubmissionsByPackageAsync(
-            int bidPackageId, int userId, bool isInternalStaff)
+            int bidPackageId, int userId, IList<string> userRoles)
         {
             // Kiểm tra gói thầu tồn tại
             var bidPackage = await _unitOfWork.Repository<BidPackage>()
@@ -301,11 +343,47 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<List<BidSubmissionSummaryDto>>.Fail("Gói thầu không tồn tại.");
             }
 
+            var isAdmin = userRoles.Contains("Admin");
+            var isProcurement = userRoles.Contains("Procurement");
+            var isEvaluator = userRoles.Contains("Evaluator");
+            var isInternalStaff = isAdmin || isProcurement || isEvaluator;
+
             // Bảo mật giá thầu: nhân sự nội bộ chỉ xem khi gói thầu đã Closed/Evaluating/Contracted
             if (isInternalStaff && bidPackage.Status == BidPackageStatus.Open)
             {
                 return ApiResponse<List<BidSubmissionSummaryDto>>.Fail(
                     "Không thể xem danh sách hồ sơ dự thầu khi gói thầu còn đang mở. Vui lòng đóng thầu trước.");
+            }
+
+            // Kiểm soát IDOR: Kiểm tra quyền xem danh sách hồ sơ của gói thầu
+            var hasAccess = false;
+            if (isAdmin)
+            {
+                hasAccess = true;
+            }
+            else if (isProcurement && bidPackage.CreatedBy == userId)
+            {
+                hasAccess = true;
+            }
+            else if (isEvaluator)
+            {
+                var isAssigned = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .ExistsAsync(pe => pe.BidPackageId == bidPackageId && pe.EvaluatorId == userId);
+                if (isAssigned)
+                {
+                    hasAccess = true;
+                }
+            }
+            else if (!isInternalStaff)
+            {
+                // Nhà thầu chỉ xem hồ sơ của chính mình
+                hasAccess = true;
+            }
+
+            if (!hasAccess)
+            {
+                return ApiResponse<List<BidSubmissionSummaryDto>>.Forbidden(
+                    "Bạn không có quyền xem danh sách hồ sơ của gói thầu này.");
             }
 
             var query = _unitOfWork.Repository<BidSubmission>()
@@ -337,6 +415,28 @@ namespace ProcurementSystem.Infrastructure.Services
                 .ToListAsync();
 
             var result = submissions.Select(MapToSummaryDto).ToList();
+
+            // Bảo mật điểm số chấm thầu:
+            // Khi gói thầu đang Evaluating: Ẩn TotalScore và Rank tạm thời với Evaluator và Contractor
+            if (bidPackage.Status == BidPackageStatus.Evaluating)
+            {
+                if (!isAdmin && !(isProcurement && bidPackage.CreatedBy == userId))
+                {
+                    foreach (var item in result)
+                    {
+                        item.TotalScore = null;
+                        item.Rank = null;
+                    }
+                }
+            }
+            else if (bidPackage.Status == BidPackageStatus.Closed || bidPackage.Status == BidPackageStatus.Open)
+            {
+                foreach (var item in result)
+                {
+                    item.TotalScore = null;
+                    item.Rank = null;
+                }
+            }
 
             return ApiResponse<List<BidSubmissionSummaryDto>>.Ok(result);
         }
@@ -373,8 +473,8 @@ namespace ProcurementSystem.Infrastructure.Services
                     CompanyName = bs.Contractor.CompanyName,
                     SubmittedAt = bs.SubmittedAt,
                     BidPrice = bs.BidPrice,
-                    TotalScore = bs.TotalScore,
-                    Rank = bs.Rank,
+                    TotalScore = (bs.BidPackage.Status == BidPackageStatus.Awarded || bs.BidPackage.Status == BidPackageStatus.Contracted) ? bs.TotalScore : null,
+                    Rank = (bs.BidPackage.Status == BidPackageStatus.Awarded || bs.BidPackage.Status == BidPackageStatus.Contracted) ? bs.Rank : null,
                     Status = bs.Status,
                     FileCount = bs.SubmissionFiles.Count
                 });
@@ -450,6 +550,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 Rank = submission.Rank,
                 Status = submission.Status,
                 SelectionReason = submission.SelectionReason,
+                DisqualificationReason = submission.DisqualificationReason,
                 Files = submission.SubmissionFiles?.Select(MapFileToDto).ToList() ?? new()
             };
         }
@@ -470,6 +571,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 Rank = submission.Rank,
                 Status = submission.Status,
                 SelectionReason = submission.SelectionReason,
+                DisqualificationReason = submission.DisqualificationReason,
                 FileCount = submission.SubmissionFiles?.Count ?? 0
             };
         }
@@ -488,7 +590,7 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<SubmissionFileDownloadDto>> GetSubmissionFileForDownloadAsync(
-            int fileId, int userId, bool isInternalStaff)
+            int fileId, int userId, IList<string> userRoles)
         {
             var file = await _unitOfWork.Repository<SubmissionFile>()
                 .Query()
@@ -501,25 +603,63 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<SubmissionFileDownloadDto>.Fail("Không tìm thấy tệp tài liệu đính kèm.");
             }
 
+            var isAdmin = userRoles.Contains("Admin");
+            var isProcurement = userRoles.Contains("Procurement");
+            var isEvaluator = userRoles.Contains("Evaluator");
+            var isInternalStaff = isAdmin || isProcurement || isEvaluator;
+
+            // Kiểm tra tư cách nhà thầu sở hữu hồ sơ
+            var contractor = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.UserId == userId);
+            var isOwner = contractor != null && contractor.Id == file.BidSubmission.ContractorId;
+
             // Bảo mật Sealed-Bid: Căn cứ Điều 16 Luật Đấu thầu 2023, cấm tải tệp hồ sơ khi gói còn Open
-            if (file.BidSubmission.BidPackage.Status == BidPackageStatus.Open && isInternalStaff)
+            if (file.BidSubmission.BidPackage.Status == BidPackageStatus.Open)
             {
-                return ApiResponse<SubmissionFileDownloadDto>.Fail(
-                    "Căn cứ Điều 16 Luật Đấu thầu 2023: Không thể tải tệp đề xuất dự thầu khi gói thầu đang trong giai đoạn tiếp nhận hồ sơ (chưa đóng thầu).");
-            }
+                if (isInternalStaff)
+                {
+                    return ApiResponse<SubmissionFileDownloadDto>.Fail(
+                        "Căn cứ Điều 16 Luật Đấu thầu 2023: Không thể tải tệp đề xuất dự thầu khi gói thầu đang trong giai đoạn tiếp nhận hồ sơ (chưa đóng thầu).");
+                }
 
-            // Kiểm soát IDOR: Contractor chỉ được tải tệp của hồ sơ do chính mình nộp
-            if (!isInternalStaff)
-            {
-                var contractor = await _unitOfWork.Repository<Contractor>()
-                    .Query()
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(c => c.UserId == userId);
-
-                if (contractor == null || contractor.Id != file.BidSubmission.ContractorId)
+                if (!isOwner)
                 {
                     return ApiResponse<SubmissionFileDownloadDto>.Forbidden(
-                        "Bạn không có quyền tải tệp hồ sơ của nhà thầu khác.");
+                        "Bạn không có quyền tải tệp tài liệu này.");
+                }
+            }
+            else
+            {
+                // Gói thầu đã đóng/chấm điểm: Kiểm soát IDOR chi tiết
+                var hasAccess = false;
+                if (isAdmin)
+                {
+                    hasAccess = true;
+                }
+                else if (isProcurement && file.BidSubmission.BidPackage.CreatedBy == userId)
+                {
+                    hasAccess = true;
+                }
+                else if (isEvaluator)
+                {
+                    var isAssigned = await _unitOfWork.Repository<BidPackageEvaluator>()
+                        .ExistsAsync(pe => pe.BidPackageId == file.BidSubmission.BidPackageId && pe.EvaluatorId == userId);
+                    if (isAssigned)
+                    {
+                        hasAccess = true;
+                    }
+                }
+                else if (isOwner)
+                {
+                    hasAccess = true;
+                }
+
+                if (!hasAccess)
+                {
+                    return ApiResponse<SubmissionFileDownloadDto>.Forbidden(
+                        "Bạn không có quyền tải tệp tài liệu này.");
                 }
             }
 

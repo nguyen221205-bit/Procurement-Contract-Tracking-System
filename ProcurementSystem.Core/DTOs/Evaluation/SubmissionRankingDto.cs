@@ -11,6 +11,8 @@ namespace ProcurementSystem.Core.DTOs.Evaluation
         public decimal? TotalScore { get; set; }
         public int? Rank { get; set; }
         public string Status { get; set; } = string.Empty;
+        public string? SelectionReason { get; set; }
+        public string? DisqualificationReason { get; set; }
         public DateTime SubmittedAt { get; set; }
         public List<EvaluationScoreDto> Scores { get; set; } = new();
     }

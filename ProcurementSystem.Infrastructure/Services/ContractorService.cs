@@ -8,19 +8,24 @@ using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
 
+using System.Security.Cryptography;
+
 namespace ProcurementSystem.Infrastructure.Services
 {
     public class ContractorService : IContractorService
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileStorageService _fileStorageService;
+        private readonly IEmailService _emailService;
 
         public ContractorService(
             IUnitOfWork unitOfWork,
-            IFileStorageService fileStorageService)
+            IFileStorageService fileStorageService,
+            IEmailService emailService)
         {
             _unitOfWork = unitOfWork;
             _fileStorageService = fileStorageService;
+            _emailService = emailService;
         }
 
         public async Task<ApiResponse<PaginatedList<ContractorDto>>> GetContractorsAsync(ContractorFilterParams filter)
@@ -144,14 +149,20 @@ namespace ProcurementSystem.Infrastructure.Services
             contractor.CompanyName = request.CompanyName.Trim();
             contractor.Address = request.Address?.Trim();
 
+            bool hasNewLicense = false;
+            var oldStatus = contractor.VerificationStatus;
+            string? oldFilePath = null;
+            string? newFilePath = null;
+
             // Nếu người dùng tải lên file GPKD mới để thay thế
             if (request.BusinessLicenseFile != null && request.BusinessLicenseFile.Length > 0)
             {
                 try
                 {
-                    var oldFilePath = contractor.BusinessLicenseFile;
-                    var newFilePath = await _fileStorageService.SaveFileAsync(request.BusinessLicenseFile, "contractors");
+                    oldFilePath = contractor.BusinessLicenseFile;
+                    newFilePath = await _fileStorageService.SaveFileAsync(request.BusinessLicenseFile, "contractors");
                     contractor.BusinessLicenseFile = newFilePath;
+                    hasNewLicense = true;
 
                     // Xóa file cũ nếu lưu file mới thành công
                     if (!string.IsNullOrEmpty(oldFilePath))
@@ -165,10 +176,57 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
+            bool shouldResetStatus = hasNewLicense || contractor.VerificationStatus == "Rejected";
+            if (shouldResetStatus)
+            {
+                contractor.VerificationStatus = "Pending";
+
+                // Gửi thông báo đến Admin
+                var adminUsers = await _unitOfWork.Repository<User>()
+                    .Query()
+                    .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "Admin") && u.IsActive)
+                    .ToListAsync();
+
+                foreach (var admin in adminUsers)
+                {
+                    var notif = new Notification
+                    {
+                        UserId = admin.Id,
+                        Title = "Nhà thầu cập nhật lại hồ sơ / GPKD",
+                        Message = $"Nhà thầu {contractor.CompanyName} (MST: {contractor.TaxCode}) vừa cập nhật lại Giấy phép kinh doanh / hồ sơ. Vui lòng thẩm định lại.",
+                        Type = Core.Enums.NotificationType.Info,
+                        CreatedAt = DateTime.UtcNow,
+                        IsRead = false
+                    };
+                    await _unitOfWork.Repository<Notification>().AddAsync(notif);
+                }
+
+                // Ghi nhận AuditLog
+                var auditLog = new AuditLog
+                {
+                    UserId = userId,
+                    Action = "UPDATE_CONTRACTOR_LICENSE",
+                    EntityType = "Contractor",
+                    EntityId = contractor.Id,
+                    OldValues = System.Text.Json.JsonSerializer.Serialize(new { VerificationStatus = oldStatus, LicenseFile = oldFilePath }),
+                    NewValues = System.Text.Json.JsonSerializer.Serialize(new { VerificationStatus = "Pending", LicenseFile = newFilePath ?? contractor.BusinessLicenseFile }),
+                    Timestamp = DateTime.UtcNow
+                };
+                await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+            }
+
+            if (contractor.User != null)
+            {
+                contractor.User.UpdatedAt = DateTime.UtcNow;
+            }
             _unitOfWork.Repository<Contractor>().Update(contractor);
             await _unitOfWork.SaveChangesAsync();
 
-            return ApiResponse<ContractorDto>.Ok(MapToDto(contractor), "Cập nhật hồ sơ nhà thầu thành công.");
+            var message = shouldResetStatus
+                ? "Cập nhật hồ sơ nhà thầu thành công. Giấy phép kinh doanh / hồ sơ mới đã được chuyển đến Quản trị viên (Admin) để thẩm định lại."
+                : "Cập nhật hồ sơ nhà thầu thành công.";
+
+            return ApiResponse<ContractorDto>.Ok(MapToDto(contractor), message);
         }
 
         public async Task<ApiResponse<ContractorDto>> UpdateContractorRatingAsync(int contractorId, UpdateContractorRatingRequest request)
@@ -305,7 +363,7 @@ namespace ProcurementSystem.Infrastructure.Services
             };
         }
 
-        public async Task<ApiResponse<ImportContractorResultDto>> ImportContractorsFromExcelAsync(IFormFile file)
+        public async Task<ApiResponse<ImportContractorResultDto>> ImportContractorsFromExcelAsync(IFormFile file, int? adminUserId = null)
         {
             if (file == null || file.Length == 0)
             {
@@ -467,20 +525,24 @@ namespace ProcurementSystem.Infrastructure.Services
                 // Nếu có bản ghi hợp lệ, lưu vào DB qua Transaction
                 if (validContractorsToCreate.Count > 0)
                 {
+                    var createdContractors = new List<(string FullName, string Email, string CompanyName, string TempPassword)>();
+
                     await _unitOfWork.BeginTransactionAsync();
                     try
                     {
-                        var defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword("Contractor@123");
-
                         foreach (var item in validContractorsToCreate)
                         {
+                            var tempPassword = GenerateRandomPassword(12);
+                            var tempPasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword);
+
                             var user = new User
                             {
                                 FullName = item.fullName,
                                 Email = item.email.ToLowerInvariant(),
-                                PasswordHash = defaultPasswordHash,
+                                PasswordHash = tempPasswordHash,
                                 Phone = item.phone,
                                 IsActive = true,
+                                MustChangePassword = true,
                                 CreatedAt = DateTime.UtcNow
                             };
 
@@ -500,17 +562,68 @@ namespace ProcurementSystem.Infrastructure.Services
                                 CompanyName = item.companyName,
                                 TaxCode = item.taxCode,
                                 Address = item.address,
-                                Rating = 5.0m,
-                                VerificationStatus = "Approved",
+                                Rating = 0,
+                                VerificationStatus = "Pending",
                                 CreatedAt = DateTime.UtcNow
                             };
                             await _unitOfWork.Repository<Contractor>().AddAsync(contractor);
+
+                            createdContractors.Add((item.fullName, item.email.ToLowerInvariant(), item.companyName, tempPassword));
+                        }
+
+                        // Ghi nhận AuditLog IMPORT_CONTRACTORS (tuyệt đối không ghi password vào log)
+                        if (adminUserId.HasValue)
+                        {
+                            var auditLog = new AuditLog
+                            {
+                                UserId = adminUserId.Value,
+                                Action = "IMPORT_CONTRACTORS",
+                                EntityType = "Contractor",
+                                EntityId = null,
+                                NewValues = System.Text.Json.JsonSerializer.Serialize(new
+                                {
+                                    TotalRows = totalDataRows,
+                                    SuccessCount = validContractorsToCreate.Count,
+                                    FailureCount = failureCount,
+                                    ImportedEmails = createdContractors.Select(c => c.Email).ToList()
+                                }),
+                                Timestamp = DateTime.UtcNow
+                            };
+                            await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
                         }
 
                         await _unitOfWork.SaveChangesAsync();
                         await _unitOfWork.CommitTransactionAsync();
 
                         result.SuccessCount = validContractorsToCreate.Count;
+
+                        // Gửi email thông báo tài khoản & mật khẩu tạm thời sau khi commit transaction thành công
+                        foreach (var cInfo in createdContractors)
+                        {
+                            try
+                            {
+                                var subject = "[Hệ thống Đấu thầu] Thông tin tài khoản nhà thầu";
+                                var body = $@"<p>Kính gửi {cInfo.FullName},</p>
+<p>Tài khoản nhà thầu của đơn vị <strong>{cInfo.CompanyName}</strong> đã được khởi tạo trên Hệ thống Đấu thầu.</p>
+<p><strong>Thông tin đăng nhập:</strong></p>
+<ul>
+    <li>Tên đăng nhập (Email): <b>{cInfo.Email}</b></li>
+    <li>Mật khẩu tạm thời: <code>{cInfo.TempPassword}</code></li>
+</ul>
+<p style='color: red;'><strong>Lưu ý bắt buộc:</strong></p>
+<ol>
+    <li>Bạn bắt buộc phải đổi mật khẩu ở lần đăng nhập đầu tiên để kích hoạt đầy đủ tài khoản.</li>
+    <li>Hồ sơ nhà thầu hiện ở trạng thái <em>Chờ duyệt (Pending)</em>. Bạn cần đăng nhập và bổ sung Giấy phép kinh doanh để Bên mời thầu / Quản trị viên thẩm định phê duyệt trước khi có thể nộp hồ sơ dự thầu.</li>
+</ol>
+<p>Trân trọng,<br/>Ban Quản lý Hệ thống Đấu thầu</p>";
+
+                                await _emailService.SendEmailAsync(cInfo.Email, subject, body, true);
+                            }
+                            catch
+                            {
+                                // Không làm gián đoạn kết quả import nếu dịch vụ email gặp sự cố ngoại vi
+                            }
+                        }
                     }
                     catch (Exception)
                     {
@@ -526,6 +639,28 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 return ApiResponse<ImportContractorResultDto>.Fail($"Lỗi trong quá trình xử lý tệp Excel: {ex.Message}");
             }
+        }
+
+        private static string GenerateRandomPassword(int length = 12)
+        {
+            const string lower = "abcdefghijklmnopqrstuvwxyz";
+            const string upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const string digits = "0123456789";
+            const string specials = "!@#$%^&*";
+
+            var chars = new char[length];
+            chars[0] = lower[RandomNumberGenerator.GetInt32(lower.Length)];
+            chars[1] = upper[RandomNumberGenerator.GetInt32(upper.Length)];
+            chars[2] = digits[RandomNumberGenerator.GetInt32(digits.Length)];
+            chars[3] = specials[RandomNumberGenerator.GetInt32(specials.Length)];
+
+            const string all = lower + upper + digits + specials;
+            for (int i = 4; i < length; i++)
+            {
+                chars[i] = all[RandomNumberGenerator.GetInt32(all.Length)];
+            }
+
+            return new string(chars.OrderBy(_ => RandomNumberGenerator.GetInt32(1000)).ToArray());
         }
 
         public async Task<byte[]> GenerateImportTemplateExcelAsync()

@@ -12,13 +12,16 @@ namespace ProcurementSystem.Infrastructure.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileStorageService _fileStorageService;
+        private readonly IContractorService _contractorService;
 
         public ContractService(
             IUnitOfWork unitOfWork,
-            IFileStorageService fileStorageService)
+            IFileStorageService fileStorageService,
+            IContractorService contractorService)
         {
             _unitOfWork = unitOfWork;
             _fileStorageService = fileStorageService;
+            _contractorService = contractorService;
         }
 
         public async Task<ApiResponse<PaginatedList<ContractSummaryDto>>> GetContractsAsync(
@@ -513,6 +516,12 @@ namespace ProcurementSystem.Infrastructure.Services
 
             _unitOfWork.Repository<Contract>().Update(contract);
             await _unitOfWork.SaveChangesAsync();
+
+            // R3-9: Tự động tính toán lại điểm đánh giá uy tín (Rating) nhà thầu khi hợp đồng kết thúc hoặc chấm dứt
+            if (request.NewStatus == ContractStatus.Terminated || request.NewStatus == ContractStatus.Completed)
+            {
+                await _contractorService.RecalculateContractorRatingAsync(contract.ContractorId);
+            }
 
             return ApiResponse<ContractDto>.Ok(
                 MapToDto(contract),
@@ -1054,6 +1063,12 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             await _unitOfWork.SaveChangesAsync();
+
+            // R3-9: Tự động tính toán lại điểm uy tín (Rating) khi nghiệm thu mốc bị từ chối hoặc hợp đồng hoàn tất nghiệm thu 100%
+            if (!request.IsApproved || milestone.Contract.Status == ContractStatus.Completed)
+            {
+                await _contractorService.RecalculateContractorRatingAsync(milestone.Contract.ContractorId);
+            }
 
             var totalDisbursedAmount = await _unitOfWork.Repository<ContractMilestone>()
                 .Query()

@@ -87,6 +87,44 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
+        /// Bên mời thầu cập nhật hồ sơ pháp nhân của chính mình (hỗ trợ nộp lại hồ sơ khi bị từ chối)
+        /// </summary>
+        /// <remarks>Quyền hạn: Procurement.</remarks>
+        [HttpPut("me")]
+        [Authorize(Roles = "Procurement")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(typeof(ApiResponse<ProcuringEntityDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ProcuringEntityDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<ProcuringEntityDto>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<ProcuringEntityDto>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<ProcuringEntityDto>>> UpdateMyProfile(
+            [FromForm] UpdateProcuringEntityProfileRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(ApiResponse<ProcuringEntityDto>.Fail(errors));
+            }
+
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<ProcuringEntityDto>.Fail("Không xác định được danh tính người dùng từ Token."));
+            }
+
+            var result = await _procuringEntityService.UpdateCurrentProfileAsync(userId.Value, request);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        /// <summary>
         /// Thẩm định và phê duyệt hoặc từ chối hồ sơ Bên mời thầu
         /// </summary>
         /// <remarks>Quyền hạn: Chỉ Admin.</remarks>

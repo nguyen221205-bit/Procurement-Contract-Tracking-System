@@ -12,13 +12,42 @@ namespace ProcurementSystem.Infrastructure.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileStorageService _fileStorageService;
+        private readonly IEmailService _emailService;
 
         public EvaluatorProposalService(
             IUnitOfWork unitOfWork,
-            IFileStorageService fileStorageService)
+            IFileStorageService fileStorageService,
+            IEmailService emailService)
         {
             _unitOfWork = unitOfWork;
             _fileStorageService = fileStorageService;
+            _emailService = emailService;
+        }
+
+        private static string GenerateSecureRandomPassword(int length = 12)
+        {
+            const string upperChars = "ABCDEFGHJKLMNOPQRSTUVWXYZ";
+            const string lowerChars = "abcdefghijkmnopqrstuvwxyz";
+            const string digits = "23456789";
+            const string specialChars = "@$!%*?&#";
+
+            var allChars = upperChars + lowerChars + digits + specialChars;
+            var random = new Random();
+
+            var chars = new List<char>
+            {
+                upperChars[random.Next(upperChars.Length)],
+                lowerChars[random.Next(lowerChars.Length)],
+                digits[random.Next(digits.Length)],
+                specialChars[random.Next(specialChars.Length)]
+            };
+
+            while (chars.Count < length)
+            {
+                chars.Add(allChars[random.Next(allChars.Length)]);
+            }
+
+            return new string(chars.OrderBy(_ => random.Next()).ToArray());
         }
 
         public async Task<ApiResponse<PaginatedList<EvaluatorProposalDto>>> GetProposalsAsync(
@@ -155,13 +184,56 @@ namespace ProcurementSystem.Infrastructure.Services
                 CreatedAt = DateTime.UtcNow
             };
 
+            await _unitOfWork.BeginTransactionAsync();
             try
             {
                 await _unitOfWork.Repository<EvaluatorProposal>().AddAsync(proposal);
                 await _unitOfWork.SaveChangesAsync();
+
+                // 5. Gửi thông báo đến các Admin
+                var adminUsers = await _unitOfWork.Repository<User>()
+                    .Query()
+                    .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "Admin") && u.IsActive)
+                    .ToListAsync();
+
+                foreach (var admin in adminUsers)
+                {
+                    var notif = new Notification
+                    {
+                        UserId = admin.Id,
+                        Title = "Đề xuất chỉ định Giám khảo mới",
+                        Message = $"Bên mời thầu vừa gửi đề xuất chỉ định chuyên gia {proposal.FullName} ({proposal.Specialization ?? "Chuyên môn chung"}) làm Giám khảo. Vui lòng thẩm định.",
+                        Type = NotificationType.Info,
+                        CreatedAt = DateTime.UtcNow,
+                        IsRead = false
+                    };
+                    await _unitOfWork.Repository<Notification>().AddAsync(notif);
+                }
+
+                // 6. Ghi AuditLog
+                var auditLog = new AuditLog
+                {
+                    UserId = proposerUserId,
+                    Action = "CREATE_EVALUATOR_PROPOSAL",
+                    EntityType = "EvaluatorProposal",
+                    EntityId = proposal.Id,
+                    NewValues = JsonSerializer.Serialize(new
+                    {
+                        proposal.FullName,
+                        proposal.Email,
+                        proposal.Specialization,
+                        proposal.CertificateName
+                    }),
+                    Timestamp = DateTime.UtcNow
+                };
+                await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
             }
             catch
             {
+                await _unitOfWork.RollbackTransactionAsync();
                 if (!string.IsNullOrEmpty(fileUrl))
                 {
                     try
@@ -175,45 +247,6 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
                 throw;
             }
-
-            // 5. Gửi thông báo đến các Admin
-            var adminUsers = await _unitOfWork.Repository<User>()
-                .Query()
-                .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "Admin") && u.IsActive)
-                .ToListAsync();
-
-            foreach (var admin in adminUsers)
-            {
-                var notif = new Notification
-                {
-                    UserId = admin.Id,
-                    Title = "Đề xuất chỉ định Giám khảo mới",
-                    Message = $"Bên mời thầu vừa gửi đề xuất chỉ định chuyên gia {proposal.FullName} ({proposal.Specialization ?? "Chuyên môn chung"}) làm Giám khảo. Vui lòng thẩm định.",
-                    Type = NotificationType.Info,
-                    CreatedAt = DateTime.UtcNow,
-                    IsRead = false
-                };
-                await _unitOfWork.Repository<Notification>().AddAsync(notif);
-            }
-
-            // 6. Ghi AuditLog
-            var auditLog = new AuditLog
-            {
-                UserId = proposerUserId,
-                Action = "CREATE_EVALUATOR_PROPOSAL",
-                EntityType = "EvaluatorProposal",
-                EntityId = proposal.Id,
-                NewValues = JsonSerializer.Serialize(new
-                {
-                    proposal.FullName,
-                    proposal.Email,
-                    proposal.Specialization,
-                    proposal.CertificateName
-                }),
-                Timestamp = DateTime.UtcNow
-            };
-            await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
-            await _unitOfWork.SaveChangesAsync();
 
             var createdProposal = await _unitOfWork.Repository<EvaluatorProposal>()
                 .Query()
@@ -255,6 +288,17 @@ namespace ProcurementSystem.Infrastructure.Services
                     $"Tài khoản với email '{proposal.Email}' đã tồn tại trong hệ thống. Không thể tạo trùng.");
             }
 
+            // Xác định mật khẩu khởi tạo và thiết lập đổi mật khẩu bắt buộc
+            string initialPassword;
+            if (string.IsNullOrWhiteSpace(request.Password))
+            {
+                initialPassword = GenerateSecureRandomPassword(12);
+            }
+            else
+            {
+                initialPassword = request.Password.Trim();
+            }
+
             // Bắt đầu Transaction tạo User & duyệt Proposal
             await _unitOfWork.BeginTransactionAsync();
             try
@@ -264,9 +308,10 @@ namespace ProcurementSystem.Infrastructure.Services
                 {
                     FullName = proposal.FullName.Trim(),
                     Email = normalizedEmail,
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(initialPassword),
                     Phone = proposal.Phone?.Trim(),
                     IsActive = true,
+                    MustChangePassword = true,
                     CreatedAt = DateTime.UtcNow
                 };
                 await _unitOfWork.Repository<User>().AddAsync(newUser);
@@ -330,6 +375,28 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 await _unitOfWork.SaveChangesAsync();
                 await _unitOfWork.CommitTransactionAsync();
+
+                // 6. Gửi email thông tin tài khoản và mật khẩu khởi tạo cho chuyên gia
+                var emailSubject = "[Hệ thống Đấu thầu] Cấp tài khoản Chuyên gia chấm thầu";
+                var emailBody = $@"
+                <h3>Kính gửi Chuyên gia {proposal.FullName},</h3>
+                <p>Đề xuất chỉ định bạn tham gia Tổ chuyên gia đánh giá hồ sơ dự thầu đã được phê duyệt thành công.</p>
+                <p>Dưới đây là thông tin tài khoản đăng nhập của bạn trên Hệ thống Đấu thầu:</p>
+                <ul>
+                    <li><strong>Tài khoản (Email):</strong> {proposal.Email}</li>
+                    <li><strong>Mật khẩu khởi tạo:</strong> <code>{initialPassword}</code></li>
+                </ul>
+                <p><em>Lưu ý: Vì lý do an toàn bảo mật, bạn bắt buộc phải đổi mật khẩu trong lần đăng nhập đầu tiên trước khi thực hiện các tác vụ chuyên môn.</em></p>
+                <p>Trân trọng,<br>Ban Quản trị Hệ thống Đấu thầu</p>";
+
+                try
+                {
+                    await _emailService.SendEmailAsync(proposal.Email, emailSubject, emailBody, true);
+                }
+                catch
+                {
+                    // Lỗi gửi mail không làm gián đoạn kết quả phê duyệt tài khoản
+                }
 
                 return ApiResponse<EvaluatorProposalDto>.Ok(
                     MapToDto(proposal),

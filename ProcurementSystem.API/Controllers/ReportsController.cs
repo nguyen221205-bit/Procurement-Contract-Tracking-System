@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Report;
 using ProcurementSystem.Core.Interfaces;
+using ProcurementSystem.Core.Enums;
 
 namespace ProcurementSystem.API.Controllers
 {
@@ -104,6 +105,48 @@ namespace ProcurementSystem.API.Controllers
             var excelBytes = await _reportService.ExportContractsExcelAsync();
             var fileName = $"Danh_sach_hop_dong_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
             return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+
+        /// <summary>
+        /// Báo cáo thống kê mua sắm theo năm và phân loại gói thầu (R3-10)
+        /// </summary>
+        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        [HttpGet("procurement-summary")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<ProcurementSummaryReportDto>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<ApiResponse<ProcurementSummaryReportDto>>> GetProcurementSummary(
+            [FromQuery] int? year,
+            [FromQuery] BidPackageType? type)
+        {
+            var result = await _reportService.GetProcurementSummaryReportAsync(year, type);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Báo cáo tỷ lệ trúng/trượt thầu và năng lực thực tế của các nhà thầu (R3-10)
+        /// </summary>
+        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        [HttpGet("contractor-performance")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<ContractorPerformanceReportDto>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<ApiResponse<ContractorPerformanceReportDto>>> GetContractorPerformance()
+        {
+            var result = await _reportService.GetContractorPerformanceReportAsync();
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Báo cáo tỷ lệ mốc hoàn thành đúng tiến độ và danh sách hợp đồng sắp đến hạn (R3-10)
+        /// </summary>
+        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        [HttpGet("contracts-progress")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<ContractProgressReportDto>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<ApiResponse<ContractProgressReportDto>>> GetContractsProgress(
+            [FromQuery] int daysAhead = 30)
+        {
+            var result = await _reportService.GetContractProgressReportAsync(daysAhead);
+            return Ok(result);
         }
     }
 }

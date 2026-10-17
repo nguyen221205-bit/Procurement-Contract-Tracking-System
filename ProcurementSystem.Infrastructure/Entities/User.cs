@@ -20,6 +20,7 @@ namespace ProcurementSystem.Infrastructure.Entities
         public string? Phone { get; set; }
 
         public bool IsActive { get; set; } = true;
+        public bool MustChangePassword { get; set; } = false;
 
         public string? RefreshToken { get; set; }
         public DateTime? RefreshTokenExpiry { get; set; }

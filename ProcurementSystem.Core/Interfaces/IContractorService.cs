@@ -43,7 +43,7 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Nhập danh sách nhà thầu từ file Excel (.xlsx), kiểm tra trùng MST/Email và báo lỗi chi tiết theo dòng
         /// </summary>
-        Task<ApiResponse<ImportContractorResultDto>> ImportContractorsFromExcelAsync(Microsoft.AspNetCore.Http.IFormFile file);
+        Task<ApiResponse<ImportContractorResultDto>> ImportContractorsFromExcelAsync(Microsoft.AspNetCore.Http.IFormFile file, int? adminUserId = null);
 
         /// <summary>
         /// Tạo và tải về file mẫu Excel (.xlsx) chuẩn để nhập danh sách nhà thầu

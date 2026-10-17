@@ -309,7 +309,8 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ApiResponse<ImportContractorResultDto>>> ImportContractorsFromExcel(IFormFile file)
         {
-            var result = await _contractorService.ImportContractorsFromExcelAsync(file);
+            var adminUserId = int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out int uid) ? uid : (int?)null;
+            var result = await _contractorService.ImportContractorsFromExcelAsync(file, adminUserId);
             if (!result.Success)
             {
                 return BadRequest(result);

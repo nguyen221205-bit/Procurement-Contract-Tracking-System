@@ -238,6 +238,10 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.Property<int>("ContractorId")
                         .HasColumnType("int");
 
+                    b.Property<string>("DisqualificationReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<int?>("Rank")
                         .HasColumnType("int");
 
@@ -838,6 +842,9 @@ namespace ProcurementSystem.Infrastructure.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("MustChangePassword")
                         .HasColumnType("bit");
 
                     b.Property<string>("PasswordHash")

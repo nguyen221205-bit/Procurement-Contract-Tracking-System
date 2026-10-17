@@ -108,6 +108,123 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<ProcuringEntityDto>.Ok(MapToDto(entity));
         }
 
+        public async Task<ApiResponse<ProcuringEntityDto>> UpdateCurrentProfileAsync(int userId, UpdateProcuringEntityProfileRequest request)
+        {
+            var entity = await _context.ProcuringEntities
+                .Include(pe => pe.User)
+                .Include(pe => pe.ReviewedByUser)
+                .FirstOrDefaultAsync(pe => pe.UserId == userId);
+
+            if (entity == null)
+            {
+                return ApiResponse<ProcuringEntityDto>.Fail("Không tìm thấy hồ sơ Bên mời thầu tương ứng với tài khoản này.");
+            }
+
+            entity.OrganizationName = request.OrganizationName.Trim();
+            entity.OrganizationType = request.OrganizationType.Trim();
+            entity.BudgetCode = request.BudgetCode?.Trim();
+            entity.Address = request.Address?.Trim();
+            entity.RepresentativeName = request.RepresentativeName.Trim();
+            entity.RepresentativeTitle = request.RepresentativeTitle.Trim();
+            entity.RepresentativePhone = request.RepresentativePhone?.Trim();
+
+            bool hasNewFiles = false;
+            var oldStatus = entity.VerificationStatus;
+
+            // Xử lý file Quyết định thành lập mới (nếu có)
+            if (request.EstablishmentDecisionFile != null && request.EstablishmentDecisionFile.Length > 0)
+            {
+                try
+                {
+                    var oldFile = entity.EstablishmentDecisionFile;
+                    var newFile = await _fileStorageService.SaveFileAsync(request.EstablishmentDecisionFile, "procuring_entities");
+                    entity.EstablishmentDecisionFile = newFile;
+                    hasNewFiles = true;
+
+                    if (!string.IsNullOrEmpty(oldFile))
+                    {
+                        _fileStorageService.DeleteFile(oldFile);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return ApiResponse<ProcuringEntityDto>.Fail($"Lỗi khi lưu trữ tệp Quyết định thành lập: {ex.Message}");
+                }
+            }
+
+            // Xử lý file Quyết định bổ nhiệm mới (nếu có)
+            if (request.AppointmentDecisionFile != null && request.AppointmentDecisionFile.Length > 0)
+            {
+                try
+                {
+                    var oldAppFile = entity.AppointmentDecisionFile;
+                    var newAppFile = await _fileStorageService.SaveFileAsync(request.AppointmentDecisionFile, "procuring_entities");
+                    entity.AppointmentDecisionFile = newAppFile;
+                    hasNewFiles = true;
+
+                    if (!string.IsNullOrEmpty(oldAppFile))
+                    {
+                        _fileStorageService.DeleteFile(oldAppFile);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return ApiResponse<ProcuringEntityDto>.Fail($"Lỗi khi lưu trữ tệp Quyết định bổ nhiệm: {ex.Message}");
+                }
+            }
+
+            bool shouldResetStatus = hasNewFiles || entity.VerificationStatus == "Rejected";
+
+            if (shouldResetStatus)
+            {
+                entity.VerificationStatus = "Pending";
+                entity.AdminNotes = null;
+                entity.ReviewedByUserId = null;
+                entity.ReviewedAt = null;
+
+                // Gửi thông báo đến Admin
+                var adminUsers = await _context.Users
+                    .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "Admin") && u.IsActive)
+                    .ToListAsync();
+
+                foreach (var admin in adminUsers)
+                {
+                    var notif = new Notification
+                    {
+                        UserId = admin.Id,
+                        Title = "Bên mời thầu cập nhật lại hồ sơ pháp nhân",
+                        Message = $"Đơn vị {entity.OrganizationName} (MST: {entity.TaxCode}) vừa cập nhật lại hồ sơ pháp nhân. Vui lòng thẩm định lại.",
+                        Type = NotificationType.Info,
+                        CreatedAt = DateTime.UtcNow,
+                        IsRead = false
+                    };
+                    await _context.Notifications.AddAsync(notif);
+                }
+
+                // Ghi AuditLog
+                var auditLog = new AuditLog
+                {
+                    UserId = userId,
+                    Action = "UPDATE_PROCURING_ENTITY_PROFILE",
+                    EntityType = "ProcuringEntity",
+                    EntityId = entity.Id,
+                    OldValues = System.Text.Json.JsonSerializer.Serialize(new { VerificationStatus = oldStatus }),
+                    NewValues = System.Text.Json.JsonSerializer.Serialize(new { VerificationStatus = "Pending", OrganizationName = entity.OrganizationName }),
+                    Timestamp = DateTime.UtcNow
+                };
+                await _context.AuditLogs.AddAsync(auditLog);
+            }
+
+            entity.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            var message = shouldResetStatus
+                ? "Cập nhật hồ sơ pháp nhân Bên mời thầu thành công. Hồ sơ đã được chuyển đến Quản trị viên (Admin) để thẩm định lại."
+                : "Cập nhật thông tin Bên mời thầu thành công.";
+
+            return ApiResponse<ProcuringEntityDto>.Ok(MapToDto(entity), message);
+        }
+
         public async Task<ApiResponse<ProcuringEntityDto>> VerifyProcuringEntityAsync(int id, int adminUserId, VerifyProcuringEntityRequest request)
         {
             var entity = await _context.ProcuringEntities

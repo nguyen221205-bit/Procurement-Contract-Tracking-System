@@ -11,10 +11,12 @@ namespace ProcurementSystem.Infrastructure.Services
     public class EvaluationService : IEvaluationService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IFileStorageService _fileStorageService;
 
-        public EvaluationService(IUnitOfWork unitOfWork)
+        public EvaluationService(IUnitOfWork unitOfWork, IFileStorageService fileStorageService)
         {
             _unitOfWork = unitOfWork;
+            _fileStorageService = fileStorageService;
         }
 
         public async Task<ApiResponse<List<EvaluationCriteriaDto>>> GetCriteriaByPackageAsync(int packageId)
@@ -491,28 +493,54 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<List<EvaluationScoreDto>>.Ok(scores);
         }
 
-        public async Task<ApiResponse<List<SubmissionRankingDto>>> GetPackageRankingsAsync(int packageId)
+        public async Task<ApiResponse<List<SubmissionRankingDto>>> GetPackageRankingsAsync(int packageId, int currentUserId, bool isInternalStaff)
         {
-            var result = await _unitOfWork.Repository<BidSubmission>()
+            var package = await _unitOfWork.Repository<BidPackage>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(bp => bp.Id == packageId);
+
+            if (package == null)
+            {
+                return ApiResponse<List<SubmissionRankingDto>>.Fail("Không tìm thấy gói thầu.");
+            }
+
+            // Nếu không phải Admin/Procurement, người gọi phải thuộc Tổ chuyên gia của gói thầu
+            if (!isInternalStaff)
+            {
+                var isPackageEvaluator = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .ExistsAsync(pe => pe.BidPackageId == packageId && pe.EvaluatorId == currentUserId);
+
+                if (!isPackageEvaluator)
+                {
+                    return ApiResponse<List<SubmissionRankingDto>>.Fail("Bạn không thuộc Tổ chuyên gia đánh giá của gói thầu này.");
+                }
+            }
+
+            var isEvaluating = package.Status == BidPackageStatus.Evaluating;
+            var restrictEvaluator = isEvaluating && !isInternalStaff;
+
+            var submissions = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
                 .Where(s => s.BidPackageId == packageId)
+                .Include(s => s.Contractor)
+                .Include(s => s.EvaluationScores)
+                    .ThenInclude(es => es.Criteria)
+                .Include(s => s.EvaluationScores)
+                    .ThenInclude(es => es.Evaluator)
                 .AsNoTracking()
                 .OrderBy(s => s.Rank == null)
                 .ThenBy(s => s.Rank)
                 .ThenByDescending(s => s.TotalScore)
-                .Select(s => new SubmissionRankingDto
-                {
-                    SubmissionId = s.Id,
-                    BidPackageId = s.BidPackageId,
-                    ContractorId = s.ContractorId,
-                    CompanyName = s.Contractor.CompanyName,
-                    TaxCode = s.Contractor.TaxCode,
-                    BidPrice = s.BidPrice,
-                    TotalScore = s.TotalScore,
-                    Rank = s.Rank,
-                    Status = s.Status,
-                    SubmittedAt = s.SubmittedAt,
-                    Scores = s.EvaluationScores.Select(es => new EvaluationScoreDto
+                .ToListAsync();
+
+            var result = submissions.Select(s =>
+            {
+                // Khi gói đang trong giai đoạn 'Evaluating', Giám khảo chỉ được xem điểm do chính mình chấm;
+                // Ẩn TotalScore và Rank để bảo đảm tính độc lập, khách quan tuyệt đối của từng thành viên Tổ chuyên gia (N14)
+                var scores = s.EvaluationScores
+                    .Where(es => !restrictEvaluator || es.EvaluatorId == currentUserId)
+                    .Select(es => new EvaluationScoreDto
                     {
                         Id = es.Id,
                         BidSubmissionId = es.BidSubmissionId,
@@ -525,9 +553,25 @@ namespace ProcurementSystem.Infrastructure.Services
                         Score = es.Score,
                         Comment = es.Comment,
                         ScoredAt = es.ScoredAt
-                    }).ToList()
-                })
-                .ToListAsync();
+                    }).ToList();
+
+                return new SubmissionRankingDto
+                {
+                    SubmissionId = s.Id,
+                    BidPackageId = s.BidPackageId,
+                    ContractorId = s.ContractorId,
+                    CompanyName = s.Contractor.CompanyName,
+                    TaxCode = s.Contractor.TaxCode,
+                    BidPrice = s.BidPrice,
+                    TotalScore = restrictEvaluator ? null : s.TotalScore,
+                    Rank = restrictEvaluator ? null : s.Rank,
+                    Status = s.Status,
+                    SelectionReason = s.SelectionReason,
+                    DisqualificationReason = s.DisqualificationReason,
+                    SubmittedAt = s.SubmittedAt,
+                    Scores = scores
+                };
+            }).ToList();
 
             return ApiResponse<List<SubmissionRankingDto>>.Ok(result);
         }
@@ -577,6 +621,16 @@ namespace ProcurementSystem.Infrastructure.Services
             if (!selectedSubmission.TotalScore.HasValue || selectedSubmission.Status != BidSubmissionStatus.Evaluated)
             {
                 return ApiResponse<bool>.Fail("Hồ sơ dự thầu được chọn chưa hoàn tất quá trình chấm điểm đánh giá.");
+            }
+
+            // R3-4 / N16: Chặn phê duyệt trúng thầu cho nhà thầu đã từng bị chấm dứt hợp đồng (Terminated) trong cùng gói thầu này
+            var hasTerminatedContract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .AnyAsync(c => c.BidPackageId == packageId && c.ContractorId == selectedSubmission.ContractorId && c.Status == ContractStatus.Terminated);
+
+            if (hasTerminatedContract)
+            {
+                return ApiResponse<bool>.Fail("Không thể phê duyệt trúng thầu cho nhà thầu đã từng bị chấm dứt hợp đồng (Terminated) trong cùng gói thầu này.");
             }
 
             // Căn cứ NĐ 24/2024/NĐ-CP: Toàn bộ hồ sơ dự thầu hợp lệ phải hoàn tất đánh giá đủ điều kiện
@@ -688,8 +742,13 @@ namespace ProcurementSystem.Infrastructure.Services
                     $"Chỉ có thể thu hồi kết quả trao thầu khi gói thầu ở trạng thái 'Awarded' (hoặc 'Contracted' khi toàn bộ hợp đồng đã bị chấm dứt - Terminated). Trạng thái hiện tại: '{package.Status}'.");
             }
 
-            // Hủy bỏ toàn bộ hợp đồng Draft liên quan đến gói thầu
+            // Hủy bỏ toàn bộ hợp đồng Draft liên quan đến gói thầu và thu thập file scan để xóa vật lý (R3-5)
             var draftContracts = contracts.Where(c => c.Status == ContractStatus.Draft).ToList();
+            var draftScanFilesToDelete = draftContracts
+                .Where(d => !string.IsNullOrEmpty(d.ScannedFilePath))
+                .Select(d => d.ScannedFilePath!)
+                .ToList();
+
             foreach (var draft in draftContracts)
             {
                 _unitOfWork.Repository<Contract>().Delete(draft);
@@ -705,13 +764,25 @@ namespace ProcurementSystem.Infrastructure.Services
 
             var winningSubmission = submissions.FirstOrDefault(s => s.Status == BidSubmissionStatus.Selected);
 
-            // Khôi phục trạng thái toàn bộ hồ sơ dự thầu về Evaluated (ngoại trừ hồ sơ đã rút Withdrawn hoặc Disqualified)
+            // R3-4 / N16: Khôi phục trạng thái hồ sơ dự thầu về Evaluated.
+            // Nếu nhà thầu trúng thầu có hợp đồng bị Terminated, hồ sơ phải bị Disqualified kèm lý do, không thể chọn lại.
             foreach (var sub in submissions)
             {
                 if (sub.Status == BidSubmissionStatus.Selected)
                 {
-                    sub.Status = BidSubmissionStatus.Evaluated;
-                    sub.SelectionReason = null;
+                    var hadTerminatedContract = contracts.Any(c => c.ContractorId == sub.ContractorId && c.Status == ContractStatus.Terminated);
+                    if (hadTerminatedContract)
+                    {
+                        sub.Status = BidSubmissionStatus.Disqualified;
+                        sub.DisqualificationReason = $"Loại bỏ do nhà thầu đã bị chấm dứt hợp đồng (Terminated) đối với gói thầu này. Lý do thu hồi trao thầu: {request.Reason.Trim()}";
+                        sub.SelectionReason = null;
+                        sub.Rank = null;
+                    }
+                    else
+                    {
+                        sub.Status = BidSubmissionStatus.Evaluated;
+                        sub.SelectionReason = null;
+                    }
                     _unitOfWork.Repository<BidSubmission>().Update(sub);
                 }
                 else if (sub.Status == BidSubmissionStatus.Rejected && sub.TotalScore.HasValue)
@@ -783,6 +854,22 @@ namespace ProcurementSystem.Infrastructure.Services
 
             await _unitOfWork.SaveChangesAsync();
 
+            // R3-5: Dọn dẹp các tệp scan vật lý của hợp đồng Draft đã xóa
+            foreach (var scanFile in draftScanFilesToDelete)
+            {
+                try
+                {
+                    _fileStorageService.DeleteFile(scanFile);
+                }
+                catch
+                {
+                    // Tránh ném lỗi ngoại vi làm hỏng kết quả thu hồi
+                }
+            }
+
+            // Tính toán lại thứ hạng tự động cho các hồ sơ hợp lệ còn lại
+            await CalculateRankingsForPackageAsync(packageId);
+
             return ApiResponse<bool>.Ok(true, "Thu hồi kết quả phê duyệt trúng thầu thành công. Gói thầu đã chuyển về trạng thái 'Evaluating' để tiếp tục thẩm định hoặc lựa chọn nhà thầu khác.");
         }
 
@@ -832,7 +919,8 @@ namespace ProcurementSystem.Infrastructure.Services
 
             var oldStatus = submission.Status;
             submission.Status = BidSubmissionStatus.Disqualified;
-            submission.SelectionReason = $"Bị loại: {request.Reason.Trim()}";
+            submission.DisqualificationReason = request.Reason.Trim();
+            submission.SelectionReason = null;
             submission.Rank = null;
             _unitOfWork.Repository<BidSubmission>().Update(submission);
 
@@ -880,7 +968,7 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<bool>.Ok(true, $"Đã loại bỏ hồ sơ dự thầu #{submissionId} khỏi quá trình xét thầu.");
         }
 
-        public async Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId)
+        public async Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId, int currentUserId, bool isInternalStaff)
         {
             var package = await _unitOfWork.Repository<BidPackage>()
                 .Query()
@@ -900,6 +988,20 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 return ApiResponse<EvaluationSummaryDto>.Fail("Không tìm thấy gói thầu.");
             }
+
+            if (!isInternalStaff)
+            {
+                var isPackageEvaluator = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .ExistsAsync(pe => pe.BidPackageId == packageId && pe.EvaluatorId == currentUserId);
+
+                if (!isPackageEvaluator)
+                {
+                    return ApiResponse<EvaluationSummaryDto>.Fail("Bạn không thuộc Tổ chuyên gia đánh giá của gói thầu này.");
+                }
+            }
+
+            var isEvaluating = package.Status == BidPackageStatus.Evaluating;
+            var restrictEvaluator = isEvaluating && !isInternalStaff;
 
             // Thống kê tiêu chí
             var criteriaStats = await _unitOfWork.Repository<EvaluationCriteria>()
@@ -926,17 +1028,21 @@ namespace ProcurementSystem.Infrastructure.Services
             var pendingSubmissions = totalSubmissions - evaluatedSubmissions;
 
             // Thống kê điểm số (chỉ lấy các hồ sơ đã có điểm)
-            var scoredQuery = submissionsQuery.Where(s => s.TotalScore.HasValue);
+            // Nếu là Giám khảo trong giai đoạn Evaluating, ẩn thống kê điểm để chống thiên vị và bảo vệ tính độc lập độc đoán
             decimal? highestScore = null;
             decimal? lowestScore = null;
             decimal? averageScore = null;
 
-            if (await scoredQuery.AnyAsync())
+            if (!restrictEvaluator)
             {
-                highestScore = await scoredQuery.MaxAsync(s => s.TotalScore);
-                lowestScore = await scoredQuery.MinAsync(s => s.TotalScore);
-                var avg = await scoredQuery.AverageAsync(s => s.TotalScore!.Value);
-                averageScore = Math.Round(avg, 2);
+                var scoredQuery = submissionsQuery.Where(s => s.TotalScore.HasValue);
+                if (await scoredQuery.AnyAsync())
+                {
+                    highestScore = await scoredQuery.MaxAsync(s => s.TotalScore);
+                    lowestScore = await scoredQuery.MinAsync(s => s.TotalScore);
+                    var avg = await scoredQuery.AverageAsync(s => s.TotalScore!.Value);
+                    averageScore = Math.Round(avg, 2);
+                }
             }
 
             // Thông tin hồ sơ trúng thầu (nếu đã phê duyệt)
@@ -969,12 +1075,12 @@ namespace ProcurementSystem.Infrastructure.Services
                 LowestScore = lowestScore,
                 AverageScore = averageScore,
                 IsFinalized = winningSub != null,
-                WinningSubmissionId = winningSub?.Id,
-                WinningContractorId = winningSub?.ContractorId,
-                WinningContractorName = winningSub?.CompanyName,
-                WinningContractorTaxCode = winningSub?.TaxCode,
-                WinningScore = winningSub?.TotalScore,
-                WinningBidPrice = winningSub?.BidPrice
+                WinningSubmissionId = restrictEvaluator ? null : winningSub?.Id,
+                WinningContractorId = restrictEvaluator ? null : winningSub?.ContractorId,
+                WinningContractorName = restrictEvaluator ? null : winningSub?.CompanyName,
+                WinningContractorTaxCode = restrictEvaluator ? null : winningSub?.TaxCode,
+                WinningScore = restrictEvaluator ? null : winningSub?.TotalScore,
+                WinningBidPrice = restrictEvaluator ? null : winningSub?.BidPrice
             };
 
             return ApiResponse<EvaluationSummaryDto>.Ok(summary);
@@ -1199,6 +1305,12 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             await _unitOfWork.SaveChangesAsync();
+        }
+
+        public async Task<ApiResponse<bool>> RecalculatePackageRankingsAsync(int packageId)
+        {
+            await CalculateRankingsForPackageAsync(packageId);
+            return ApiResponse<bool>.Ok(true, "Đã tính toán lại xếp hạng đánh giá cho gói thầu thành công.");
         }
     }
 }

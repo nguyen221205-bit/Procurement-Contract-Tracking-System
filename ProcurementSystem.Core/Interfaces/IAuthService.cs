@@ -8,5 +8,6 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<LoginResponse>> LoginAsync(LoginRequest request);
         Task<ApiResponse<LoginResponse>> RefreshTokenAsync(RefreshTokenRequest request);
         Task<ApiResponse<bool>> LogoutAsync(int userId);
+        Task<ApiResponse<LoginResponse>> ChangePasswordAsync(int userId, ChangePasswordRequest request);
     }
 }

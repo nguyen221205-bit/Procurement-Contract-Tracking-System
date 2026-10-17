@@ -54,7 +54,7 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
-            var token = _tokenService.GenerateAccessToken(user.Id, user.Email, user.FullName, roles);
+            var token = _tokenService.GenerateAccessToken(user.Id, user.Email, user.FullName, roles, user.MustChangePassword);
             var refreshToken = _tokenService.GenerateRefreshToken();
 
             var refreshExpiryDays = int.TryParse(_configuration["JwtSettings:RefreshTokenExpirationInDays"], out var rDays) ? rDays : 7;
@@ -78,7 +78,8 @@ namespace ProcurementSystem.Infrastructure.Services
                     FullName = user.FullName,
                     Email = user.Email,
                     Roles = roles,
-                    ContractorId = user.Contractor?.Id
+                    ContractorId = user.Contractor?.Id,
+                    MustChangePassword = user.MustChangePassword
                 }
             };
 
@@ -122,7 +123,7 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
-            var newToken = _tokenService.GenerateAccessToken(user.Id, user.Email, user.FullName, roles);
+            var newToken = _tokenService.GenerateAccessToken(user.Id, user.Email, user.FullName, roles, user.MustChangePassword);
             var newRefreshToken = _tokenService.GenerateRefreshToken();
 
             var refreshExpiryDays = int.TryParse(_configuration["JwtSettings:RefreshTokenExpirationInDays"], out var rDays) ? rDays : 7;
@@ -146,7 +147,8 @@ namespace ProcurementSystem.Infrastructure.Services
                     FullName = user.FullName,
                     Email = user.Email,
                     Roles = roles,
-                    ContractorId = user.Contractor?.Id
+                    ContractorId = user.Contractor?.Id,
+                    MustChangePassword = user.MustChangePassword
                 }
             };
 
@@ -169,6 +171,88 @@ namespace ProcurementSystem.Infrastructure.Services
             await _unitOfWork.SaveChangesAsync();
 
             return ApiResponse<bool>.Ok(true, "Đăng xuất thành công.");
+        }
+
+        public async Task<ApiResponse<LoginResponse>> ChangePasswordAsync(int userId, ChangePasswordRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.CurrentPassword) || string.IsNullOrWhiteSpace(request.NewPassword))
+            {
+                return ApiResponse<LoginResponse>.Fail("Mật khẩu hiện tại và mật khẩu mới không được để trống.");
+            }
+
+            if (request.NewPassword != request.ConfirmNewPassword)
+            {
+                return ApiResponse<LoginResponse>.Fail("Mật khẩu mới và xác nhận mật khẩu không khớp.");
+            }
+
+            if (request.NewPassword.Length < 8)
+            {
+                return ApiResponse<LoginResponse>.Fail("Mật khẩu mới phải có độ dài tối thiểu 8 ký tự.");
+            }
+
+            if (request.CurrentPassword == request.NewPassword)
+            {
+                return ApiResponse<LoginResponse>.Fail("Mật khẩu mới không được trùng với mật khẩu hiện tại.");
+            }
+
+            var user = await _unitOfWork.Repository<User>()
+                .Query()
+                .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                .Include(u => u.Contractor)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null)
+            {
+                return ApiResponse<LoginResponse>.Fail("Người dùng không tồn tại.");
+            }
+
+            if (!user.IsActive)
+            {
+                return ApiResponse<LoginResponse>.Fail("Tài khoản của bạn đã bị khóa.");
+            }
+
+            bool isOldValid = BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash);
+            if (!isOldValid)
+            {
+                return ApiResponse<LoginResponse>.Fail("Mật khẩu hiện tại không chính xác.");
+            }
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            user.MustChangePassword = false;
+
+            // Tự động cấp cặp Token mới với claim MustChangePassword = false để client không cần re-login
+            var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+            var newToken = _tokenService.GenerateAccessToken(user.Id, user.Email, user.FullName, roles, false);
+            var newRefreshToken = _tokenService.GenerateRefreshToken();
+
+            var refreshExpiryDays = int.TryParse(_configuration["JwtSettings:RefreshTokenExpirationInDays"], out var rDays) ? rDays : 7;
+            var accessExpiryMinutes = int.TryParse(_configuration["JwtSettings:ExpirationInMinutes"], out var aMins) ? aMins : 60;
+
+            user.RefreshToken = newRefreshToken;
+            user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(refreshExpiryDays);
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _unitOfWork.Repository<User>().Update(user);
+            await _unitOfWork.SaveChangesAsync();
+
+            var response = new LoginResponse
+            {
+                Token = newToken,
+                RefreshToken = newRefreshToken,
+                Expiration = DateTime.UtcNow.AddMinutes(accessExpiryMinutes),
+                User = new UserInfo
+                {
+                    Id = user.Id,
+                    FullName = user.FullName,
+                    Email = user.Email,
+                    Roles = roles,
+                    ContractorId = user.Contractor?.Id,
+                    MustChangePassword = false
+                }
+            };
+
+            return ApiResponse<LoginResponse>.Ok(response, "Đổi mật khẩu thành công. Hệ thống đã tự động gia hạn phiên đăng nhập an toàn.");
         }
     }
 }

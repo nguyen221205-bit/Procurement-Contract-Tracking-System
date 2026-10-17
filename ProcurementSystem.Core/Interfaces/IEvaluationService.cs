@@ -12,11 +12,12 @@ namespace ProcurementSystem.Core.Interfaces
 
         Task<ApiResponse<List<EvaluationScoreDto>>> ScoreSubmissionAsync(int submissionId, ScoreSubmissionRequest request, int evaluatorId);
         Task<ApiResponse<List<EvaluationScoreDto>>> GetScoresBySubmissionAsync(int submissionId, int currentUserId, bool isInternalStaff);
-        Task<ApiResponse<List<SubmissionRankingDto>>> GetPackageRankingsAsync(int packageId);
-        Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId);
+        Task<ApiResponse<List<SubmissionRankingDto>>> GetPackageRankingsAsync(int packageId, int currentUserId, bool isInternalStaff);
+        Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId, int currentUserId, bool isInternalStaff);
         Task<ApiResponse<AwardedBidDto>> GetAwardedBidAsync(int packageId);
         Task<ApiResponse<bool>> FinalizeEvaluationAsync(int packageId, FinalizeEvaluationRequest request, int userId, bool isAdmin);
         Task<ApiResponse<bool>> RevokeAwardAsync(int packageId, RevokeAwardRequest request, int userId, bool isAdmin);
         Task<ApiResponse<bool>> DisqualifySubmissionAsync(int submissionId, DisqualifySubmissionRequest request, int userId, bool isAdmin);
+        Task<ApiResponse<bool>> RecalculatePackageRankingsAsync(int packageId);
     }
 }

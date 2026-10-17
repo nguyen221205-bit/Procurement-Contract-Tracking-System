@@ -16,5 +16,6 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<List<PackageEvaluatorDto>>> GetPackageEvaluatorsAsync(int packageId);
         Task<ApiResponse<PackageEvaluatorDto>> AssignEvaluatorAsync(int packageId, AssignEvaluatorRequest request, int currentUserId, bool isAdmin);
         Task<ApiResponse<bool>> RemoveEvaluatorAsync(int packageId, int evaluatorId, int currentUserId, bool isAdmin);
+        Task<ApiResponse<PackageEvaluatorDto>> ReplaceEvaluatorAsync(int packageId, ReplaceEvaluatorRequest request, int currentUserId, bool isAdmin);
     }
 }

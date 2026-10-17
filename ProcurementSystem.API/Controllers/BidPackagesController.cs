@@ -272,6 +272,37 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
+        /// Thay thế giám khảo trong Tổ chuyên gia của gói thầu (Atomic Evaluator Replacement)
+        /// </summary>
+        /// <remarks>
+        /// Căn cứ Luật Đấu thầu: Thực hiện thay thế nguyên tử (trong 1 transaction) nhằm bảo đảm số lượng thành viên
+        /// Tổ chuyên gia luôn là số lẻ >= 3, tránh bế tắc vận hành khi gói thầu đang chấm điểm (Evaluating).
+        /// Điểm của giám khảo cũ được lưu giữ để kiểm toán nhưng hồ sơ sẽ tự động chuyển về trạng thái cần chấm bổ sung
+        /// cho đến khi giám khảo mới chấm xong.
+        /// </remarks>
+        [HttpPost("{id:int}/evaluators/replace")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<PackageEvaluatorDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<PackageEvaluatorDto>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<PackageEvaluatorDto>>> ReplaceEvaluator(int id, [FromBody] ReplaceEvaluatorRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(ApiResponse<PackageEvaluatorDto>.Fail(errors));
+            }
+
+            var currentUserId = GetCurrentUserId();
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _bidPackageService.ReplaceEvaluatorAsync(id, request, currentUserId, isAdmin);
+            if (!result.Success) return BadRequest(result);
+            return Ok(result);
+        }
+
+        /// <summary>
         /// Tải tệp tài liệu mời thầu (HSMT) an toàn có xác thực
         /// </summary>
         /// <param name="documentId">Định danh tài liệu mời thầu cần tải</param>

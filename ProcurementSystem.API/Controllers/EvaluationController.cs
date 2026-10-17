@@ -203,7 +203,18 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ApiResponse<List<SubmissionRankingDto>>>> GetPackageRankings(int packageId)
         {
-            var result = await _evaluationService.GetPackageRankingsAsync(packageId);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            {
+                return Unauthorized(ApiResponse<List<SubmissionRankingDto>>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            bool isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _evaluationService.GetPackageRankingsAsync(packageId, userId, isInternalStaff);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
             return Ok(result);
         }
 
@@ -226,7 +237,14 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ApiResponse<EvaluationSummaryDto>>> GetEvaluationSummary(int packageId)
         {
-            var result = await _evaluationService.GetEvaluationSummaryAsync(packageId);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            {
+                return Unauthorized(ApiResponse<EvaluationSummaryDto>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            bool isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _evaluationService.GetEvaluationSummaryAsync(packageId, userId, isInternalStaff);
             if (!result.Success) return NotFound(result);
             return Ok(result);
         }

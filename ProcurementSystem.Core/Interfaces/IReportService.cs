@@ -30,5 +30,20 @@ namespace ProcurementSystem.Core.Interfaces
         /// Xuất danh sách toàn bộ hợp đồng ra tệp Excel định dạng .xlsx
         /// </summary>
         Task<byte[]> ExportContractsExcelAsync();
+
+        /// <summary>
+        /// Báo cáo thống kê mua sắm theo năm và phân loại gói thầu (R3-10)
+        /// </summary>
+        Task<ApiResponse<ProcurementSummaryReportDto>> GetProcurementSummaryReportAsync(int? year = null, ProcurementSystem.Core.Enums.BidPackageType? type = null);
+
+        /// <summary>
+        /// Báo cáo tỷ lệ trúng/trượt thầu và năng lực thực tế của các nhà thầu (R3-10)
+        /// </summary>
+        Task<ApiResponse<ContractorPerformanceReportDto>> GetContractorPerformanceReportAsync();
+
+        /// <summary>
+        /// Báo cáo tỷ lệ hoàn thành mốc đúng tiến độ và danh sách hợp đồng sắp đến hạn (R3-10)
+        /// </summary>
+        Task<ApiResponse<ContractProgressReportDto>> GetContractProgressReportAsync(int daysAhead = 30);
     }
 }

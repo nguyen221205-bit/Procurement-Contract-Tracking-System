@@ -33,6 +33,8 @@ namespace ProcurementSystem.Core.DTOs.BidSubmission
         public string Status { get; set; } = string.Empty;
         /// <summary>Lý do/căn cứ phê duyệt lựa chọn nhà thầu trúng thầu.</summary>
         public string? SelectionReason { get; set; }
+        /// <summary>Lý do loại bỏ hồ sơ dự thầu.</summary>
+        public string? DisqualificationReason { get; set; }
 
         /// <summary>Danh sách file tài liệu đính kèm.</summary>
         public List<SubmissionFileDto> Files { get; set; } = new();

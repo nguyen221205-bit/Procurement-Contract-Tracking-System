@@ -97,7 +97,10 @@ namespace ProcurementSystem.API.Controllers
                 return BadRequest(ApiResponse<UserDto>.Fail(errors));
             }
 
-            var result = await _userService.AssignRolesAsync(id, request);
+            var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            int.TryParse(currentUserIdClaim, out int currentUserId);
+
+            var result = await _userService.AssignRolesAsync(id, request, currentUserId);
             if (!result.Success) return BadRequest(result);
             return Ok(result);
         }

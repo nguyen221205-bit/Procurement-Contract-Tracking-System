@@ -28,6 +28,9 @@ namespace ProcurementSystem.Infrastructure.Entities
         [MaxLength(1000)]
         public string? SelectionReason { get; set; }
 
+        [MaxLength(1000)]
+        public string? DisqualificationReason { get; set; }
+
         // Navigation properties
         [ForeignKey("BidPackageId")]
         public virtual BidPackage BidPackage { get; set; } = null!;

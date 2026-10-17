@@ -9,7 +9,7 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<UserDto>> GetUserByIdAsync(int id);
         Task<ApiResponse<UserDto>> UpdateUserAsync(int id, UpdateUserRequest request);
         Task<ApiResponse<bool>> ToggleUserStatusAsync(int id, int currentUserId);
-        Task<ApiResponse<UserDto>> AssignRolesAsync(int id, AssignRolesRequest request);
+        Task<ApiResponse<UserDto>> AssignRolesAsync(int id, AssignRolesRequest request, int currentUserId);
         Task<ApiResponse<List<RoleDto>>> GetRolesAsync();
     }
 }

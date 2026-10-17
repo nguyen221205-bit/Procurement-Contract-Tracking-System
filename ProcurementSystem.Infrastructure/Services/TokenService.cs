@@ -17,7 +17,7 @@ namespace ProcurementSystem.Infrastructure.Services
             _configuration = configuration;
         }
 
-        public string GenerateAccessToken(int userId, string email, string fullName, IEnumerable<string> roles)
+        public string GenerateAccessToken(int userId, string email, string fullName, IEnumerable<string> roles, bool mustChangePassword = false)
         {
             var secretKey = _configuration["JwtSettings:SecretKey"]
                 ?? throw new InvalidOperationException("Chưa cấu hình JwtSettings:SecretKey trong appsettings.json");
@@ -31,6 +31,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 new(ClaimTypes.NameIdentifier, userId.ToString()),
                 new(ClaimTypes.Email, email),
                 new(ClaimTypes.Name, fullName),
+                new("MustChangePassword", mustChangePassword ? "true" : "false"),
                 new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 

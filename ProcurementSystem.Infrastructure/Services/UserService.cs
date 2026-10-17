@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.User;
+using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
 
@@ -118,6 +119,24 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Không tìm thấy người dùng.");
             }
 
+            // Nếu chuẩn bị khóa tài khoản (user đang Active -> Inactive)
+            if (user.IsActive)
+            {
+                // Bảo vệ hội đồng: Không cho phép khóa tài khoản chuyên gia đang hoạt động trong gói thầu Open hoặc Evaluating
+                var isAssignedToActivePackage = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .Query()
+                    .Include(bpe => bpe.BidPackage)
+                    .AnyAsync(bpe => bpe.EvaluatorId == id &&
+                        (bpe.BidPackage.Status == BidPackageStatus.Open || bpe.BidPackage.Status == BidPackageStatus.Evaluating));
+
+                if (isAssignedToActivePackage)
+                {
+                    return ApiResponse<bool>.Fail(
+                        "Không thể khóa tài khoản này vì người dùng đang là thành viên Tổ chuyên gia của gói thầu đang mở thầu hoặc đang chấm điểm. Vui lòng thay thế chuyên gia trong các gói thầu liên quan trước khi khóa tài khoản.");
+                }
+            }
+
+            var previousStatus = user.IsActive;
             user.IsActive = !user.IsActive;
             user.UpdatedAt = DateTime.UtcNow;
 
@@ -129,13 +148,27 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             _unitOfWork.Repository<User>().Update(user);
+
+            // Ghi nhận AuditLog TOGGLE_USER_STATUS
+            var auditLog = new AuditLog
+            {
+                UserId = currentUserId,
+                Action = "TOGGLE_USER_STATUS",
+                EntityType = "User",
+                EntityId = user.Id,
+                OldValues = System.Text.Json.JsonSerializer.Serialize(new { IsActive = previousStatus }),
+                NewValues = System.Text.Json.JsonSerializer.Serialize(new { IsActive = user.IsActive }),
+                Timestamp = DateTime.UtcNow
+            };
+            await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+
             await _unitOfWork.SaveChangesAsync();
 
             var message = user.IsActive ? "Đã kích hoạt tài khoản thành công." : "Đã khóa tài khoản thành công.";
             return ApiResponse<bool>.Ok(user.IsActive, message);
         }
 
-        public async Task<ApiResponse<UserDto>> AssignRolesAsync(int id, AssignRolesRequest request)
+        public async Task<ApiResponse<UserDto>> AssignRolesAsync(int id, AssignRolesRequest request, int currentUserId)
         {
             var user = await _unitOfWork.Repository<User>()
                 .Query()
@@ -160,6 +193,48 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<UserDto>.Fail("Một hoặc nhiều vai trò yêu cầu không tồn tại trong hệ thống.");
             }
 
+            // 1. Kiểm tra xung đột lợi ích: Không cho phép gán Contractor cùng các vai trò nội bộ (Admin, Procurement, Evaluator)
+            var hasContractor = requestedRoles.Contains("contractor");
+            var hasInternalRoles = requestedRoles.Contains("admin") || requestedRoles.Contains("procurement") || requestedRoles.Contains("evaluator");
+            if (hasContractor && hasInternalRoles)
+            {
+                return ApiResponse<UserDto>.Fail(
+                    "Xung đột lợi ích (Căn cứ Luật Đấu thầu 2023): Không thể gán đồng thời vai trò Nhà thầu (Contractor) và các vai trò quản trị/chấm thầu nội bộ (Admin, Procurement, Evaluator).");
+            }
+
+            // Nếu tài khoản đã liên kết với hồ sơ Contractor, không cho phép gán vai trò nội bộ
+            if (user.Contractor != null && hasInternalRoles)
+            {
+                return ApiResponse<UserDto>.Fail(
+                    "Tài khoản này đã liên kết với hồ sơ Nhà thầu doanh nghiệp. Để đảm bảo tính minh bạch và tránh xung đột lợi ích, không được phép gán các vai trò nội bộ (Admin, Procurement, Evaluator).");
+            }
+
+            // 2. Chặn Admin tự hạ quyền của chính mình
+            if (id == currentUserId && !requestedRoles.Contains("admin"))
+            {
+                return ApiResponse<UserDto>.Fail("Quản trị viên không thể tự gỡ bỏ vai trò Quản trị viên (Admin) của chính mình.");
+            }
+
+            // 3. Bảo vệ hội đồng: Nếu đang gỡ vai trò Evaluator, kiểm tra xem có đang nằm trong tổ chuyên gia của gói thầu Open/Evaluating không
+            var currentlyHasEvaluator = user.UserRoles.Any(ur => ur.Role.Name.Equals("evaluator", StringComparison.OrdinalIgnoreCase));
+            if (currentlyHasEvaluator && !requestedRoles.Contains("evaluator"))
+            {
+                var isAssignedToActivePackage = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .Query()
+                    .Include(bpe => bpe.BidPackage)
+                    .AnyAsync(bpe => bpe.EvaluatorId == id &&
+                        (bpe.BidPackage.Status == BidPackageStatus.Open || bpe.BidPackage.Status == BidPackageStatus.Evaluating));
+
+                if (isAssignedToActivePackage)
+                {
+                    return ApiResponse<UserDto>.Fail(
+                        "Không thể thu hồi vai trò Chuyên gia (Evaluator) vì người dùng này đang là thành viên Tổ chuyên gia của gói thầu đang mở thầu hoặc đang chấm điểm. Vui lòng thay thế chuyên gia trong gói thầu trước khi điều chỉnh vai trò.");
+                }
+            }
+
+            // Thu thập vai trò cũ cho AuditLog
+            var oldRoles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+
             // Xóa toàn bộ vai trò hiện tại của người dùng
             var currentUserRoles = user.UserRoles.ToList();
             foreach (var ur in currentUserRoles)
@@ -178,6 +253,20 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             user.UpdatedAt = DateTime.UtcNow;
+
+            // 4. Ghi nhận AuditLog ASSIGN_USER_ROLES
+            var auditLog = new AuditLog
+            {
+                UserId = currentUserId,
+                Action = "ASSIGN_USER_ROLES",
+                EntityType = "User",
+                EntityId = user.Id,
+                OldValues = System.Text.Json.JsonSerializer.Serialize(new { Roles = oldRoles }),
+                NewValues = System.Text.Json.JsonSerializer.Serialize(new { Roles = matchedRoles.Select(r => r.Name).ToList() }),
+                Timestamp = DateTime.UtcNow
+            };
+            await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+
             await _unitOfWork.SaveChangesAsync();
 
             // Tải lại thông tin người dùng với roles mới

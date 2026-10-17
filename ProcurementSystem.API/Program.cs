@@ -12,6 +12,7 @@ using ProcurementSystem.Infrastructure.Seeders;
 using ProcurementSystem.Infrastructure.Services;
 using ProcurementSystem.API.BackgroundServices;
 using ProcurementSystem.Infrastructure.Interceptors;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -120,6 +121,27 @@ builder.Services.AddAuthentication(options =>
                 {
                     context.Fail("Tài khoản người dùng đã bị khóa hoặc không còn tồn tại trên hệ thống.");
                 }
+                else if (user.MustChangePassword)
+                {
+                    var identity = context.Principal?.Identity as ClaimsIdentity;
+                    if (identity != null && !identity.HasClaim(c => c.Type == "MustChangePassword"))
+                    {
+                        identity.AddClaim(new Claim("MustChangePassword", "true"));
+                    }
+                }
+                else
+                {
+                    // Nếu user trong DB có MustChangePassword == false, gỡ bỏ claim MustChangePassword cũ khỏi Principal
+                    var identity = context.Principal?.Identity as ClaimsIdentity;
+                    if (identity != null)
+                    {
+                        var claimToRemove = identity.FindFirst("MustChangePassword");
+                        if (claimToRemove != null)
+                        {
+                            identity.RemoveClaim(claimToRemove);
+                        }
+                    }
+                }
             }
             else
             {
@@ -218,6 +240,19 @@ builder.Services.AddCors(options =>
 builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 
 // ==========================================
+// 8. FORWARDED HEADERS (R3-7 / N18)
+// ==========================================
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+    // Chấp nhận reverse proxy nội bộ / loopback
+    options.KnownNetworks.Add(new IPNetwork(System.Net.IPAddress.Loopback, 8));
+    options.KnownNetworks.Add(new IPNetwork(System.Net.IPAddress.IPv6Loopback, 128));
+});
+
+// ==========================================
 // BUILD APP
 // ==========================================
 var app = builder.Build();
@@ -228,6 +263,9 @@ var app = builder.Build();
 
 // Global Exception Handler (đặt đầu tiên)
 app.UseMiddleware<GlobalExceptionMiddleware>();
+
+// Forwarded Headers (R3-7 / N18 - xử lý IP an toàn trước khi vào Auth/Audit)
+app.UseForwardedHeaders();
 
 // Swagger (chỉ ở Development)
 if (app.Environment.IsDevelopment())
@@ -253,6 +291,7 @@ app.UseCors("AllowFrontend");
 // Authentication & Authorization
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<MustChangePasswordMiddleware>();
 
 // Map Controllers
 app.MapControllers();

@@ -339,6 +339,270 @@ namespace ProcurementSystem.Infrastructure.Services
             return memoryStream.ToArray();
         }
 
+        public async Task<ApiResponse<ProcurementSummaryReportDto>> GetProcurementSummaryReportAsync(int? year = null, BidPackageType? type = null)
+        {
+            var query = _unitOfWork.Repository<BidPackage>()
+                .Query()
+                .Include(bp => bp.Contracts)
+                .AsNoTracking();
+
+            if (year.HasValue)
+            {
+                query = query.Where(bp => bp.CreatedAt.Year == year.Value);
+            }
+
+            if (type.HasValue)
+            {
+                query = query.Where(bp => bp.Type == type.Value);
+            }
+
+            var packages = await query.ToListAsync();
+
+            var totalPackages = packages.Count;
+            var totalBudget = packages.Sum(p => p.Budget);
+
+            // Hợp đồng hợp lệ liên kết gói thầu
+            var validContracts = packages
+                .SelectMany(p => p.Contracts)
+                .Where(c => c.Status != ContractStatus.Terminated)
+                .ToList();
+
+            var totalContractValue = validContracts.Sum(c => c.Value);
+            var contractedPackagesBudget = packages
+                .Where(p => p.Contracts.Any(c => c.Status != ContractStatus.Terminated))
+                .Sum(p => p.Budget);
+
+            var totalSavings = contractedPackagesBudget > totalContractValue ? (contractedPackagesBudget - totalContractValue) : 0m;
+            var savingsRate = contractedPackagesBudget > 0 ? Math.Round((totalSavings / contractedPackagesBudget) * 100, 2) : 0m;
+
+            // Phân bổ theo loại gói thầu (Type Breakdown)
+            var allTypes = Enum.GetValues<BidPackageType>();
+            var typeBreakdowns = allTypes.Select(t =>
+            {
+                var pkgsOfType = packages.Where(p => p.Type == t).ToList();
+                var cnt = pkgsOfType.Count;
+                var bgt = pkgsOfType.Sum(p => p.Budget);
+                var cVal = pkgsOfType.SelectMany(p => p.Contracts).Where(c => c.Status != ContractStatus.Terminated).Sum(c => c.Value);
+                var cBgt = pkgsOfType.Where(p => p.Contracts.Any(c => c.Status != ContractStatus.Terminated)).Sum(p => p.Budget);
+                var sv = cBgt > cVal ? (cBgt - cVal) : 0m;
+                var rate = cBgt > 0 ? Math.Round((sv / cBgt) * 100, 2) : 0m;
+
+                return new PackageTypeStatDto
+                {
+                    Type = t,
+                    TypeName = t switch
+                    {
+                        BidPackageType.Goods => "Hàng hóa",
+                        BidPackageType.Construction => "Xây dựng",
+                        BidPackageType.Service => "Dịch vụ",
+                        _ => t.ToString()
+                    },
+                    PackageCount = cnt,
+                    TotalBudget = bgt,
+                    TotalContractValue = cVal,
+                    TotalSavings = sv,
+                    SavingsRate = rate
+                };
+            }).ToList();
+
+            // Phân bổ theo trạng thái (Status Breakdown)
+            var allStatuses = Enum.GetValues<BidPackageStatus>();
+            var statusBreakdowns = allStatuses.Select(s =>
+            {
+                var cnt = packages.Count(p => p.Status == s);
+                var pct = totalPackages > 0 ? Math.Round(((decimal)cnt / totalPackages) * 100, 2) : 0m;
+                return new PackageStatusStatDto
+                {
+                    Status = s,
+                    StatusName = s.ToString(),
+                    PackageCount = cnt,
+                    Percentage = pct
+                };
+            }).ToList();
+
+            var report = new ProcurementSummaryReportDto
+            {
+                FilteredYear = year,
+                FilteredType = type,
+                FilteredTypeName = type?.ToString(),
+                TotalPackages = totalPackages,
+                TotalBudget = totalBudget,
+                TotalContractValue = totalContractValue,
+                TotalSavings = totalSavings,
+                SavingsRate = savingsRate,
+                TypeBreakdowns = typeBreakdowns,
+                StatusBreakdowns = statusBreakdowns
+            };
+
+            return ApiResponse<ProcurementSummaryReportDto>.Ok(report);
+        }
+
+        public async Task<ApiResponse<ContractorPerformanceReportDto>> GetContractorPerformanceReportAsync()
+        {
+            var contractors = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .Include(c => c.BidSubmissions)
+                .Include(c => c.Contracts)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var items = contractors.Select(c =>
+            {
+                var submissions = c.BidSubmissions.ToList();
+                var totalSubmissions = submissions.Count;
+                var wonSubmissions = submissions.Count(s => s.Status == BidSubmissionStatus.Selected);
+                var lostSubmissions = submissions.Count(s => s.Status == BidSubmissionStatus.Rejected);
+                var disqualifiedSubmissions = submissions.Count(s => s.Status == BidSubmissionStatus.Disqualified);
+                var winRate = totalSubmissions > 0 ? Math.Round(((decimal)wonSubmissions / totalSubmissions) * 100, 2) : 0m;
+                var totalAwardedValue = c.Contracts
+                    .Where(ct => ct.Status != ContractStatus.Terminated)
+                    .Sum(ct => ct.Value);
+
+                return new ContractorPerformanceItemDto
+                {
+                    ContractorId = c.Id,
+                    CompanyName = c.CompanyName,
+                    TaxCode = c.TaxCode ?? string.Empty,
+                    Rating = c.Rating,
+                    VerificationStatus = c.VerificationStatus,
+                    TotalSubmissions = totalSubmissions,
+                    WonSubmissions = wonSubmissions,
+                    LostSubmissions = lostSubmissions,
+                    DisqualifiedSubmissions = disqualifiedSubmissions,
+                    WinRate = winRate,
+                    TotalAwardedValue = totalAwardedValue
+                };
+            })
+            .OrderByDescending(x => x.TotalAwardedValue)
+            .ThenByDescending(x => x.WinRate)
+            .ToList();
+
+            var result = new ContractorPerformanceReportDto
+            {
+                TotalContractors = contractors.Count,
+                ActiveBiddingContractors = items.Count(x => x.TotalSubmissions > 0),
+                Contractors = items
+            };
+
+            return ApiResponse<ContractorPerformanceReportDto>.Ok(result);
+        }
+
+        public async Task<ApiResponse<ContractProgressReportDto>> GetContractProgressReportAsync(int daysAhead = 30)
+        {
+            var now = DateTime.UtcNow;
+            var targetFutureDate = now.AddDays(daysAhead);
+
+            var milestones = await _unitOfWork.Repository<ContractMilestone>()
+                .Query()
+                .Include(m => m.Acceptances)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var totalMilestones = milestones.Count;
+            var completedMilestones = milestones.Count(m => m.Status == MilestoneStatus.Completed);
+            var pendingMilestones = milestones.Count(m => m.Status == MilestoneStatus.Pending || m.Status == MilestoneStatus.InProgress);
+
+            // Tiến độ: Mốc hoàn thành đúng hạn (ApprovedAt <= DueDate)
+            int onTimeMilestones = 0;
+            int delayedMilestones = 0;
+
+            foreach (var m in milestones)
+            {
+                if (m.Status == MilestoneStatus.Completed)
+                {
+                    var approvedAcceptance = m.Acceptances
+                        .Where(a => a.Status == AcceptanceStatus.Approved && a.ApprovedAt.HasValue)
+                        .OrderBy(a => a.ApprovedAt)
+                        .FirstOrDefault();
+
+                    if (approvedAcceptance != null && approvedAcceptance.ApprovedAt <= m.DueDate)
+                    {
+                        onTimeMilestones++;
+                    }
+                    else
+                    {
+                        delayedMilestones++;
+                    }
+                }
+                else if (m.DueDate < now)
+                {
+                    // Đang Pending/InProgress nhưng đã quá hạn
+                    delayedMilestones++;
+                }
+            }
+
+            var evaluatedMilestones = onTimeMilestones + delayedMilestones;
+            var onTimeRate = evaluatedMilestones > 0
+                ? Math.Round(((decimal)onTimeMilestones / evaluatedMilestones) * 100, 2)
+                : 100m;
+
+            // Hợp đồng sắp hết hạn và quá hạn
+            var activeContracts = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.BidPackage)
+                .Include(c => c.Contractor)
+                .Include(c => c.Milestones)
+                .Where(c => c.Status == ContractStatus.Active)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var expiringContractItems = new List<ExpiringContractItemDto>();
+
+            foreach (var c in activeContracts)
+            {
+                var isOverdue = c.EndDate < now;
+                var isExpiringSoon = c.EndDate >= now && c.EndDate <= targetFutureDate;
+
+                if (isOverdue || isExpiringSoon)
+                {
+                    var disbursed = c.Milestones
+                        .Where(m => m.Status == MilestoneStatus.Completed)
+                        .Sum(m => m.Amount);
+                    var rate = c.Value > 0 ? Math.Round((disbursed / c.Value) * 100, 2) : 0m;
+                    var daysRemaining = (int)Math.Ceiling((c.EndDate - now).TotalDays);
+
+                    expiringContractItems.Add(new ExpiringContractItemDto
+                    {
+                        ContractId = c.Id,
+                        ContractNumber = c.ContractNumber,
+                        BidPackageCode = c.BidPackage?.Code ?? string.Empty,
+                        BidPackageName = c.BidPackage?.Name ?? string.Empty,
+                        ContractorName = c.Contractor?.CompanyName ?? string.Empty,
+                        ContractValue = c.Value,
+                        StartDate = c.StartDate,
+                        EndDate = c.EndDate,
+                        DaysRemaining = daysRemaining,
+                        IsOverdue = isOverdue,
+                        Status = c.Status.ToString(),
+                        TotalDisbursedAmount = disbursed,
+                        DisbursementRate = rate
+                    });
+                }
+            }
+
+            expiringContractItems = expiringContractItems
+                .OrderBy(x => x.DaysRemaining)
+                .ToList();
+
+            var overdueCount = expiringContractItems.Count(x => x.IsOverdue);
+            var expiringCount = expiringContractItems.Count(x => !x.IsOverdue);
+
+            var report = new ContractProgressReportDto
+            {
+                TotalMilestones = totalMilestones,
+                CompletedMilestones = completedMilestones,
+                PendingMilestones = pendingMilestones,
+                OnTimeMilestones = onTimeMilestones,
+                DelayedMilestones = delayedMilestones,
+                OnTimeRate = onTimeRate,
+                ExpiringContractsCount = expiringCount,
+                OverdueContractsCount = overdueCount,
+                ExpiringContracts = expiringContractItems
+            };
+
+            return ApiResponse<ContractProgressReportDto>.Ok(report);
+        }
+
         private static string EscapeCsv(object? value)
         {
             if (value == null) return string.Empty;

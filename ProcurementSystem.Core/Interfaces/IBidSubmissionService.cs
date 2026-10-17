@@ -13,14 +13,14 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<BidSubmissionDto>> SubmitBidAsync(int bidPackageId, int userId, decimal bidPrice, List<IFormFile> files, List<SubmissionFileType> fileTypes);
 
         /// <summary>
-        /// Xem chi tiết hồ sơ dự thầu (phân quyền: chủ sở hữu hoặc nhân sự nội bộ)
+        /// Xem chi tiết hồ sơ dự thầu (phân quyền: chủ sở hữu, Admin, Bên mời thầu tạo gói, hoặc Chuyên gia được phân công)
         /// </summary>
-        Task<ApiResponse<BidSubmissionDto>> GetSubmissionByIdAsync(int id, int userId, bool isInternalStaff);
+        Task<ApiResponse<BidSubmissionDto>> GetSubmissionByIdAsync(int id, int userId, IList<string> userRoles);
 
         /// <summary>
-        /// Xem danh sách hồ sơ dự thầu của một gói thầu (bảo mật giá thầu khi gói thầu còn Open)
+        /// Xem danh sách hồ sơ dự thầu của một gói thầu (bảo mật giá thầu khi gói thầu còn Open, ẩn điểm khi đang Evaluating)
         /// </summary>
-        Task<ApiResponse<List<BidSubmissionSummaryDto>>> GetSubmissionsByPackageAsync(int bidPackageId, int userId, bool isInternalStaff);
+        Task<ApiResponse<List<BidSubmissionSummaryDto>>> GetSubmissionsByPackageAsync(int bidPackageId, int userId, IList<string> userRoles);
 
         /// <summary>
         /// Nhà thầu xem danh sách các gói thầu đã nộp hồ sơ (phân trang)
@@ -35,6 +35,6 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Tải file tài liệu đính kèm hồ sơ dự thầu (kiểm tra phân quyền chống IDOR)
         /// </summary>
-        Task<ApiResponse<SubmissionFileDownloadDto>> GetSubmissionFileForDownloadAsync(int fileId, int userId, bool isInternalStaff);
+        Task<ApiResponse<SubmissionFileDownloadDto>> GetSubmissionFileForDownloadAsync(int fileId, int userId, IList<string> userRoles);
     }
 }
