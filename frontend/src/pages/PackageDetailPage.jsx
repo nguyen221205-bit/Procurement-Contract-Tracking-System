@@ -1320,20 +1320,49 @@ export const PackageDetailPage = () => {
         isLoading={statusLoading}
       >
         {statusModal.requiresReason && (
-          <div className="pt-2 space-y-1.5 text-left">
-            <label className="block text-xs font-bold text-slate-700">
-              Lý do / Căn cứ pháp lý đóng thầu trước hạn <span className="text-rose-500">*</span>
-            </label>
+          <div className="pt-2 space-y-2 text-left">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700">
+                Lý do / Căn cứ pháp lý đóng thầu trước hạn <span className="text-rose-500">*</span>
+              </label>
+              <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-medium">
+                Khoản 4 Điều 131 NĐ 24/2024
+              </span>
+            </div>
             <textarea
               rows={3}
               value={statusModal.reason || ''}
               onChange={(e) => setStatusModal((prev) => ({ ...prev, reason: e.target.value }))}
-              placeholder="Nhập lý do hoặc quyết định phê duyệt đóng thầu trước thời hạn..."
+              placeholder="Nhập căn cứ pháp lý hoặc quyết định phê duyệt đóng thầu trước thời hạn..."
               className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition resize-none outline-none"
               autoFocus
             />
+
+            {/* Quick legal grounds template chips */}
+            <div className="space-y-1">
+              <span className="text-[11px] font-semibold text-slate-500 block">
+                Căn cứ pháp lý mẫu (Bấm để chọn nhanh):
+              </span>
+              <div className="flex flex-col gap-1.5">
+                {[
+                  'Căn cứ Khoản 4 Điều 131 Nghị định 24/2024/NĐ-CP: Đã tiếp nhận đầy đủ hồ sơ dự thầu hợp lệ, Bên mời thầu quyết định đóng thầu trước thời hạn để mở chấm thầu.',
+                  `Căn cứ Quyết định số ${pkg?.code || '1074'}/QĐ-BMT ngày ${new Date().toLocaleDateString('vi-VN')} của Bên mời thầu về việc phê duyệt rút ngắn thời hạn đóng thầu.`,
+                  'Căn cứ Quyết định điều chỉnh Kế hoạch lựa chọn nhà thầu đã được cấp có thẩm quyền phê duyệt theo Luật Đấu thầu 2023.',
+                ].map((template, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setStatusModal((prev) => ({ ...prev, reason: template }))}
+                    className="text-left text-[11px] px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-amber-50 hover:text-amber-900 border border-slate-200 hover:border-amber-300 transition text-slate-600 leading-relaxed cursor-pointer"
+                  >
+                    💡 {template}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <p className="text-[11px] text-slate-400">
-              Căn cứ pháp lý này sẽ được lưu trữ vào hệ thống và phục vụ công tác thanh tra/kiểm toán.
+              Căn cứ pháp lý này được ghi nhận chính thức vào hệ thống để phục vụ công tác thanh tra/kiểm toán.
             </p>
           </div>
         )}

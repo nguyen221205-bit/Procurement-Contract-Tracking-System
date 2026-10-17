@@ -28,11 +28,11 @@ Sau khi hoàn tất toàn bộ 11 hạng mục ở Round 3 (R3-1 đến R3-11), 
 | **R4-3** | 🟠 **P1** | `EvaluatorProposal` | Duyệt tạo tài khoản giám khảo không bật `MustChangePassword = true`, không gửi email; tách rời 2 lần `SaveChangesAsync`. | ✅ Resolved |
 | **R4-4** | 🟠 **P1** | `Auth` / `Middleware` | Token JWT cũ bị kẹt claim `"MustChangePassword"` sau khi đổi mật khẩu; Middleware chặn nhầm `/api/auth/refresh-token`. | ✅ Resolved |
 | **R4-5** | 🟠 **P1** | `Contractor` / `ProcuringEntity` | Tải GPKD mới không reset trạng thái về `"Pending"`; bế tắc không cho nộp/xét duyệt lại khi hồ sơ bị `"Rejected"`. | ✅ Resolved |
-| **R4-6** | 🟡 **P2** | `BidSubmission` | Cho phép rút (`Withdraw`) cả HSDT đã bị loại (`Disqualified`) để xóa dấu vết nộp lại; trả sai HTTP Code 400 thay vì 403. | ⏳ Open (Teammate) |
-| **R4-7** | 🟡 **P2** | `FileStorage` / `RBAC` | 4 API tải tệp chưa áp dụng `GetPhysicalFilePath` (nguy cơ Path Traversal); chặn chủ hồ sơ tự xem file pháp lý của mình. | ⏳ Open (Teammate) |
-| **R4-8** | 🟡 **P2** | `Frontend` | Frontend chưa tích hợp màn hình đổi mật khẩu bắt buộc (`mustChangePassword`), thiếu API `replaceEvaluator` và 3 API báo cáo thống kê mới. | ⏳ Open (Teammate) |
-| **R4-9** | 🟢 **P3** | `ContractorsController` | Trả về `400 BadRequest` thay vì `404 NotFound` khi không tìm thấy nhà thầu (sai lệch OpenAPI/Swagger). | ⏳ Open (Teammate) |
-| **R4-10**| 🟢 **P3** | `Validation` | Thiếu Regex kiểm tra chuẩn định dạng Mã số thuế (`^\d{10}(-\d{3})?$`) khi Nhà thầu / Bên mời thầu đăng ký trực tuyến. | ⏳ Open (Teammate) |
+| **R4-6** | 🟡 **P2** | `BidSubmission` | Cho phép rút (`Withdraw`) cả HSDT đã bị loại (`Disqualified`) để xóa dấu vết nộp lại; trả sai HTTP Code 400 thay vì 403. | ✅ Resolved (Merged) |
+| **R4-7** | 🟡 **P2** | `FileStorage` / `RBAC` | 4 API tải tệp chưa áp dụng `GetPhysicalFilePath` (nguy cơ Path Traversal); chặn chủ hồ sơ tự xem file pháp lý của mình. | ✅ Resolved (Merged) |
+| **R4-8** | 🟡 **P2** | `Frontend` | Frontend chưa tích hợp màn hình đổi mật khẩu bắt buộc (`mustChangePassword`), thiếu API `replaceEvaluator` và 3 API báo cáo thống kê mới. | ✅ Resolved (Merged) |
+| **R4-9** | 🟢 **P3** | `ContractorsController` | Trả về `400 BadRequest` thay vì `404 NotFound` khi không tìm thấy nhà thầu (sai lệch OpenAPI/Swagger). | ✅ Resolved (Merged) |
+| **R4-10**| 🟢 **P3** | `Validation` | Thiếu Regex kiểm tra chuẩn định dạng Mã số thuế (`^\d{10}(-\d{3})?$`) khi Nhà thầu / Bên mời thầu đăng ký trực tuyến. | ✅ Resolved (Merged) |
 
 ---
 

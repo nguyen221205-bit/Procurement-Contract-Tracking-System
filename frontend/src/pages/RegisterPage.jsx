@@ -496,6 +496,9 @@ export const RegisterPage = () => {
                         className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                       />
                     </div>
+                    <p className="mt-1 text-[11px] text-slate-500 flex items-center gap-1">
+                      <span>💡 <em>Môi trường kiểm thử Local:</em> Nhấn <strong>"Gửi mã OTP"</strong> ở trên, hệ thống sẽ tự động cấp và điền mã xác thực hợp lệ ngay lập tức.</span>
+                    </p>
                   </div>
                 </div>
 
@@ -798,6 +801,9 @@ export const RegisterPage = () => {
                         className="block w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
                       />
                     </div>
+                    <p className="mt-1 text-[11px] text-slate-500 flex items-center gap-1">
+                      <span>💡 <em>Môi trường kiểm thử Local:</em> Nhấn <strong>"Gửi mã OTP"</strong> ở trên, hệ thống sẽ tự động cấp và điền mã xác thực hợp lệ ngay lập tức.</span>
+                    </p>
                   </div>
                 </div>
 
