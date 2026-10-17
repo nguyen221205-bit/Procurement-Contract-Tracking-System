@@ -71,6 +71,7 @@ export const PackageDetailPage = () => {
     title: '',
     message: '',
     confirmVariant: 'primary',
+    confirmText: 'Xác nhận',
     requiresReason: false,
     reason: '',
   });
@@ -211,11 +212,12 @@ export const PackageDetailPage = () => {
       setStatusModal({
         isOpen: true,
         targetStatus: 'Closed',
-        title: isEarly ? 'Xác nhận đóng nhận thầu trước thời hạn' : 'Xác nhận đóng nhận hồ sơ thầu',
+        title: isEarly ? 'Đóng nhận thầu sớm' : 'Xác nhận đóng nhận hồ sơ thầu',
         message: isEarly
-          ? 'Gói thầu hiện chưa hết thời hạn nộp thầu. Theo quy định, nếu đóng thầu trước thời hạn, bắt buộc phải cung cấp lý do hoặc căn cứ pháp lý phê duyệt đóng sớm.'
-          : 'Bạn có chắc chắn muốn đóng nhận hồ sơ gói thầu này? Sau khi đóng thầu, hệ thống sẽ ngừng nhận hồ sơ mới từ nhà thầu và bạn có thể chuyển tiếp sang giai đoạn Chấm điểm.',
+          ? 'Gói thầu vẫn đang trong thời hạn tiếp nhận hồ sơ. Bạn có chắc chắn muốn đóng nhận thầu sớm để chuyển sang bước chấm điểm?'
+          : 'Bạn có chắc chắn muốn đóng nhận hồ sơ gói thầu này? Sau khi đóng, hệ thống sẽ ngừng nhận hồ sơ mới từ nhà thầu.',
         confirmVariant: 'warning',
+        confirmText: isEarly ? 'Đóng nhận thầu ngay' : 'Xác nhận đóng thầu',
         requiresReason: isEarly,
         reason: '',
       });
@@ -231,10 +233,11 @@ export const PackageDetailPage = () => {
       setStatusModal({
         isOpen: true,
         targetStatus: 'Evaluating',
-        title: 'Xác nhận chuyển sang giai đoạn chấm điểm',
+        title: 'Chuyển sang giai đoạn chấm điểm',
         message:
-          'Bạn có chắc chắn muốn chuyển gói thầu sang giai đoạn Chấm điểm? Tổ chuyên gia gồm các giám khảo được chỉ định sẽ có quyền truy cập vào phòng chấm điểm để đánh giá các hồ sơ.',
+          'Bạn có chắc chắn muốn chuyển gói thầu sang giai đoạn Chấm điểm? Các giám khảo trong Tổ chuyên gia sẽ có quyền truy cập để đánh giá hồ sơ.',
         confirmVariant: 'primary',
+        confirmText: 'Bắt đầu chấm điểm',
         requiresReason: false,
         reason: '',
       });
@@ -245,14 +248,14 @@ export const PackageDetailPage = () => {
     if (!statusModal.targetStatus) return;
 
     if (statusModal.requiresReason && (!statusModal.reason || !statusModal.reason.trim())) {
-      toast.error('Vui lòng nhập lý do/căn cứ pháp lý đóng thầu trước thời hạn.');
+      toast.error('Vui lòng nhập lý do đóng thầu sớm.');
       return;
     }
 
     try {
       setStatusLoading(true);
       await bidPackageApi.changeStatus(pkg.id, statusModal.targetStatus, statusModal.reason?.trim() || null);
-      toast.success('Chuyển trạng thái gói thầu thành công');
+      toast.success('Cập nhật trạng thái gói thầu thành công');
       setStatusModal((prev) => ({ ...prev, isOpen: false, reason: '' }));
       loadPackageData();
     } catch (error) {
@@ -1324,55 +1327,26 @@ export const PackageDetailPage = () => {
         onConfirm={handleConfirmStatusChange}
         title={statusModal.title}
         message={statusModal.message}
-        confirmText="Xác nhận chuyển"
+        confirmText={statusModal.confirmText || 'Xác nhận'}
         cancelText="Hủy bỏ"
         confirmVariant={statusModal.confirmVariant}
         isLoading={statusLoading}
       >
         {statusModal.requiresReason && (
           <div className="pt-2 space-y-2 text-left">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold text-slate-700">
-                Lý do / Căn cứ pháp lý đóng thầu trước hạn <span className="text-rose-500">*</span>
-              </label>
-              <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-medium">
-                Khoản 4 Điều 131 NĐ 24/2024
-              </span>
-            </div>
+            <label className="block text-xs font-semibold text-slate-700">
+              Lý do đóng thầu sớm <span className="text-rose-500">*</span>
+            </label>
             <textarea
               rows={3}
               value={statusModal.reason || ''}
               onChange={(e) => setStatusModal((prev) => ({ ...prev, reason: e.target.value }))}
-              placeholder="Nhập căn cứ pháp lý hoặc quyết định phê duyệt đóng thầu trước thời hạn..."
-              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition resize-none outline-none"
+              placeholder="Nhập lý do đóng nhận thầu (ví dụ: đã tiếp nhận đủ hồ sơ theo kế hoạch, rút ngắn thời gian để chuyển bước chấm điểm...)"
+              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition resize-none outline-none text-slate-800 placeholder-slate-400"
               autoFocus
             />
-
-            {/* Quick legal grounds template chips */}
-            <div className="space-y-1">
-              <span className="text-[11px] font-semibold text-slate-500 block">
-                Căn cứ pháp lý mẫu (Bấm để chọn nhanh):
-              </span>
-              <div className="flex flex-col gap-1.5">
-                {[
-                  'Căn cứ Khoản 4 Điều 131 Nghị định 24/2024/NĐ-CP: Đã tiếp nhận đầy đủ hồ sơ dự thầu hợp lệ, Bên mời thầu quyết định đóng thầu trước thời hạn để mở chấm thầu.',
-                  `Căn cứ Quyết định số ${pkg?.code || '1074'}/QĐ-BMT ngày ${new Date().toLocaleDateString('vi-VN')} của Bên mời thầu về việc phê duyệt rút ngắn thời hạn đóng thầu.`,
-                  'Căn cứ Quyết định điều chỉnh Kế hoạch lựa chọn nhà thầu đã được cấp có thẩm quyền phê duyệt theo Luật Đấu thầu 2023.',
-                ].map((template, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setStatusModal((prev) => ({ ...prev, reason: template }))}
-                    className="text-left text-[11px] px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-amber-50 hover:text-amber-900 border border-slate-200 hover:border-amber-300 transition text-slate-600 leading-relaxed cursor-pointer"
-                  >
-                    💡 {template}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <p className="text-[11px] text-slate-400">
-              Căn cứ pháp lý này được ghi nhận chính thức vào hệ thống để phục vụ công tác thanh tra/kiểm toán.
+              Lý do này sẽ được ghi nhận vào lịch sử hoạt động của gói thầu.
             </p>
           </div>
         )}
