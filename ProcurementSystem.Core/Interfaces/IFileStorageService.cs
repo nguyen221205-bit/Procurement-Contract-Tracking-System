@@ -6,5 +6,6 @@ namespace ProcurementSystem.Core.Interfaces
     {
         Task<string> SaveFileAsync(IFormFile file, string subFolder);
         void DeleteFile(string relativePath);
+        string GetPhysicalFilePath(string relativePath);
     }
 }

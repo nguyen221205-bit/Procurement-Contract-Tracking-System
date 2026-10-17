@@ -525,6 +525,13 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Đã hết thời hạn. Không thể rút hồ sơ dự thầu.");
             }
 
+            // N25 & R4-6: Chỉ cho phép rút hồ sơ dự thầu khi hồ sơ đang ở trạng thái hợp lệ duy nhất là Submitted.
+            // Chặn triệt để rút hồ sơ đã bị Disqualified (hoặc Evaluated, Selected, Rejected, Withdrawn) để xóa dấu vết kỷ luật.
+            if (submission.Status != BidSubmissionStatus.Submitted)
+            {
+                return ApiResponse<bool>.Fail("Chỉ có thể rút hồ sơ dự thầu khi hồ sơ đang ở trạng thái Đã nộp (Submitted).");
+            }
+
             // P2-4: Chuyển sang Soft Delete để bảo toàn chứng cứ kiểm toán đấu thầu
             submission.Status = BidSubmissionStatus.Withdrawn;
             _unitOfWork.Repository<BidSubmission>().Update(submission);
@@ -663,7 +670,16 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
-            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), file.FilePath.TrimStart('/'));
+            string physicalPath;
+            try
+            {
+                physicalPath = _fileStorageService.GetPhysicalFilePath(file.FilePath);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<SubmissionFileDownloadDto>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}");
+            }
+
             if (!File.Exists(physicalPath))
             {
                 return ApiResponse<SubmissionFileDownloadDto>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ.");

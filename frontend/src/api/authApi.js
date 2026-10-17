@@ -24,4 +24,8 @@ export const authApi = {
   sendOtp: async (email, purpose = 'Register') => {
     return await axiosClient.post('/auth/send-otp', { email, purpose });
   },
+
+  changePassword: async (data) => {
+    return await axiosClient.post('/auth/change-password', data);
+  },
 };

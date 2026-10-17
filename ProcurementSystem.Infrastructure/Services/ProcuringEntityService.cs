@@ -281,7 +281,7 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<ProcuringEntityDto>.Ok(MapToDto(entity), message);
         }
 
-        public async Task<(byte[] FileBytes, string ContentType, string FileName)?> GetEstablishmentFileAsync(int id)
+        public async Task<(string PhysicalPath, string ContentType, string FileName)?> GetEstablishmentFileAsync(int id)
         {
             var entity = await _context.ProcuringEntities.AsNoTracking().FirstOrDefaultAsync(pe => pe.Id == id);
             if (entity == null || string.IsNullOrEmpty(entity.EstablishmentDecisionFile))
@@ -289,13 +289,21 @@ namespace ProcurementSystem.Infrastructure.Services
                 return null;
             }
 
-            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), entity.EstablishmentDecisionFile.TrimStart('/', '\\'));
+            string physicalPath;
+            try
+            {
+                physicalPath = _fileStorageService.GetPhysicalFilePath(entity.EstablishmentDecisionFile);
+            }
+            catch
+            {
+                return null;
+            }
+
             if (!System.IO.File.Exists(physicalPath))
             {
                 return null;
             }
 
-            var bytes = await System.IO.File.ReadAllBytesAsync(physicalPath);
             var fileName = Path.GetFileName(physicalPath);
             var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
             var contentType = ext switch
@@ -306,10 +314,10 @@ namespace ProcurementSystem.Infrastructure.Services
                 _ => "application/octet-stream"
             };
 
-            return (bytes, contentType, fileName);
+            return (physicalPath, contentType, fileName);
         }
 
-        public async Task<(byte[] FileBytes, string ContentType, string FileName)?> GetAppointmentFileAsync(int id)
+        public async Task<(string PhysicalPath, string ContentType, string FileName)?> GetAppointmentFileAsync(int id)
         {
             var entity = await _context.ProcuringEntities.AsNoTracking().FirstOrDefaultAsync(pe => pe.Id == id);
             if (entity == null || string.IsNullOrEmpty(entity.AppointmentDecisionFile))
@@ -317,13 +325,21 @@ namespace ProcurementSystem.Infrastructure.Services
                 return null;
             }
 
-            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), entity.AppointmentDecisionFile.TrimStart('/', '\\'));
+            string physicalPath;
+            try
+            {
+                physicalPath = _fileStorageService.GetPhysicalFilePath(entity.AppointmentDecisionFile);
+            }
+            catch
+            {
+                return null;
+            }
+
             if (!System.IO.File.Exists(physicalPath))
             {
                 return null;
             }
 
-            var bytes = await System.IO.File.ReadAllBytesAsync(physicalPath);
             var fileName = Path.GetFileName(physicalPath);
             var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
             var contentType = ext switch
@@ -334,7 +350,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 _ => "application/octet-stream"
             };
 
-            return (bytes, contentType, fileName);
+            return (physicalPath, contentType, fileName);
         }
 
         private static ProcuringEntityDto MapToDto(ProcuringEntity entity)

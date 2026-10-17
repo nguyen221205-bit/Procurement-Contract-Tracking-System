@@ -53,6 +53,11 @@ export const bidPackageApi = {
       reason: data.reason,
     });
   },
+
+  // R4-8: Thay thế giám khảo trong Tổ chấm thầu (quy tắc N22)
+  replaceEvaluator: async (packageId, data) => {
+    return await axiosClient.post(`/bid-packages/${packageId}/evaluators/replace`, data);
+  },
 };
 
 export default bidPackageApi;

@@ -47,5 +47,22 @@ namespace ProcurementSystem.Infrastructure.Services
             var fullPath = Path.Combine(Directory.GetCurrentDirectory(), relativePath.TrimStart('/'));
             if (File.Exists(fullPath)) File.Delete(fullPath);
         }
+
+        public string GetPhysicalFilePath(string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+                throw new ArgumentException("Đường dẫn tệp không hợp lệ.", nameof(relativePath));
+
+            var cleaned = relativePath.TrimStart('/', '\\');
+            var fullPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), cleaned));
+            var basePath = Path.GetFullPath(Directory.GetCurrentDirectory());
+
+            if (!fullPath.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new System.Security.SecurityException("Phát hiện hành vi truy cập tệp bất hợp pháp (Path Traversal).");
+            }
+
+            return fullPath;
+        }
     }
 }

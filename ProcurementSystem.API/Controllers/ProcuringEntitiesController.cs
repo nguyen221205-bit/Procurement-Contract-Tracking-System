@@ -165,39 +165,63 @@ namespace ProcurementSystem.API.Controllers
         /// <summary>
         /// Tải hoặc xem trước tệp Quyết định thành lập / Giấy phép của Bên mời thầu
         /// </summary>
-        /// <remarks>Quyền hạn: Admin.</remarks>
+        /// <remarks>Quyền hạn: Admin, Procurement (đại diện bên mời thầu sở hữu hồ sơ).</remarks>
         [HttpGet("{id:int}/establishment-file")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetEstablishmentFile(int id)
         {
+            if (User.IsInRole("Procurement") && !User.IsInRole("Admin"))
+            {
+                var currentUserId = GetCurrentUserId();
+                var entityResult = await _procuringEntityService.GetProcuringEntityByIdAsync(id);
+                if (!entityResult.Success || entityResult.Data == null || entityResult.Data.UserId != currentUserId)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<string>.Fail("Bạn không có quyền xem tệp quyết định thành lập của bên mời thầu khác."));
+                }
+            }
+
             var file = await _procuringEntityService.GetEstablishmentFileAsync(id);
             if (file == null)
             {
                 return NotFound(ApiResponse<string>.Fail("Tệp Quyết định thành lập không tồn tại hoặc đã bị xóa."));
             }
 
-            return File(file.Value.FileBytes, file.Value.ContentType, file.Value.FileName);
+            return PhysicalFile(file.Value.PhysicalPath, file.Value.ContentType, file.Value.FileName);
         }
 
         /// <summary>
         /// Tải hoặc xem trước tệp Quyết định bổ nhiệm người đứng đầu của Bên mời thầu (nếu có)
         /// </summary>
-        /// <remarks>Quyền hạn: Admin.</remarks>
+        /// <remarks>Quyền hạn: Admin, Procurement (đại diện bên mời thầu sở hữu hồ sơ).</remarks>
         [HttpGet("{id:int}/appointment-file")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetAppointmentFile(int id)
         {
+            if (User.IsInRole("Procurement") && !User.IsInRole("Admin"))
+            {
+                var currentUserId = GetCurrentUserId();
+                var entityResult = await _procuringEntityService.GetProcuringEntityByIdAsync(id);
+                if (!entityResult.Success || entityResult.Data == null || entityResult.Data.UserId != currentUserId)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<string>.Fail("Bạn không có quyền xem tệp quyết định bổ nhiệm của bên mời thầu khác."));
+                }
+            }
+
             var file = await _procuringEntityService.GetAppointmentFileAsync(id);
             if (file == null)
             {
                 return NotFound(ApiResponse<string>.Fail("Tệp Quyết định bổ nhiệm không tồn tại hoặc đã bị xóa."));
             }
 
-            return File(file.Value.FileBytes, file.Value.ContentType, file.Value.FileName);
+            return PhysicalFile(file.Value.PhysicalPath, file.Value.ContentType, file.Value.FileName);
         }
 
         private int? GetCurrentUserId()

@@ -18,10 +18,14 @@ namespace ProcurementSystem.API.Controllers
     public class ContractorsController : ControllerBase
     {
         private readonly IContractorService _contractorService;
+        private readonly IFileStorageService _fileStorageService;
 
-        public ContractorsController(IContractorService contractorService)
+        public ContractorsController(
+            IContractorService contractorService,
+            IFileStorageService fileStorageService)
         {
             _contractorService = contractorService;
+            _fileStorageService = fileStorageService;
         }
 
         /// <summary>
@@ -158,6 +162,7 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<ApiResponse<ContractorDto>>> UpdateRating(
             int id,
             [FromBody] UpdateContractorRatingRequest request)
@@ -174,6 +179,10 @@ namespace ProcurementSystem.API.Controllers
             var result = await _contractorService.UpdateContractorRatingAsync(id, request);
             if (!result.Success)
             {
+                if (result.Message?.Contains("Không tìm thấy") == true)
+                {
+                    return NotFound(result);
+                }
                 return BadRequest(result);
             }
             return Ok(result);
@@ -196,6 +205,7 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<ApiResponse<ContractorDto>>> VerifyContractor(
             int id,
             [FromBody] VerifyContractorRequest request)
@@ -213,6 +223,10 @@ namespace ProcurementSystem.API.Controllers
             var result = await _contractorService.VerifyContractorAsync(id, request, reviewerId);
             if (!result.Success)
             {
+                if (result.Message?.Contains("Không tìm thấy") == true)
+                {
+                    return NotFound(result);
+                }
                 return BadRequest(result);
             }
             return Ok(result);
@@ -222,13 +236,13 @@ namespace ProcurementSystem.API.Controllers
         /// Tải về hoặc xem trực tuyến tệp Giấy phép đăng ký kinh doanh (GPKD) của nhà thầu
         /// </summary>
         /// <param name="id">Mã định danh duy nhất của nhà thầu.</param>
-        /// <remarks>Quyền hạn: Admin.</remarks>
+        /// <remarks>Quyền hạn: Admin, Procurement, Contractor (chính chủ sở hữu hồ sơ).</remarks>
         /// <response code="200">Truy xuất tệp GPKD thành công.</response>
         /// <response code="401">Chưa xác thực danh tính.</response>
-        /// <response code="403">Từ chối truy cập (Yêu cầu vai trò Admin).</response>
+        /// <response code="403">Từ chối truy cập.</response>
         /// <response code="404">Không tìm thấy nhà thầu hoặc tệp giấy phép kinh doanh.</response>
         [HttpGet("{id:int}/license-file")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Procurement,Contractor")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
@@ -242,12 +256,32 @@ namespace ProcurementSystem.API.Controllers
             }
 
             var contractor = contractorResult.Data;
+
+            // R4-7: Mở quyền cho chính chủ Nhà thầu xem lại GPKD của mình; Admin và cán bộ Procurement xem để đối chiếu năng lực
+            if (User.IsInRole("Contractor") && !User.IsInRole("Admin") && !User.IsInRole("Procurement"))
+            {
+                var currentUserId = GetCurrentUserId();
+                if (contractor.UserId != currentUserId)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<string>.Fail("Bạn không có quyền xem tệp giấy phép kinh doanh của nhà thầu khác."));
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(contractor.BusinessLicenseFile))
             {
                 return NotFound(ApiResponse<string>.Fail("Nhà thầu chưa tải lên tệp Giấy phép đăng ký kinh doanh."));
             }
 
-            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), contractor.BusinessLicenseFile.TrimStart('/'));
+            string physicalPath;
+            try
+            {
+                physicalPath = _fileStorageService.GetPhysicalFilePath(contractor.BusinessLicenseFile);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<string>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}"));
+            }
+
             if (!System.IO.File.Exists(physicalPath))
             {
                 return NotFound(ApiResponse<string>.Fail("Tệp Giấy phép đăng ký kinh doanh không tồn tại trên hệ thống lưu trữ."));
@@ -279,11 +313,16 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(typeof(ApiResponse<ContractorDto>), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<ApiResponse<ContractorDto>>> RecalculateRating(int id)
         {
             var result = await _contractorService.RecalculateContractorRatingAsync(id);
             if (!result.Success)
             {
+                if (result.Message?.Contains("Không tìm thấy") == true)
+                {
+                    return NotFound(result);
+                }
                 return BadRequest(result);
             }
             return Ok(result);

@@ -2,8 +2,12 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Navbar from '../common/Navbar';
 import Sidebar from '../common/Sidebar';
+import ForceChangePasswordModal from '../common/ForceChangePasswordModal';
+import { useAuth } from '../../context/AuthContext';
 
 export const AppLayout = () => {
+  const { user } = useAuth();
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar />
@@ -13,6 +17,12 @@ export const AppLayout = () => {
           <Outlet />
         </main>
       </div>
+
+      <ForceChangePasswordModal
+        isOpen={!!user?.mustChangePassword}
+        onClose={() => {}}
+        onPasswordChanged={() => {}}
+      />
     </div>
   );
 };
