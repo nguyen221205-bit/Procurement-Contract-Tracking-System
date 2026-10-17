@@ -21,8 +21,12 @@ export const bidPackageApi = {
     return await axiosClient.post('/bid-packages', data);
   },
 
-  changeStatus: async (id, newStatus) => {
-    return await axiosClient.put(`/bid-packages/${id}/status`, { newStatus });
+  changeStatus: async (id, newStatus, reason = null) => {
+    const payload =
+      typeof newStatus === 'object' && newStatus !== null
+        ? newStatus
+        : { newStatus, reason };
+    return await axiosClient.put(`/bid-packages/${id}/status`, payload);
   },
 
   uploadDocuments: async (id, formData) => {

@@ -71,6 +71,8 @@ export const PackageDetailPage = () => {
     title: '',
     message: '',
     confirmVariant: 'primary',
+    requiresReason: false,
+    reason: '',
   });
   const [statusLoading, setStatusLoading] = useState(false);
   const [isReopenModalOpen, setIsReopenModalOpen] = useState(false);
@@ -195,13 +197,17 @@ export const PackageDetailPage = () => {
     const statusStr = String(pkg.status || '');
 
     if (statusStr === 'Open' || statusStr === '0') {
+      const isEarly = pkg.deadline && new Date(pkg.deadline) > new Date();
       setStatusModal({
         isOpen: true,
         targetStatus: 'Closed',
-        title: 'Xác nhận đóng nhận hồ sơ thầu',
-        message:
-          'Bạn có chắc chắn muốn đóng nhận hồ sơ gói thầu này? Sau khi đóng thầu, hệ thống sẽ ngừng nhận hồ sơ mới từ nhà thầu và bạn có thể chuyển tiếp sang giai đoạn Chấm điểm.',
+        title: isEarly ? 'Xác nhận đóng nhận thầu trước thời hạn' : 'Xác nhận đóng nhận hồ sơ thầu',
+        message: isEarly
+          ? 'Gói thầu hiện chưa hết thời hạn nộp thầu. Theo quy định, nếu đóng thầu trước thời hạn, bắt buộc phải cung cấp lý do hoặc căn cứ pháp lý phê duyệt đóng sớm.'
+          : 'Bạn có chắc chắn muốn đóng nhận hồ sơ gói thầu này? Sau khi đóng thầu, hệ thống sẽ ngừng nhận hồ sơ mới từ nhà thầu và bạn có thể chuyển tiếp sang giai đoạn Chấm điểm.',
         confirmVariant: 'warning',
+        requiresReason: isEarly,
+        reason: '',
       });
     } else if (statusStr === 'Closed' || statusStr === '1') {
       if (totalWeight !== 100) {
@@ -219,17 +225,25 @@ export const PackageDetailPage = () => {
         message:
           'Bạn có chắc chắn muốn chuyển gói thầu sang giai đoạn Chấm điểm? Tổ chuyên gia gồm các giám khảo được chỉ định sẽ có quyền truy cập vào phòng chấm điểm để đánh giá các hồ sơ.',
         confirmVariant: 'primary',
+        requiresReason: false,
+        reason: '',
       });
     }
   };
 
   const handleConfirmStatusChange = async () => {
     if (!statusModal.targetStatus) return;
+
+    if (statusModal.requiresReason && (!statusModal.reason || !statusModal.reason.trim())) {
+      toast.error('Vui lòng nhập lý do/căn cứ pháp lý đóng thầu trước thời hạn.');
+      return;
+    }
+
     try {
       setStatusLoading(true);
-      await bidPackageApi.changeStatus(pkg.id, statusModal.targetStatus);
+      await bidPackageApi.changeStatus(pkg.id, statusModal.targetStatus, statusModal.reason?.trim() || null);
       toast.success('Chuyển trạng thái gói thầu thành công');
-      setStatusModal((prev) => ({ ...prev, isOpen: false }));
+      setStatusModal((prev) => ({ ...prev, isOpen: false, reason: '' }));
       loadPackageData();
     } catch (error) {
       toast.error(error.message || 'Không thể cập nhật trạng thái');
@@ -768,7 +782,7 @@ export const PackageDetailPage = () => {
                     <div className="pt-3 border-t border-amber-200/60 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center space-x-1.5 text-xs text-amber-700">
                         <Clock className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Hạn nộp thầu: <strong>{formatDate(pkg.bidClosingDate)}</strong></span>
+                        <span>Hạn nộp thầu: <strong>{formatDate(pkg.deadline)}</strong></span>
                       </div>
                       <button
                         onClick={handleOpenStatusModal}
@@ -1296,7 +1310,7 @@ export const PackageDetailPage = () => {
       {/* Quick Action Status Change Confirm Modal */}
       <ConfirmModal
         isOpen={statusModal.isOpen}
-        onClose={() => setStatusModal((prev) => ({ ...prev, isOpen: false }))}
+        onClose={() => setStatusModal((prev) => ({ ...prev, isOpen: false, reason: '' }))}
         onConfirm={handleConfirmStatusChange}
         title={statusModal.title}
         message={statusModal.message}
@@ -1304,7 +1318,26 @@ export const PackageDetailPage = () => {
         cancelText="Hủy bỏ"
         confirmVariant={statusModal.confirmVariant}
         isLoading={statusLoading}
-      />
+      >
+        {statusModal.requiresReason && (
+          <div className="pt-2 space-y-1.5 text-left">
+            <label className="block text-xs font-bold text-slate-700">
+              Lý do / Căn cứ pháp lý đóng thầu trước hạn <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={3}
+              value={statusModal.reason || ''}
+              onChange={(e) => setStatusModal((prev) => ({ ...prev, reason: e.target.value }))}
+              placeholder="Nhập lý do hoặc quyết định phê duyệt đóng thầu trước thời hạn..."
+              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition resize-none outline-none"
+              autoFocus
+            />
+            <p className="text-[11px] text-slate-400">
+              Căn cứ pháp lý này sẽ được lưu trữ vào hệ thống và phục vụ công tác thanh tra/kiểm toán.
+            </p>
+          </div>
+        )}
+      </ConfirmModal>
 
       {/* Withdraw Submission Confirm Modal */}
       <ConfirmModal

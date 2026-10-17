@@ -11,6 +11,7 @@ export const ConfirmModal = ({
   cancelText = 'Hủy bỏ',
   confirmVariant = 'primary', // 'primary', 'warning', 'danger'
   isLoading = false,
+  children,
 }) => {
   if (!isOpen) return null;
 
@@ -59,6 +60,9 @@ export const ConfirmModal = ({
             <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
           </div>
         </div>
+
+        {/* Custom Body / Form Controls */}
+        {children}
 
         {/* Actions */}
         <div className="pt-2 flex items-center justify-end space-x-2.5">
