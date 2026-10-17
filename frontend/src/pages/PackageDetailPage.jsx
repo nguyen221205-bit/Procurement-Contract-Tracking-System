@@ -117,6 +117,16 @@ export const PackageDetailPage = () => {
   const canManageStatus = isAdmin || isProcurement;
   const canViewSubmissions = isAdmin || isProcurement || isEvaluator;
 
+  // Kiểm tra chuyên gia được phân công vào Tổ chuyên gia gói thầu
+  const isAssignedEvaluator = Boolean(
+    user?.id && (
+      (Array.isArray(pkg?.evaluatorIds) && pkg.evaluatorIds.includes(user.id)) ||
+      evaluators.some(
+        (e) => (e.evaluatorId === user.id || e.userId === user.id || e.id === user.id) && e.isActive !== false
+      )
+    )
+  );
+
   // Kiểm tra tính hợp lệ của Tổ chuyên gia theo Luật Đấu thầu: Tối thiểu 3 thành viên và là số lẻ
   const isCommitteeValid = evaluators.length >= 3 && evaluators.length % 2 === 1;
   const canManageCommittee = (isAdmin || isProcurement) && 
