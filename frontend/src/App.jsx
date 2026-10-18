@@ -16,6 +16,7 @@ import ContractorsPage from './pages/ContractorsPage';
 import EvaluatorProposalsPage from './pages/EvaluatorProposalsPage';
 import ProcuringEntitiesPage from './pages/ProcuringEntitiesPage';
 import NotificationsPage from './pages/NotificationsPage';
+import AuditLogsPage from './pages/AuditLogsPage';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { ROLES } from './utils/constants';
@@ -76,6 +77,14 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
                     <UsersPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/audit-logs"
+                element={
+                  <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROCUREMENT]}>
+                    <AuditLogsPage />
                   </ProtectedRoute>
                 }
               />
