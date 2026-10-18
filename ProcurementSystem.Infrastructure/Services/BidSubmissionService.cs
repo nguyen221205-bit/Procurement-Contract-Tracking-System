@@ -12,13 +12,16 @@ namespace ProcurementSystem.Infrastructure.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileStorageService _fileStorageService;
+        private readonly INotificationService _notificationService;
 
         public BidSubmissionService(
             IUnitOfWork unitOfWork,
-            IFileStorageService fileStorageService)
+            IFileStorageService fileStorageService,
+            INotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _fileStorageService = fileStorageService;
+            _notificationService = notificationService;
         }
 
         public async Task<ApiResponse<BidSubmissionDto>> SubmitBidAsync(
@@ -191,6 +194,33 @@ namespace ProcurementSystem.Infrastructure.Services
                             // Bỏ qua lỗi xóa file cũ để không làm gián đoạn phản hồi
                         }
                     }
+                }
+
+                // Gửi thông báo In-app & Email cho Nhà thầu và Bên mời thầu (bọc try-catch độc lập)
+                try
+                {
+                    // 1. Thông báo cho Nhà thầu nộp thầu
+                    await _notificationService.CreateNotificationAsync(
+                        contractor.UserId,
+                        "Xác nhận nộp E-HSDT thành công",
+                        $"Hồ sơ dự thầu cho gói thầu {bidPackage.Code} - {bidPackage.Name} đã được nộp và niêm phong an toàn vào lúc {DateTime.UtcNow:HH:mm dd/MM/yyyy} (UTC).",
+                        ProcurementSystem.Core.Enums.NotificationType.Info,
+                        sendEmail: true);
+
+                    // 2. Thông báo cho Bên mời thầu sở hữu gói thầu (Bảo vệ Sealed Bid - KHÔNG làm lộ danh tính nhà thầu)
+                    if (bidPackage.CreatedBy > 0)
+                    {
+                        await _notificationService.CreateNotificationAsync(
+                            bidPackage.CreatedBy,
+                            "Hồ sơ dự thầu mới đã nộp",
+                            $"Gói thầu {bidPackage.Code} - {bidPackage.Name} vừa tiếp nhận 01 hồ sơ dự thầu mới đã được niêm phong an toàn.",
+                            ProcurementSystem.Core.Enums.NotificationType.Info,
+                            sendEmail: true);
+                    }
+                }
+                catch
+                {
+                    // Bọc try-catch riêng biệt để sự cố thông báo không ảnh hưởng kết quả nộp thầu
                 }
 
                 // 9. Trả về kết quả
