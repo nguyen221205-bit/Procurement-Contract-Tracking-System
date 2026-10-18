@@ -31,9 +31,8 @@ namespace ProcurementSystem.Infrastructure.Services
         {
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-            // 0. Xác thực mã OTP email
-            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterContractor", out var otpError) &&
-                !_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "Register", out otpError))
+            // 0. Xác thực mã OTP email (cố định purpose RegisterContractor, tránh ghi đè thông báo số lần thử còn lại)
+            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterContractor", out var otpError))
             {
                 return ApiResponse<ContractorRegisterResponse>.Fail(otpError);
             }

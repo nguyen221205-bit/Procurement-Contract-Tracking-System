@@ -15,6 +15,7 @@ import UsersPage from './pages/UsersPage';
 import ContractorsPage from './pages/ContractorsPage';
 import EvaluatorProposalsPage from './pages/EvaluatorProposalsPage';
 import ProcuringEntitiesPage from './pages/ProcuringEntitiesPage';
+import NotificationsPage from './pages/NotificationsPage';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { ROLES } from './utils/constants';
@@ -78,6 +79,7 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route path="/notifications" element={<NotificationsPage />} />
             </Route>
           </Route>
 

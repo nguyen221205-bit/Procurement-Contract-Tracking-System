@@ -24,5 +24,25 @@ namespace ProcurementSystem.Core.Interfaces
         /// Đánh dấu tất cả thông báo của người dùng là đã đọc
         /// </summary>
         Task<ApiResponse<bool>> MarkAllAsReadAsync(int userId);
+
+        /// <summary>
+        /// Tạo thông báo nội bộ và tự động gửi email nếu sendEmail = true
+        /// </summary>
+        Task<NotificationDto> CreateNotificationAsync(
+            int userId,
+            string title,
+            string message,
+            ProcurementSystem.Core.Enums.NotificationType type = ProcurementSystem.Core.Enums.NotificationType.Info,
+            bool sendEmail = true);
+
+        /// <summary>
+        /// Tạo thông báo đồng loạt cho nhiều người dùng
+        /// </summary>
+        Task CreateBulkNotificationsAsync(
+            IEnumerable<int> userIds,
+            string title,
+            string message,
+            ProcurementSystem.Core.Enums.NotificationType type = ProcurementSystem.Core.Enums.NotificationType.Info,
+            bool sendEmail = false);
     }
 }

@@ -17,15 +17,18 @@ namespace ProcurementSystem.Infrastructure.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileStorageService _fileStorageService;
         private readonly IEmailService _emailService;
+        private readonly INotificationService _notificationService;
 
         public ContractorService(
             IUnitOfWork unitOfWork,
             IFileStorageService fileStorageService,
-            IEmailService emailService)
+            IEmailService emailService,
+            INotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _fileStorageService = fileStorageService;
             _emailService = emailService;
+            _notificationService = notificationService;
         }
 
         public async Task<ApiResponse<PaginatedList<ContractorDto>>> GetContractorsAsync(ContractorFilterParams filter)
@@ -285,21 +288,17 @@ namespace ProcurementSystem.Infrastructure.Services
             };
             await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
 
-            // Gửi thông báo đến tài khoản nhà thầu
-            var notif = new Notification
-            {
-                UserId = contractor.UserId,
-                Title = request.IsApproved ? "Hồ sơ năng lực nhà thầu đã được phê duyệt" : "Hồ sơ năng lực nhà thầu bị từ chối",
-                Message = request.IsApproved
+            await _unitOfWork.SaveChangesAsync();
+
+            // Gửi thông báo và email đến tài khoản nhà thầu một cách tuần tự, an toàn cho DbContext
+            await _notificationService.CreateNotificationAsync(
+                contractor.UserId,
+                request.IsApproved ? "Hồ sơ năng lực nhà thầu đã được phê duyệt" : "Hồ sơ năng lực nhà thầu bị từ chối",
+                request.IsApproved
                     ? $"Hồ sơ năng lực của doanh nghiệp {contractor.CompanyName} đã được thẩm định phê duyệt thành công. Bạn đã có thể nộp hồ sơ tham gia các gói thầu."
                     : $"Hồ sơ năng lực của doanh nghiệp {contractor.CompanyName} đã bị từ chối phê duyệt. Lý do: {request.Notes ?? "Chưa đáp ứng đủ tiêu chuẩn hồ sơ năng lực theo quy định."}",
-                Type = request.IsApproved ? Core.Enums.NotificationType.Info : Core.Enums.NotificationType.Warning,
-                CreatedAt = DateTime.UtcNow,
-                IsRead = false
-            };
-            await _unitOfWork.Repository<Notification>().AddAsync(notif);
-
-            await _unitOfWork.SaveChangesAsync();
+                request.IsApproved ? Core.Enums.NotificationType.Info : Core.Enums.NotificationType.Warning,
+                sendEmail: true);
 
             var message = request.IsApproved 
                 ? "Phê duyệt hồ sơ năng lực nhà thầu thành công." 
@@ -603,8 +602,10 @@ namespace ProcurementSystem.Infrastructure.Services
                             try
                             {
                                 var subject = "[Hệ thống Đấu thầu] Thông tin tài khoản nhà thầu";
-                                var body = $@"<p>Kính gửi {cInfo.FullName},</p>
-<p>Tài khoản nhà thầu của đơn vị <strong>{cInfo.CompanyName}</strong> đã được khởi tạo trên Hệ thống Đấu thầu.</p>
+                                var encodedFullName = System.Text.Encodings.Web.HtmlEncoder.Default.Encode(cInfo.FullName ?? string.Empty);
+                                var encodedCompanyName = System.Text.Encodings.Web.HtmlEncoder.Default.Encode(cInfo.CompanyName ?? string.Empty);
+                                var body = $@"<p>Kính gửi {encodedFullName},</p>
+<p>Tài khoản nhà thầu của đơn vị <strong>{encodedCompanyName}</strong> đã được khởi tạo trên Hệ thống Đấu thầu.</p>
 <p><strong>Thông tin đăng nhập:</strong></p>
 <ul>
     <li>Tên đăng nhập (Email): <b>{cInfo.Email}</b></li>

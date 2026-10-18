@@ -11,6 +11,7 @@ import {
   Building2,
   Award,
   Briefcase,
+  Bell,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -19,6 +20,12 @@ const MENU_ITEMS = [
     path: '/dashboard',
     icon: LayoutDashboard,
     roles: [ROLES.ADMIN],
+  },
+  {
+    name: 'Thông báo',
+    path: '/notifications',
+    icon: Bell,
+    roles: [ROLES.ADMIN, ROLES.PROCUREMENT, ROLES.EVALUATOR, ROLES.CONTRACTOR],
   },
   {
     name: 'Gói thầu',

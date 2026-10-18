@@ -26,21 +26,23 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             var smtpSection = _configuration.GetSection("Smtp");
-            var host = smtpSection["Host"];
-            var portString = smtpSection["Port"];
-            var username = smtpSection["Username"];
-            var password = smtpSection["Password"];
-            var senderEmail = smtpSection["SenderEmail"] ?? "noreply@procurementsystem.com";
-            var senderName = smtpSection["SenderName"] ?? "Hệ thống Đấu Thầu & Hợp Đồng";
+            var host = Environment.GetEnvironmentVariable("SMTP_HOST") ?? smtpSection["Host"];
+            var portString = Environment.GetEnvironmentVariable("SMTP_PORT") ?? smtpSection["Port"];
+            var username = Environment.GetEnvironmentVariable("SMTP_USERNAME") ?? smtpSection["Username"];
+            var password = Environment.GetEnvironmentVariable("SMTP_PASSWORD") ?? smtpSection["Password"];
+            var configuredSender = Environment.GetEnvironmentVariable("SMTP_SENDER_EMAIL") ?? smtpSection["SenderEmail"];
+            var senderEmail = !string.IsNullOrWhiteSpace(configuredSender) && !configuredSender.Contains("procurementsystem.com")
+                ? configuredSender
+                : (!string.IsNullOrWhiteSpace(username) ? username : "noreply@procurementsystem.com");
+            var senderName = Environment.GetEnvironmentVariable("SMTP_SENDER_NAME") ?? smtpSection["SenderName"] ?? "Hệ thống Đấu Thầu & Hợp Đồng";
             var enableSsl = bool.TryParse(smtpSection["EnableSsl"], out var ssl) ? ssl : true;
             var port = int.TryParse(portString, out var p) ? p : 587;
 
-            // Nếu chưa cấu hình máy chủ SMTP thực tế, ghi log giả lập để phục vụ kiểm thử phát triển
+            // Kiểm tra máy chủ SMTP thực tế
             if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
             {
-                _logger.LogInformation("[Email Simulation] Đến: {To} | Tiêu đề: {Subject} | Nội dung: {BodySnippet}...",
-                    toEmail, subject, body.Length > 100 ? body[..100] : body);
-                return true;
+                _logger.LogError("Không thể gửi email thực tế đến {To}: Máy chủ SMTP chưa được cấu hình Username hoặc Password trong appsettings.json.", toEmail);
+                return false;
             }
 
             try

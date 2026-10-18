@@ -2,6 +2,7 @@ import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { LogOut, ShieldCheck, User } from 'lucide-react';
 import { ROLES } from '../../utils/constants';
+import NotificationBell from './NotificationBell';
 
 const roleBadgeStyles = {
   [ROLES.ADMIN]: 'bg-rose-50 text-rose-700 border-rose-200',
@@ -36,7 +37,12 @@ export const Navbar = () => {
       </div>
 
       {/* User profile & actions */}
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-3 sm:space-x-4">
+        {/* Notification Bell */}
+        <NotificationBell />
+
+        <div className="h-5 w-px bg-slate-200 hidden sm:block" />
+
         <div className="flex items-center space-x-2.5">
           <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 font-semibold text-xs">
             {user?.fullName ? user.fullName.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
