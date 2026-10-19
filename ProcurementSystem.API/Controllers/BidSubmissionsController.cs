@@ -185,7 +185,7 @@ namespace ProcurementSystem.API.Controllers
 
             if (!result.Success)
             {
-                return BadRequest(result);
+                return StatusCode(result.StatusCode, result);
             }
 
             return Ok(result);

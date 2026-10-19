@@ -427,7 +427,16 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<(string, string, string)>.Fail("Đề xuất này không có tệp chứng chỉ đính kèm.");
             }
 
-            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), proposal.CertificateFile.TrimStart('/'));
+            string physicalPath;
+            try
+            {
+                physicalPath = _fileStorageService.GetPhysicalFilePath(proposal.CertificateFile);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<(string, string, string)>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}");
+            }
+
             if (!File.Exists(physicalPath))
             {
                 return ApiResponse<(string, string, string)>.Fail("Tệp chứng chỉ không tồn tại trên hệ thống lưu trữ.");
