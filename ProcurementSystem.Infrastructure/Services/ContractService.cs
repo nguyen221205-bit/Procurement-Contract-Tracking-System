@@ -13,15 +13,18 @@ namespace ProcurementSystem.Infrastructure.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileStorageService _fileStorageService;
         private readonly IContractorService _contractorService;
+        private readonly INotificationService _notificationService;
 
         public ContractService(
             IUnitOfWork unitOfWork,
             IFileStorageService fileStorageService,
-            IContractorService contractorService)
+            IContractorService contractorService,
+            INotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _fileStorageService = fileStorageService;
             _contractorService = contractorService;
+            _notificationService = notificationService;
         }
 
         public async Task<ApiResponse<PaginatedList<ContractSummaryDto>>> GetContractsAsync(
@@ -517,6 +520,28 @@ namespace ProcurementSystem.Infrastructure.Services
             _unitOfWork.Repository<Contract>().Update(contract);
             await _unitOfWork.SaveChangesAsync();
 
+            // Gửi thông báo cho Nhà thầu khi hợp đồng có hiệu lực (Draft -> Active)
+            if (request.NewStatus == ContractStatus.Active)
+            {
+                try
+                {
+                    if (contract.Contractor?.UserId > 0)
+                    {
+                        var contractTitle = contract.BidPackage?.Name ?? contract.ContractNumber;
+                        await _notificationService.CreateNotificationAsync(
+                            contract.Contractor.UserId,
+                            "Hợp đồng kinh tế có hiệu lực",
+                            $"Hợp đồng số {contract.ContractNumber} ({contractTitle}) đã chính thức có hiệu lực thi công.",
+                            NotificationType.Info,
+                            sendEmail: true);
+                    }
+                }
+                catch
+                {
+                    // Bọc try-catch riêng biệt để không ảnh hưởng đến kết quả đổi trạng thái
+                }
+            }
+
             // R3-9: Tự động tính toán lại điểm đánh giá uy tín (Rating) nhà thầu khi hợp đồng kết thúc hoặc chấm dứt
             if (request.NewStatus == ContractStatus.Terminated || request.NewStatus == ContractStatus.Completed)
             {
@@ -992,6 +1017,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Query()
                 .Include(m => m.Contract)
                     .ThenInclude(c => c.BidPackage)
+                .Include(m => m.Contract)
+                    .ThenInclude(c => c.Contractor)
                 .FirstOrDefaultAsync(m => m.Id == milestoneId);
 
             if (milestone == null)
@@ -1064,10 +1091,44 @@ namespace ProcurementSystem.Infrastructure.Services
 
             await _unitOfWork.SaveChangesAsync();
 
-            // R3-9: Tự động tính toán lại điểm uy tín (Rating) khi nghiệm thu mốc bị từ chối hoặc hợp đồng hoàn tất nghiệm thu 100%
-            if (!request.IsApproved || milestone.Contract.Status == ContractStatus.Completed)
+            // Gửi thông báo cho Nhà thầu về kết quả nghiệm thu mốc
+            try
             {
-                await _contractorService.RecalculateContractorRatingAsync(milestone.Contract.ContractorId);
+                if (milestone.Contract?.Contractor?.UserId > 0)
+                {
+                    if (request.IsApproved)
+                    {
+                        await _notificationService.CreateNotificationAsync(
+                            milestone.Contract.Contractor.UserId,
+                            "Nghiệm thu giai đoạn hợp đồng thành công",
+                            $"Mốc thực hiện '{milestone.Title}' thuộc hợp đồng số {milestone.Contract.ContractNumber} đã được phê duyệt nghiệm thu.",
+                            NotificationType.Info,
+                            sendEmail: true);
+                    }
+                    else
+                    {
+                        var rejectReason = !string.IsNullOrWhiteSpace(request.Note) ? $"\nLý do từ chối: {request.Note}" : string.Empty;
+                        await _notificationService.CreateNotificationAsync(
+                            milestone.Contract.Contractor.UserId,
+                            "Nghiệm thu giai đoạn hợp đồng bị từ chối",
+                            $"Mốc thực hiện '{milestone.Title}' thuộc hợp đồng số {milestone.Contract.ContractNumber} đã bị từ chối nghiệm thu.{rejectReason}",
+                            NotificationType.Warning,
+                            sendEmail: true);
+                    }
+                }
+            }
+            catch
+            {
+                // Bọc try-catch riêng biệt để không ảnh hưởng đến kết quả nghiệm thu
+            }
+
+            // R3-9: Tự động tính toán lại điểm uy tín (Rating) khi nghiệm thu mốc bị từ chối hoặc hợp đồng hoàn tất nghiệm thu 100%
+            if (!request.IsApproved || milestone.Contract?.Status == ContractStatus.Completed)
+            {
+                if (milestone.Contract != null)
+                {
+                    await _contractorService.RecalculateContractorRatingAsync(milestone.Contract.ContractorId);
+                }
             }
 
             var totalDisbursedAmount = await _unitOfWork.Repository<ContractMilestone>()

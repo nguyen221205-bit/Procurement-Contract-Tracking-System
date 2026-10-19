@@ -13,6 +13,7 @@ namespace ProcurementSystem.Infrastructure.Services
         private readonly IMemoryCache _cache;
         private readonly ILogger<OtpService> _logger;
         private readonly IConfiguration _configuration;
+        private readonly IEmailService _emailService;
 
         private class OtpCacheEntry
         {
@@ -24,11 +25,13 @@ namespace ProcurementSystem.Infrastructure.Services
         public OtpService(
             IMemoryCache cache,
             ILogger<OtpService> logger,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IEmailService emailService)
         {
             _cache = cache;
             _logger = logger;
             _configuration = configuration;
+            _emailService = emailService;
         }
 
         public async Task<ApiResponse<SendOtpResponse>> SendOtpAsync(SendOtpRequest request)
@@ -41,7 +44,23 @@ namespace ProcurementSystem.Infrastructure.Services
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
             var purpose = string.IsNullOrWhiteSpace(request.Purpose) ? "Register" : request.Purpose.Trim();
 
-            var cooldownKey = $"OTP_COOLDOWN_{purpose}_{normalizedEmail}";
+            // Kiểm tra cấu hình máy chủ SMTP thực tế
+            var smtpHost = _configuration["Smtp:Host"];
+            var smtpUser = _configuration["Smtp:Username"];
+            var smtpPass = _configuration["Smtp:Password"];
+            var isSmtpConfigured = !string.IsNullOrWhiteSpace(smtpHost) &&
+                                   !string.IsNullOrWhiteSpace(smtpUser) &&
+                                   !string.IsNullOrWhiteSpace(smtpPass);
+
+            if (!isSmtpConfigured)
+            {
+                _logger.LogWarning("Yêu cầu gửi OTP thất bại: Máy chủ chưa được cấu hình tài khoản gửi email (Smtp:Username hoặc Smtp:Password trong appsettings.json đang để trống).");
+                return ApiResponse<SendOtpResponse>.Fail(
+                    "Máy chủ chưa được cấu hình tài khoản gửi email (Smtp:Username và Smtp:Password trong appsettings.json đang để trống). Vui lòng cấu hình tài khoản SMTP thực tế để gửi mã xác thực qua email.");
+            }
+
+            // Khóa Cooldown gắn chặt với email để ngăn chặn Email Flooding / Cooldown Bypass qua tham số Purpose (SEC-03)
+            var cooldownKey = $"OTP_COOLDOWN_{normalizedEmail}";
             if (_cache.TryGetValue(cooldownKey, out DateTime nextAllowedTime))
             {
                 var remainingSeconds = Math.Max(1, (int)(nextAllowedTime - DateTime.UtcNow).TotalSeconds);
@@ -50,7 +69,6 @@ namespace ProcurementSystem.Infrastructure.Services
 
             // Sinh mã OTP ngẫu nhiên 6 chữ số bảo mật
             var otpCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString("D6");
-
             var otpKey = $"OTP_{purpose}_{normalizedEmail}";
             var otpEntry = new OtpCacheEntry
             {
@@ -59,36 +77,71 @@ namespace ProcurementSystem.Infrastructure.Services
                 CreatedAt = DateTime.UtcNow
             };
 
-            // Lưu cache: Thời hạn hiệu lực 5 phút, Cooldown gửi lại 60 giây
+            // Chuẩn bị nội dung email
+            var purposeLabel = purpose.Contains("Procuring", StringComparison.OrdinalIgnoreCase)
+                ? "đăng ký tài khoản Bên mời thầu"
+                : "đăng ký tài khoản Nhà thầu";
+            var subject = "[Hệ thống Đấu thầu & Quản lý Hợp đồng] Mã xác thực OTP đăng ký tài khoản";
+            var body = $@"
+                <div style='font-family: -apple-system, BlinkMacSystemFont, ""Segoe UI"", Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);'>
+                    <div style='text-align: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #0284c7;'>
+                        <h1 style='color: #0369a1; font-size: 20px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;'>
+                            HỆ THỐNG ĐẤU THẦU & QUẢN LÝ HỢP ĐỒNG
+                        </h1>
+                        <p style='color: #64748b; font-size: 13px; margin: 6px 0 0 0;'>Cổng tiếp nhận hồ sơ & thẩm định năng lực trực tuyến</p>
+                    </div>
+                    
+                    <p style='color: #1e293b; font-size: 15px; line-height: 1.6;'>Xin chào,</p>
+                    <p style='color: #334155; font-size: 14px; line-height: 1.6;'>
+                        Bạn đang thực hiện thao tác <strong>{purposeLabel}</strong> trên Hệ thống Đấu thầu điện tử. Để xác minh quyền sở hữu email, vui lòng sử dụng mã OTP dưới đây:
+                    </p>
+
+                    <div style='text-align: center; margin: 28px 0;'>
+                        <div style='display: inline-block; font-size: 36px; font-weight: 800; letter-spacing: 10px; color: #0284c7; background: #f0f9ff; padding: 14px 36px; border-radius: 10px; border: 2px dashed #38bdf8;'>
+                            {otpCode}
+                        </div>
+                    </div>
+
+                    <div style='background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 4px; margin-bottom: 24px;'>
+                        <p style='color: #b45309; font-size: 13px; margin: 0; line-height: 1.5;'>
+                            ⏳ <strong>Thời hạn hiệu lực:</strong> Mã OTP có giá trị trong vòng <strong>5 phút</strong>.<br/>
+                            🔒 <strong>Bảo mật:</strong> Tuyệt đối không chia sẻ mã này cho bất kỳ ai để bảo vệ tài khoản của bạn.
+                        </p>
+                    </div>
+
+                    <hr style='border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;' />
+                    <p style='font-size: 12px; color: #94a3b8; text-align: center; margin: 0;'>
+                        Nếu bạn không yêu cầu mã này, vui lòng bỏ qua thư.<br/>
+                        Đây là email tự động gửi từ máy chủ hệ thống, vui lòng không phản hồi thư này.
+                    </p>
+                </div>";
+
+            // Gửi email thực tế qua IEmailService
+            var emailSent = await _emailService.SendEmailAsync(normalizedEmail, subject, body, isHtml: true);
+            if (!emailSent)
+            {
+                _logger.LogError("Không thể gửi email OTP qua máy chủ SMTP tới địa chỉ: {Email}", normalizedEmail);
+                return ApiResponse<SendOtpResponse>.Fail(
+                    "Không thể gửi email OTP qua máy chủ SMTP. Vui lòng kiểm tra lại cấu hình tài khoản gửi thư (Username/Password hoặc kết nối mạng).");
+            }
+
+            // Chỉ lưu cache khi gửi email thành công
             _cache.Set(otpKey, otpEntry, TimeSpan.FromMinutes(5));
             _cache.Set(cooldownKey, DateTime.UtcNow.AddSeconds(60), TimeSpan.FromSeconds(60));
 
-            // Thử gửi Email qua SMTP nếu cấu hình có sẵn
-            var emailSent = await TrySendEmailAsync(normalizedEmail, otpCode, purpose);
-
-            // Ghi log bảo mật vào hệ thống
-            _logger.LogInformation("=================================================================");
-            _logger.LogInformation(">>> [EMAIL OTP] Gửi tới: {Email} | Mã OTP: {Code} | Mục đích: {Purpose} | SMTP Sent: {Sent}",
-                normalizedEmail, otpCode, purpose, emailSent);
-            _logger.LogInformation("=================================================================");
+            _logger.LogInformation(">>> [REAL EMAIL OTP SENT] Đã gửi mã OTP thành công đến {Email} | Mục đích: {Purpose}",
+                normalizedEmail, purpose);
 
             var response = new SendOtpResponse
             {
                 Email = normalizedEmail,
                 CooldownSeconds = 60,
                 ExpiryMinutes = 5,
-                // Trong môi trường Development trả về DevOtpCode để phục vụ kiểm thử nhanh
-                DevOtpCode = IsDevelopmentEnvironment() ? otpCode : null
+                // Tuyệt đối không trả về mã OTP trong phản hồi API
+                DevOtpCode = null
             };
 
-            return ApiResponse<SendOtpResponse>.Ok(response, "Mã xác thực OTP đã được gửi đến email của bạn (hiệu lực 5 phút).");
-        }
-
-        private bool IsDevelopmentEnvironment()
-        {
-            var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") 
-                      ?? _configuration["ASPNETCORE_ENVIRONMENT"];
-            return string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase);
+            return ApiResponse<SendOtpResponse>.Ok(response, "Mã xác thực OTP đã được gửi đến email của bạn (hiệu lực 5 phút). Vui lòng kiểm tra hộp thư đến hoặc mục thư rác.");
         }
 
         public bool VerifyOtp(string email, string otpCode, string purpose, out string errorMessage)
@@ -111,19 +164,23 @@ namespace ProcurementSystem.Infrastructure.Services
 
             entry.Attempts++;
 
-            if (entry.Attempts > 5)
-            {
-                _cache.Remove(otpKey);
-                errorMessage = "Mã OTP đã bị hủy do nhập sai quá 5 lần. Vui lòng yêu cầu mã mới.";
-                return false;
-            }
+            var expectedBytes = System.Text.Encoding.UTF8.GetBytes(entry.Code);
+            var actualBytes = System.Text.Encoding.UTF8.GetBytes(otpCode.Trim());
+            var isMatch = expectedBytes.Length == actualBytes.Length &&
+                          CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
 
-            if (!string.Equals(entry.Code, otpCode.Trim(), StringComparison.Ordinal))
+            if (!isMatch)
             {
+                // Ngay khi đạt ngưỡng 5 lần thử sai, hủy mã ngay lập tức khỏi bộ nhớ cache (REV-03 / SEC-07)
+                if (entry.Attempts >= 5)
+                {
+                    _cache.Remove(otpKey);
+                    errorMessage = "Mã xác thực OTP không chính xác. Mã đã bị hủy do nhập sai quá 5 lần. Vui lòng yêu cầu mã mới.";
+                    return false;
+                }
+
                 var remaining = 5 - entry.Attempts;
-                errorMessage = remaining > 0 
-                    ? $"Mã xác thực OTP không chính xác. Bạn còn {remaining} lần thử." 
-                    : "Mã xác thực OTP không chính xác. Mã đã bị hủy.";
+                errorMessage = $"Mã xác thực OTP không chính xác. Bạn còn {remaining} lần thử.";
                 return false;
             }
 
@@ -131,63 +188,6 @@ namespace ProcurementSystem.Infrastructure.Services
             _cache.Remove(otpKey);
             errorMessage = string.Empty;
             return true;
-        }
-
-        private async Task<bool> TrySendEmailAsync(string toEmail, string otpCode, string purpose)
-        {
-            var smtpHost = _configuration["Smtp:Host"];
-            var smtpPortStr = _configuration["Smtp:Port"];
-            var smtpUser = _configuration["Smtp:Username"];
-            var smtpPass = _configuration["Smtp:Password"];
-            var smtpSender = _configuration["Smtp:SenderEmail"] ?? "no-reply@procurement.gov.vn";
-
-            if (string.IsNullOrWhiteSpace(smtpHost) || !int.TryParse(smtpPortStr, out var smtpPort))
-            {
-                // Chưa cấu hình SMTP -> fallback sang logging
-                return false;
-            }
-
-            try
-            {
-                using var client = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
-                {
-                    EnableSsl = true,
-                    Credentials = new System.Net.NetworkCredential(smtpUser, smtpPass)
-                };
-
-                var subject = "[Hệ thống Đấu thầu] Mã xác thực OTP đăng ký tài khoản";
-                var body = $@"
-                    <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 24px; border: 1px solid #e2e8f0; rounded: 12px;'>
-                        <h2 style='color: #0284c7; text-align: center;'>HỆ THỐNG ĐẤU THẦU ĐIỆN TỬ</h2>
-                        <p>Xin chào,</p>
-                        <p>Bạn đang thực hiện đăng ký tài khoản trên Hệ thống Đấu thầu điện tử. Mã xác thực OTP của bạn là:</p>
-                        <div style='text-align: center; margin: 24px 0;'>
-                            <span style='display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #0f172a; background: #f1f5f9; padding: 12px 28px; border-radius: 8px; border: 1px dashed #94a3b8;'>
-                                {otpCode}
-                            </span>
-                        </div>
-                        <p style='color: #64748b; font-size: 13px;'>* Mã OTP này có hiệu lực trong vòng <strong>5 phút</strong>. Tuyệt đối không chia sẻ mã này cho bất kỳ ai.</p>
-                        <hr style='border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;' />
-                        <p style='font-size: 11px; color: #94a3b8; text-align: center;'>Đây là email tự động, vui lòng không trả lời thư này.</p>
-                    </div>";
-
-                var mailMessage = new System.Net.Mail.MailMessage
-                {
-                    From = new System.Net.Mail.MailAddress(smtpSender, "Hệ Thống Đấu Thầu"),
-                    Subject = subject,
-                    Body = body,
-                    IsBodyHtml = true
-                };
-                mailMessage.To.Add(toEmail);
-
-                await client.SendMailAsync(mailMessage);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("Không thể gửi email OTP qua SMTP: {Message}", ex.Message);
-                return false;
-            }
         }
     }
 }

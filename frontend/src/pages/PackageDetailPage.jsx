@@ -45,7 +45,7 @@ import SubmitBidModal from '../components/submissions/SubmitBidModal';
 import DisqualifySubmissionModal from '../components/evaluation/DisqualifySubmissionModal';
 import { PACKAGE_TYPES, ROLES } from '../utils/constants';
 import { formatVND, formatCurrency, formatDate, formatDateTime } from '../utils/formatters';
-import { downloadSecureFile } from '../utils/fileDownload';
+import { downloadSecureFile, previewSecureFile } from '../utils/fileDownload';
 
 const API_BASE_URL = 'http://localhost:5225';
 
@@ -578,14 +578,38 @@ export const PackageDetailPage = () => {
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => downloadSecureFile(`/api/bid-packages/documents/${doc.id}/download`, doc.fileName)}
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-sky-600 text-slate-700 hover:text-white rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 flex-shrink-0 cursor-pointer"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Tải về</span>
-                        </button>
+                        {isContractor ? (
+                          <button
+                            type="button"
+                            onClick={() => previewSecureFile(`/api/bid-packages/documents/${doc.id}/download`, doc.fileName)}
+                            className="px-3 py-1.5 bg-sky-50 hover:bg-sky-600 text-sky-700 hover:text-white rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 flex-shrink-0 cursor-pointer"
+                            title="Xem trước tài liệu HSMT"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Xem trước</span>
+                          </button>
+                        ) : (
+                          <div className="flex items-center space-x-2 flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => previewSecureFile(`/api/bid-packages/documents/${doc.id}/download`, doc.fileName)}
+                              className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-600 text-sky-700 hover:text-white rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 cursor-pointer"
+                              title="Xem trước tài liệu HSMT"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Xem trước</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => downloadSecureFile(`/api/bid-packages/documents/${doc.id}/download`, doc.fileName)}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 cursor-pointer"
+                              title="Tải tệp về máy"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Tải về</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

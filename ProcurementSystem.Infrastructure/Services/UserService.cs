@@ -5,15 +5,21 @@ using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
 
+using System.Security.Cryptography;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+
 namespace ProcurementSystem.Infrastructure.Services
 {
     public class UserService : IUserService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IEmailService _emailService;
 
-        public UserService(IUnitOfWork unitOfWork)
+        public UserService(IUnitOfWork unitOfWork, IEmailService emailService)
         {
             _unitOfWork = unitOfWork;
+            _emailService = emailService;
         }
 
         public async Task<ApiResponse<PaginatedList<UserDto>>> GetUsersAsync(UserFilterParams filter)
@@ -292,6 +298,125 @@ namespace ProcurementSystem.Infrastructure.Services
             }).ToList();
 
             return ApiResponse<List<RoleDto>>.Ok(dtos, "Lấy danh mục vai trò thành công.");
+        }
+
+        public async Task<ApiResponse<ResetPasswordResponseDto>> ResetPasswordAsync(int id, ResetPasswordRequest? request, int currentUserId)
+        {
+            var user = await _unitOfWork.Repository<User>().GetByIdAsync(id);
+            if (user == null)
+            {
+                return ApiResponse<ResetPasswordResponseDto>.Fail("Không tìm thấy người dùng với mã ID đã cung cấp.");
+            }
+
+            // 1. Xác định mật khẩu mới
+            string newPassword;
+            if (!string.IsNullOrWhiteSpace(request?.NewPassword))
+            {
+                var inputPassword = request.NewPassword.Trim();
+                if (inputPassword.Length < 8)
+                {
+                    return ApiResponse<ResetPasswordResponseDto>.Fail("Mật khẩu mới phải có độ dài tối thiểu 8 ký tự.");
+                }
+                newPassword = inputPassword;
+            }
+            else
+            {
+                newPassword = GenerateSecureRandomPassword(10);
+            }
+
+            // 2. Hash mật khẩu và cập nhật trạng thái bảo mật
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+            user.MustChangePassword = false; // Cho phép người dùng đăng nhập làm việc ngay bằng mật khẩu admin cấp
+            user.RefreshToken = null;
+            user.RefreshTokenExpiry = null;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _unitOfWork.Repository<User>().Update(user);
+
+            // 3. Ghi AuditLog (TUYỆT ĐỐI KHÔNG ghi mật khẩu thô hay hash vào OldValues/NewValues)
+            var auditLog = new AuditLog
+            {
+                UserId = currentUserId > 0 ? currentUserId : null,
+                Action = "RESET_PASSWORD",
+                EntityType = "User",
+                EntityId = user.Id,
+                OldValues = null,
+                NewValues = JsonSerializer.Serialize(new { MustChangePassword = false, ResetByAdmin = true }),
+                Timestamp = DateTime.UtcNow
+            };
+            await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+
+            await _unitOfWork.SaveChangesAsync();
+
+            // 4. Gửi email thông báo mật khẩu mới cho người dùng
+            bool emailSent = false;
+            try
+            {
+                var subject = "[Hệ thống Đấu thầu] Thông báo Đặt lại Mật khẩu Tài khoản";
+                var body = $@"
+                    <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px;'>
+                        <h2 style='color: #0284c7; margin-top: 0;'>Thông báo Đặt lại Mật khẩu</h2>
+                        <p>Xin chào <strong>{HtmlEncoder.Default.Encode(user.FullName)}</strong>,</p>
+                        <p>Quản trị viên hệ thống đã đặt lại mật khẩu cho tài khoản của bạn (<strong>{HtmlEncoder.Default.Encode(user.Email)}</strong>).</p>
+                        <div style='background: #f1f5f9; padding: 16px; border-radius: 6px; margin: 16px 0;'>
+                            <p style='margin: 0; font-size: 14px; color: #475569;'>Mật khẩu mới của bạn là:</p>
+                            <p style='margin: 8px 0 0 0; font-size: 18px; font-weight: bold; color: #0f172a; font-family: monospace;'>{HtmlEncoder.Default.Encode(newPassword)}</p>
+                        </div>
+                        <p style='color: #0369a1; font-size: 13px;'>Bạn có thể sử dụng ngay mật khẩu này để đăng nhập vào hệ thống hoặc đổi sang mật khẩu cá nhân tùy ý.</p>
+                        <hr style='border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;' />
+                        <p style='font-size: 12px; color: #94a3b8;'>Đây là email tự động từ Hệ thống Quản lý Đấu thầu & Theo dõi Hợp đồng. Vui lòng không trả lời thư này.</p>
+                    </div>";
+
+                emailSent = await _emailService.SendEmailAsync(user.Email, subject, body, isHtml: true);
+            }
+            catch
+            {
+                // Bỏ qua lỗi gửi email để không làm gián đoạn việc trả về mật khẩu cho Admin
+            }
+
+            var response = new ResetPasswordResponseDto
+            {
+                UserId = user.Id,
+                Email = user.Email,
+                FullName = user.FullName,
+                NewPassword = newPassword,
+                MustChangePassword = false,
+                EmailSent = emailSent
+            };
+
+            return ApiResponse<ResetPasswordResponseDto>.Ok(response, "Đặt lại mật khẩu thành công. Mật khẩu mới đã được cập nhật.");
+        }
+
+        private static string GenerateSecureRandomPassword(int length = 10)
+        {
+            const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+            const string lower = "abcdefghijkmnpqrstuvwxyz";
+            const string digits = "23456789";
+            const string special = "!@#$%&*";
+
+            var chars = new List<char>
+            {
+                upper[RandomNumberGenerator.GetInt32(upper.Length)],
+                lower[RandomNumberGenerator.GetInt32(lower.Length)],
+                digits[RandomNumberGenerator.GetInt32(digits.Length)],
+                special[RandomNumberGenerator.GetInt32(special.Length)]
+            };
+
+            const string all = upper + lower + digits + special;
+            while (chars.Count < length)
+            {
+                chars.Add(all[RandomNumberGenerator.GetInt32(all.Length)]);
+            }
+
+            // Thuật toán Fisher-Yates shuffle sử dụng CSPRNG RandomNumberGenerator.GetInt32
+            var array = chars.ToArray();
+            for (int i = array.Length - 1; i > 0; i--)
+            {
+                int j = RandomNumberGenerator.GetInt32(i + 1);
+                (array[i], array[j]) = (array[j], array[i]);
+            }
+
+            return new string(array);
         }
 
         private static UserDto MapToUserDto(User user)

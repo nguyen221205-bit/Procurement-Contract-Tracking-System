@@ -13,7 +13,7 @@ namespace ProcurementSystem.API.Controllers
     [ApiController]
     [Route("api/audit-logs")]
     [Produces("application/json")]
-    [Authorize(Roles = "Admin,Procurement")]
+    [Authorize(Roles = "Admin")]
     public class AuditLogsController : ControllerBase
     {
         private readonly IAuditLogService _auditLogService;
@@ -26,7 +26,7 @@ namespace ProcurementSystem.API.Controllers
         /// <summary>
         /// Tra cứu danh sách nhật ký kiểm toán (phân trang, lọc theo Action, Entity, User, khoảng thời gian)
         /// </summary>
-        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        /// <remarks>Quyền hạn: Admin.</remarks>
         [HttpGet]
         [ProducesResponseType(typeof(ApiResponse<PaginatedList<AuditLogDto>>), StatusCodes.Status200OK)]
         public async Task<ActionResult<ApiResponse<PaginatedList<AuditLogDto>>>> GetAuditLogs(
@@ -40,7 +40,7 @@ namespace ProcurementSystem.API.Controllers
         /// Xem chi tiết một bản ghi nhật ký kiểm toán
         /// </summary>
         /// <param name="id">Mã định danh bản ghi kiểm toán.</param>
-        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        /// <remarks>Quyền hạn: Admin.</remarks>
         [HttpGet("{id:int}")]
         [ProducesResponseType(typeof(ApiResponse<AuditLogDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<AuditLogDto>), StatusCodes.Status404NotFound)]

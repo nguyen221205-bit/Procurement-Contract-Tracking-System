@@ -12,11 +12,16 @@ namespace ProcurementSystem.Infrastructure.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileStorageService _fileStorageService;
+        private readonly INotificationService _notificationService;
 
-        public EvaluationService(IUnitOfWork unitOfWork, IFileStorageService fileStorageService)
+        public EvaluationService(
+            IUnitOfWork unitOfWork,
+            IFileStorageService fileStorageService,
+            INotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _fileStorageService = fileStorageService;
+            _notificationService = notificationService;
         }
 
         public async Task<ApiResponse<List<EvaluationCriteriaDto>>> GetCriteriaByPackageAsync(int packageId)
@@ -695,6 +700,34 @@ namespace ProcurementSystem.Infrastructure.Services
 
             await _unitOfWork.SaveChangesAsync();
 
+            // Gửi thông báo & email cho nhà thầu trúng thầu
+            if (selectedSubmission.Contractor?.UserId != null)
+            {
+                await _notificationService.CreateNotificationAsync(
+                    selectedSubmission.Contractor.UserId,
+                    $"Chúc mừng trúng thầu gói {package.Code}",
+                    $"Hồ sơ dự thầu của doanh nghiệp bạn đối với gói thầu '{package.Name}' ({package.Code}) đã được phê duyệt trúng thầu. Vui lòng chuẩn bị để tiến hành thương thảo và hoàn thiện hợp đồng kinh tế.",
+                    NotificationType.Info,
+                    sendEmail: true);
+            }
+
+            // Gửi thông báo & email hàng loạt cho các nhà thầu khác không được lựa chọn
+            var rejectedUserIds = submissions
+                .Where(s => s.Id != selectedSubmission.Id && s.Contractor?.UserId != null && s.Status == BidSubmissionStatus.Rejected)
+                .Select(s => s.Contractor.UserId)
+                .Distinct()
+                .ToList();
+
+            if (rejectedUserIds.Count != 0)
+            {
+                await _notificationService.CreateBulkNotificationsAsync(
+                    rejectedUserIds,
+                    $"Thông báo kết quả xét thầu gói {package.Code}",
+                    $"Gói thầu '{package.Name}' ({package.Code}) đã hoàn tất công tác xét chọn trao thầu. Hồ sơ của quý đơn vị chưa được lựa chọn trong đợt này. Cảm ơn sự quan tâm của quý doanh nghiệp.",
+                    NotificationType.Info,
+                    sendEmail: true);
+            }
+
             return ApiResponse<bool>.Ok(true, $"Đã phê duyệt nhà thầu (Mã hồ sơ: #{request.SelectedSubmissionId}) trúng thầu thành công. Gói thầu đã chuyển sang trạng thái 'Awarded' và sẵn sàng để ký hợp đồng.");
         }
 
@@ -799,36 +832,6 @@ namespace ProcurementSystem.Infrastructure.Services
             package.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.Repository<BidPackage>().Update(package);
 
-            // Gửi thông báo đến tài khoản nhà thầu bị thu hồi trao thầu
-            if (winningSubmission?.Contractor?.UserId != null)
-            {
-                var notifContractor = new Notification
-                {
-                    UserId = winningSubmission.Contractor.UserId,
-                    Title = $"Thu hồi quyết định trao thầu gói {package.Code}",
-                    Message = $"Quyết định phê duyệt trúng thầu của doanh nghiệp bạn đối với gói thầu '{package.Name}' ({package.Code}) đã bị thu hồi. Lý do: {request.Reason.Trim()}",
-                    Type = NotificationType.Warning,
-                    CreatedAt = DateTime.UtcNow,
-                    IsRead = false
-                };
-                await _unitOfWork.Repository<Notification>().AddAsync(notifContractor);
-            }
-
-            // Nếu người thu hồi là Admin và không phải người tạo gói, gửi thông báo cho người tạo gói thầu
-            if (isAdmin && package.CreatedBy != userId)
-            {
-                var notifCreator = new Notification
-                {
-                    UserId = package.CreatedBy,
-                    Title = $"Kết quả trao thầu gói {package.Code} đã bị thu hồi",
-                    Message = $"Quản trị viên đã thực hiện thu hồi quyết định phê duyệt trúng thầu gói thầu '{package.Name}' ({package.Code}). Lý do: {request.Reason.Trim()}",
-                    Type = NotificationType.Warning,
-                    CreatedAt = DateTime.UtcNow,
-                    IsRead = false
-                };
-                await _unitOfWork.Repository<Notification>().AddAsync(notifCreator);
-            }
-
             // Ghi nhật ký kiểm toán (Audit Log)
             var auditLog = new AuditLog
             {
@@ -853,6 +856,28 @@ namespace ProcurementSystem.Infrastructure.Services
             await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
 
             await _unitOfWork.SaveChangesAsync();
+
+            // Gửi thông báo và email đến tài khoản nhà thầu bị thu hồi trao thầu
+            if (winningSubmission?.Contractor?.UserId != null)
+            {
+                await _notificationService.CreateNotificationAsync(
+                    winningSubmission.Contractor.UserId,
+                    $"Thu hồi quyết định trao thầu gói {package.Code}",
+                    $"Quyết định phê duyệt trúng thầu của doanh nghiệp bạn đối với gói thầu '{package.Name}' ({package.Code}) đã bị thu hồi. Lý do: {request.Reason.Trim()}",
+                    NotificationType.Warning,
+                    sendEmail: true);
+            }
+
+            // Nếu người thu hồi là Admin và không phải người tạo gói, gửi thông báo cho người tạo gói thầu
+            if (isAdmin && package.CreatedBy != userId)
+            {
+                await _notificationService.CreateNotificationAsync(
+                    package.CreatedBy,
+                    $"Kết quả trao thầu gói {package.Code} đã bị thu hồi",
+                    $"Quản trị viên đã thực hiện thu hồi quyết định phê duyệt trúng thầu gói thầu '{package.Name}' ({package.Code}). Lý do: {request.Reason.Trim()}",
+                    NotificationType.Warning,
+                    sendEmail: true);
+            }
 
             // R3-5: Dọn dẹp các tệp scan vật lý của hợp đồng Draft đã xóa
             foreach (var scanFile in draftScanFilesToDelete)
@@ -942,22 +967,18 @@ namespace ProcurementSystem.Infrastructure.Services
             };
             await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
 
-            // Gửi thông báo đến nhà thầu
+            await _unitOfWork.SaveChangesAsync();
+
+            // Gửi thông báo và email đến nhà thầu
             if (submission.Contractor?.UserId != null)
             {
-                var notifContractor = new Notification
-                {
-                    UserId = submission.Contractor.UserId,
-                    Title = $"Hồ sơ dự thầu bị loại - Gói {submission.BidPackage.Code}",
-                    Message = $"Hồ sơ dự thầu của doanh nghiệp bạn đối với gói thầu '{submission.BidPackage.Name}' ({submission.BidPackage.Code}) đã bị loại khỏi quá trình đánh giá. Lý do: {request.Reason.Trim()}",
-                    Type = NotificationType.Warning,
-                    CreatedAt = DateTime.UtcNow,
-                    IsRead = false
-                };
-                await _unitOfWork.Repository<Notification>().AddAsync(notifContractor);
+                await _notificationService.CreateNotificationAsync(
+                    submission.Contractor.UserId,
+                    $"Hồ sơ dự thầu bị loại - Gói {submission.BidPackage.Code}",
+                    $"Hồ sơ dự thầu của doanh nghiệp bạn đối với gói thầu '{submission.BidPackage.Name}' ({submission.BidPackage.Code}) đã bị loại khỏi quá trình đánh giá. Lý do: {request.Reason.Trim()}",
+                    NotificationType.Warning,
+                    sendEmail: true);
             }
-
-            await _unitOfWork.SaveChangesAsync();
 
             // Tính toán lại xếp hạng cho gói thầu nếu đang trong giai đoạn chấm điểm
             if (submission.BidPackage.Status == BidPackageStatus.Evaluating)

@@ -8,11 +8,27 @@ namespace ProcurementSystem.Core.DTOs.Auth
         public string CurrentPassword { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Mật khẩu mới không được để trống.")]
-        [MinLength(8, ErrorMessage = "Mật khẩu mới phải có ít nhất 8 ký tự.")]
+        [MinLength(6, ErrorMessage = "Mật khẩu mới phải có ít nhất 6 ký tự.")]
         public string NewPassword { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Xác nhận mật khẩu mới không được để trống.")]
-        [Compare("NewPassword", ErrorMessage = "Mật khẩu mới và xác nhận mật khẩu không khớp.")]
-        public string ConfirmNewPassword { get; set; } = string.Empty;
+        private string _confirmNewPassword = string.Empty;
+
+        public string ConfirmNewPassword
+        {
+            get => _confirmNewPassword;
+            set => _confirmNewPassword = value ?? string.Empty;
+        }
+
+        public string? ConfirmPassword
+        {
+            get => _confirmNewPassword;
+            set
+            {
+                if (!string.IsNullOrEmpty(value))
+                {
+                    _confirmNewPassword = value;
+                }
+            }
+        }
     }
 }

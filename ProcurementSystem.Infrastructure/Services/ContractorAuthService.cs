@@ -1,5 +1,7 @@
+using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Auth;
+using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
 
@@ -12,28 +14,30 @@ namespace ProcurementSystem.Infrastructure.Services
         private readonly IPdfSecurityService _pdfSecurityService;
         private readonly IFileStorageService _fileStorageService;
         private readonly IOtpService _otpService;
+        private readonly INotificationService _notificationService;
 
         public ContractorAuthService(
             IUnitOfWork unitOfWork,
             ITaxLookupService taxLookupService,
             IPdfSecurityService pdfSecurityService,
             IFileStorageService fileStorageService,
-            IOtpService otpService)
+            IOtpService otpService,
+            INotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _taxLookupService = taxLookupService;
             _pdfSecurityService = pdfSecurityService;
             _fileStorageService = fileStorageService;
             _otpService = otpService;
+            _notificationService = notificationService;
         }
 
         public async Task<ApiResponse<ContractorRegisterResponse>> RegisterContractorAsync(RegisterContractorRequest request)
         {
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-            // 0. Xác thực mã OTP email
-            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterContractor", out var otpError) &&
-                !_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "Register", out otpError))
+            // 0. Xác thực mã OTP email (cố định purpose RegisterContractor, tránh ghi đè thông báo số lần thử còn lại)
+            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterContractor", out var otpError))
             {
                 return ApiResponse<ContractorRegisterResponse>.Fail(otpError);
             }
@@ -143,6 +147,37 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 await _unitOfWork.SaveChangesAsync();
                 await _unitOfWork.CommitTransactionAsync();
+
+                // 6.1 Gửi thông báo In-app & Email cho Admin và Nhà thầu mới (bọc try-catch độc lập)
+                try
+                {
+                    var adminUserIds = await _unitOfWork.Repository<User>()
+                        .Query()
+                        .Where(u => u.IsActive && u.UserRoles.Any(ur => ur.Role.Name == "Admin"))
+                        .Select(u => u.Id)
+                        .ToListAsync();
+
+                    if (adminUserIds.Any())
+                    {
+                        await _notificationService.CreateBulkNotificationsAsync(
+                            adminUserIds,
+                            "Hồ sơ Nhà thầu mới chờ thẩm định",
+                            $"Nhà thầu {contractor.CompanyName} (MST: {contractor.TaxCode}) vừa hoàn tất đăng ký tài khoản và đang chờ Quản trị viên thẩm định hồ sơ.",
+                            NotificationType.Info,
+                            sendEmail: true);
+                    }
+
+                    await _notificationService.CreateNotificationAsync(
+                        user.Id,
+                        "Đăng ký tài khoản thành công",
+                        "Hồ sơ đăng ký của quý đơn vị đã được tiếp nhận và đang trong quá trình thẩm định. Bạn sẽ nhận được thông báo khi có kết quả.",
+                        NotificationType.Info,
+                        sendEmail: false);
+                }
+                catch
+                {
+                    // Đảm bảo không làm gián đoạn phản hồi đăng ký nếu gửi thông báo gặp sự cố
+                }
 
                 // 7. Trả về Response
                 var response = new ContractorRegisterResponse

@@ -196,12 +196,7 @@ export const RegisterPage = () => {
       if (res && res.success) {
         setOtpSentContractor(true);
         setOtpCooldownContractor(res.data?.cooldownSeconds || 60);
-        if (res.data?.devOtpCode) {
-          toast.success(`Mã OTP đã gửi! [Dev: ${res.data.devOtpCode}]`, { duration: 6000 });
-          setContractorData((prev) => ({ ...prev, otpCode: res.data.devOtpCode }));
-        } else {
-          toast.success('Mã xác thực OTP 6 số đã được gửi đến email của bạn.');
-        }
+        toast.success('Mã xác thực OTP đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư đến (hoặc thư mục Spam).', { duration: 6000 });
       } else {
         toast.error(res?.message || 'Không thể gửi mã OTP');
       }
@@ -225,12 +220,7 @@ export const RegisterPage = () => {
       if (res && res.success) {
         setOtpSentProcuring(true);
         setOtpCooldownProcuring(res.data?.cooldownSeconds || 60);
-        if (res.data?.devOtpCode) {
-          toast.success(`Mã OTP đã gửi! [Dev: ${res.data.devOtpCode}]`, { duration: 6000 });
-          setProcuringData((prev) => ({ ...prev, otpCode: res.data.devOtpCode }));
-        } else {
-          toast.success('Mã xác thực OTP 6 số đã được gửi đến email công vụ của bạn.');
-        }
+        toast.success('Mã xác thực OTP đã được gửi đến email công vụ của bạn. Vui lòng kiểm tra hộp thư đến (hoặc thư mục Spam).', { duration: 6000 });
       } else {
         toast.error(res?.message || 'Không thể gửi mã OTP');
       }
@@ -497,7 +487,7 @@ export const RegisterPage = () => {
                       />
                     </div>
                     <p className="mt-1 text-[11px] text-slate-500 flex items-center gap-1">
-                      <span>💡 <em>Môi trường kiểm thử Local:</em> Nhấn <strong>"Gửi mã OTP"</strong> ở trên, hệ thống sẽ tự động cấp và điền mã xác thực hợp lệ ngay lập tức.</span>
+                      <span>💡 <em>Lưu ý:</em> Nhấn <strong>"Gửi mã OTP"</strong> ở trên, hệ thống sẽ gửi mã về email của bạn. Vui lòng kiểm tra hộp thư đến (Inbox) hoặc thư mục Rác (Spam) và nhập mã 6 số vào ô này.</span>
                     </p>
                   </div>
                 </div>
@@ -802,7 +792,7 @@ export const RegisterPage = () => {
                       />
                     </div>
                     <p className="mt-1 text-[11px] text-slate-500 flex items-center gap-1">
-                      <span>💡 <em>Môi trường kiểm thử Local:</em> Nhấn <strong>"Gửi mã OTP"</strong> ở trên, hệ thống sẽ tự động cấp và điền mã xác thực hợp lệ ngay lập tức.</span>
+                      <span>💡 <em>Lưu ý:</em> Nhấn <strong>"Gửi mã OTP"</strong> ở trên, hệ thống sẽ gửi mã về email công vụ. Vui lòng kiểm tra hộp thư đến (Inbox) hoặc thư mục Rác (Spam) và nhập mã 6 số vào ô này.</span>
                     </p>
                   </div>
                 </div>

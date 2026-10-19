@@ -167,6 +167,20 @@ namespace ProcurementSystem.Infrastructure.Seeders
                 END
             ");
 
+            // Tự động mở khóa toàn bộ tài khoản Giám khảo không bắt buộc đổi mật khẩu
+            await context.Database.ExecuteSqlRawAsync(@"
+                UPDATE u
+                SET u.MustChangePassword = 0
+                FROM Users u
+                INNER JOIN UserRoles ur ON u.Id = ur.UserId
+                INNER JOIN Roles r ON ur.RoleId = r.Id
+                WHERE r.Name = 'Evaluator';
+
+                UPDATE Users
+                SET MustChangePassword = 0
+                WHERE Email LIKE '%gk%' OR Email LIKE '%evaluator%';
+            ");
+
             // 1. Seed Roles
             var roleNames = new[] { "Admin", "Procurement", "Evaluator", "Contractor" };
             var roleDescriptions = new Dictionary<string, string>

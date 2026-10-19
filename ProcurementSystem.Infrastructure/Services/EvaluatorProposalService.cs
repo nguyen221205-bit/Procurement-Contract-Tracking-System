@@ -311,7 +311,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(initialPassword),
                     Phone = proposal.Phone?.Trim(),
                     IsActive = true,
-                    MustChangePassword = true,
+                    MustChangePassword = false, // Cho phép Giám khảo đăng nhập làm việc ngay bằng mật khẩu ban đầu
                     CreatedAt = DateTime.UtcNow
                 };
                 await _unitOfWork.Repository<User>().AddAsync(newUser);

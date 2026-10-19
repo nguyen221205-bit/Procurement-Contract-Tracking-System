@@ -12,13 +12,16 @@ namespace ProcurementSystem.Infrastructure.Services
     {
         private readonly AppDbContext _context;
         private readonly IFileStorageService _fileStorageService;
+        private readonly INotificationService _notificationService;
 
         public ProcuringEntityService(
             AppDbContext context,
-            IFileStorageService fileStorageService)
+            IFileStorageService fileStorageService,
+            INotificationService notificationService)
         {
             _context = context;
             _fileStorageService = fileStorageService;
+            _notificationService = notificationService;
         }
 
         public async Task<ApiResponse<PaginatedList<ProcuringEntityDto>>> GetProcuringEntitiesAsync(ProcuringEntityFilterParams filter)
@@ -258,21 +261,17 @@ namespace ProcurementSystem.Infrastructure.Services
             };
             await _context.AuditLogs.AddAsync(auditLog);
 
-            // Gửi thông báo đến tài khoản Bên mời thầu
-            var notif = new Notification
-            {
-                UserId = entity.UserId,
-                Title = request.IsApproved ? "Hồ sơ Bên mời thầu đã được phê duyệt" : "Hồ sơ Bên mời thầu bị từ chối phê duyệt",
-                Message = request.IsApproved
+            await _context.SaveChangesAsync();
+
+            // Gửi thông báo và email đến tài khoản Bên mời thầu tuần tự, an toàn cho DbContext
+            await _notificationService.CreateNotificationAsync(
+                entity.UserId,
+                request.IsApproved ? "Hồ sơ Bên mời thầu đã được phê duyệt" : "Hồ sơ Bên mời thầu bị từ chối phê duyệt",
+                request.IsApproved
                     ? $"Hồ sơ pháp nhân đơn vị {entity.OrganizationName} đã được Quản trị viên thẩm định phê duyệt thành công. Bạn đã có toàn quyền tạo gói thầu và tổ chức đấu thầu."
                     : $"Hồ sơ pháp nhân đơn vị {entity.OrganizationName} đã bị từ chối phê duyệt. Lý do: {request.AdminNotes ?? "Chưa đáp ứng đủ điều kiện pháp lý theo quy định."}",
-                Type = request.IsApproved ? NotificationType.Info : NotificationType.Warning,
-                CreatedAt = DateTime.UtcNow,
-                IsRead = false
-            };
-            await _context.Notifications.AddAsync(notif);
-
-            await _context.SaveChangesAsync();
+                request.IsApproved ? NotificationType.Info : NotificationType.Warning,
+                sendEmail: true);
 
             var message = request.IsApproved
                 ? "Phê duyệt hồ sơ pháp nhân Bên mời thầu thành công."

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Auth;
+using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Data;
 using ProcurementSystem.Infrastructure.Entities;
@@ -13,26 +14,28 @@ namespace ProcurementSystem.Infrastructure.Services
         private readonly IFileStorageService _fileStorageService;
         private readonly IOtpService _otpService;
         private readonly IPdfSecurityService _pdfSecurityService;
+        private readonly INotificationService _notificationService;
 
         public ProcuringEntityAuthService(
             AppDbContext context,
             IFileStorageService fileStorageService,
             IOtpService otpService,
-            IPdfSecurityService pdfSecurityService)
+            IPdfSecurityService pdfSecurityService,
+            INotificationService notificationService)
         {
             _context = context;
             _fileStorageService = fileStorageService;
             _otpService = otpService;
             _pdfSecurityService = pdfSecurityService;
+            _notificationService = notificationService;
         }
 
         public async Task<ApiResponse<ProcuringEntityRegisterResponse>> RegisterProcuringEntityAsync(RegisterProcuringEntityRequest request)
         {
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-            // 0. Xác thực mã OTP email
-            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterProcuringEntity", out var otpError) &&
-                !_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "Register", out otpError))
+            // 0. Xác thực mã OTP email (cố định purpose RegisterProcuringEntity, tránh ghi đè thông báo số lần thử còn lại)
+            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterProcuringEntity", out var otpError))
             {
                 return ApiResponse<ProcuringEntityRegisterResponse>.Fail(otpError);
             }
@@ -170,6 +173,36 @@ namespace ProcurementSystem.Infrastructure.Services
                 await _context.ProcuringEntities.AddAsync(procuringEntity);
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+
+                // 5.1 Gửi thông báo In-app & Email cho Admin và Bên mời thầu mới (bọc try-catch độc lập)
+                try
+                {
+                    var adminUserIds = await _context.Users
+                        .Where(u => u.IsActive && u.UserRoles.Any(ur => ur.Role.Name == "Admin"))
+                        .Select(u => u.Id)
+                        .ToListAsync();
+
+                    if (adminUserIds.Any())
+                    {
+                        await _notificationService.CreateBulkNotificationsAsync(
+                            adminUserIds,
+                            "Hồ sơ Bên mời thầu mới chờ thẩm định",
+                            $"Đơn vị {procuringEntity.OrganizationName} (MST: {procuringEntity.TaxCode}) vừa hoàn tất đăng ký và đang chờ Quản trị viên thẩm định hồ sơ pháp nhân.",
+                            NotificationType.Info,
+                            sendEmail: true);
+                    }
+
+                    await _notificationService.CreateNotificationAsync(
+                        user.Id,
+                        "Đăng ký thông tin Bên mời thầu thành công",
+                        "Thông tin Bên mời thầu đã được khởi tạo và đang chờ Quản trị viên thẩm định trước khi có thể đăng tải gói thầu.",
+                        NotificationType.Info,
+                        sendEmail: false);
+                }
+                catch
+                {
+                    // Đảm bảo không làm gián đoạn phản hồi đăng ký nếu gửi thông báo gặp sự cố
+                }
 
                 var response = new ProcuringEntityRegisterResponse
                 {

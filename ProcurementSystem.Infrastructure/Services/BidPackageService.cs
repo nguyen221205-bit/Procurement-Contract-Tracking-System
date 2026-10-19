@@ -14,15 +14,18 @@ namespace ProcurementSystem.Infrastructure.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileStorageService _fileStorageService;
         private readonly IEvaluationService _evaluationService;
+        private readonly INotificationService _notificationService;
 
         public BidPackageService(
             IUnitOfWork unitOfWork,
             IFileStorageService fileStorageService,
-            IEvaluationService evaluationService)
+            IEvaluationService evaluationService,
+            INotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _fileStorageService = fileStorageService;
             _evaluationService = evaluationService;
+            _notificationService = notificationService;
         }
 
         public async Task<ApiResponse<PaginatedList<BidPackageSummaryDto>>> GetBidPackagesAsync(BidPackageFilterParams filter)
@@ -684,6 +687,21 @@ namespace ProcurementSystem.Infrastructure.Services
             await _unitOfWork.Repository<BidPackageEvaluator>().AddAsync(packageEvaluator);
             await _unitOfWork.SaveChangesAsync();
 
+            // Gửi thông báo In-app & Email cho Chuyên gia được phân công
+            try
+            {
+                await _notificationService.CreateNotificationAsync(
+                    request.EvaluatorId,
+                    "Phân công tham gia Tổ chuyên gia xét thầu",
+                    $"Bạn đã được phân công tham gia Tổ chuyên gia xét thầu gói thầu: {package.Code} - {package.Name}.",
+                    ProcurementSystem.Core.Enums.NotificationType.Info,
+                    sendEmail: true);
+            }
+            catch
+            {
+                // Bọc try-catch riêng biệt để không crash luồng nghiệp vụ chính
+            }
+
             var assignerUser = await _unitOfWork.Repository<User>().GetByIdAsync(currentUserId);
 
             var dto = new PackageEvaluatorDto
@@ -887,6 +905,21 @@ namespace ProcurementSystem.Infrastructure.Services
                 if (package.Status == BidPackageStatus.Evaluating)
                 {
                     await _evaluationService.RecalculatePackageRankingsAsync(packageId);
+                }
+
+                // Gửi thông báo In-app & Email cho Chuyên gia mới được thay thế (REV-02)
+                try
+                {
+                    await _notificationService.CreateNotificationAsync(
+                        request.NewEvaluatorId,
+                        "Phân công tham gia Tổ chuyên gia xét thầu",
+                        $"Bạn đã được phân công tham gia Tổ chuyên gia xét thầu gói thầu: {package.Code} - {package.Name} (Thay thế thành viên).",
+                        ProcurementSystem.Core.Enums.NotificationType.Info,
+                        sendEmail: true);
+                }
+                catch
+                {
+                    // Bọc try-catch độc lập tránh gián đoạn kết quả thay thế
                 }
 
                 var assignerUser = await _unitOfWork.Repository<User>().GetByIdAsync(currentUserId);

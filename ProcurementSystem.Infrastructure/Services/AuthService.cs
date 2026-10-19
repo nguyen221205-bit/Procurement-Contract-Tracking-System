@@ -180,14 +180,23 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<LoginResponse>.Fail("Mật khẩu hiện tại và mật khẩu mới không được để trống.");
             }
 
-            if (request.NewPassword != request.ConfirmNewPassword)
+            var confirmPassword = !string.IsNullOrWhiteSpace(request.ConfirmNewPassword)
+                ? request.ConfirmNewPassword
+                : request.ConfirmPassword ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(confirmPassword))
             {
-                return ApiResponse<LoginResponse>.Fail("Mật khẩu mới và xác nhận mật khẩu không khớp.");
+                return ApiResponse<LoginResponse>.Fail("Xác nhận mật khẩu mới không được để trống.");
             }
 
-            if (request.NewPassword.Length < 8)
+            if (request.NewPassword != confirmPassword)
             {
-                return ApiResponse<LoginResponse>.Fail("Mật khẩu mới phải có độ dài tối thiểu 8 ký tự.");
+                return ApiResponse<LoginResponse>.Fail("Mật khẩu mới và xác nhận mật khẩu không khớp. Vui lòng kiểm tra lại.");
+            }
+
+            if (request.NewPassword.Length < 6)
+            {
+                return ApiResponse<LoginResponse>.Fail("Mật khẩu mới phải có độ dài tối thiểu 6 ký tự.");
             }
 
             if (request.CurrentPassword == request.NewPassword)

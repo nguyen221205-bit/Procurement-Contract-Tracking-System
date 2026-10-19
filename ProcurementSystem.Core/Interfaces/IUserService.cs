@@ -11,5 +11,6 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<bool>> ToggleUserStatusAsync(int id, int currentUserId);
         Task<ApiResponse<UserDto>> AssignRolesAsync(int id, AssignRolesRequest request, int currentUserId);
         Task<ApiResponse<List<RoleDto>>> GetRolesAsync();
+        Task<ApiResponse<ResetPasswordResponseDto>> ResetPasswordAsync(int id, ResetPasswordRequest? request, int currentUserId);
     }
 }

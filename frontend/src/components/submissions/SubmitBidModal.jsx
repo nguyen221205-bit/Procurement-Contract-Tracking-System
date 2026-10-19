@@ -126,11 +126,27 @@ export const SubmitBidModal = ({ isOpen, onClose, pkg, onSuccess }) => {
 
     if (validFiles.length === 0) return;
 
-    const mapped = validFiles.map((file) => ({
-      id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
-      file,
-      fileType: inferFileType(file.name),
-    }));
+    // Tập hợp các loại độc nhất (0, 1, 2) đã có sẵn trong danh sách
+    const assignedUniqueTypes = new Set(
+      filesList.filter((item) => item.fileType !== 3).map((item) => item.fileType)
+    );
+
+    const mapped = validFiles.map((file) => {
+      let inferred = inferFileType(file.name);
+      // Nếu loại độc nhất (0, 1, 2) đã tồn tại, tự động chuyển về loại 3 (Tài liệu khác)
+      if (inferred !== 3) {
+        if (assignedUniqueTypes.has(inferred)) {
+          inferred = 3;
+        } else {
+          assignedUniqueTypes.add(inferred);
+        }
+      }
+      return {
+        id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
+        file,
+        fileType: inferred,
+      };
+    });
 
     setFilesList((prev) => [...prev, ...mapped]);
   };
@@ -173,8 +189,9 @@ export const SubmitBidModal = ({ isOpen, onClose, pkg, onSuccess }) => {
     return acc;
   }, {});
 
+  // CHỈ kiểm tra trùng lặp cho các loại độc nhất (0, 1, 2), cho phép KHÔNG GIỚI HẠN loại 3 (Tài liệu khác)
   const duplicateTypes = Object.entries(typeCounts)
-    .filter(([_, count]) => count > 1)
+    .filter(([type, count]) => Number(type) !== 3 && count > 1)
     .map(([type]) => Number(type));
 
   const duplicateNames = duplicateTypes
@@ -414,7 +431,7 @@ export const SubmitBidModal = ({ isOpen, onClose, pkg, onSuccess }) => {
                         value={item.fileType}
                         onChange={(e) => handleTypeChange(item.id, e.target.value)}
                         className={`px-2.5 py-1.5 border rounded-lg text-[11px] font-medium transition outline-none ${
-                          duplicateTypes.includes(item.fileType)
+                          item.fileType !== 3 && duplicateTypes.includes(item.fileType)
                             ? 'border-amber-400 bg-amber-50 text-amber-900 focus:border-amber-500'
                             : 'bg-slate-50 border-slate-200 text-slate-700 focus:border-sky-500 focus:bg-white'
                         }`}
