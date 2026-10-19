@@ -50,7 +50,17 @@ axiosClient.interceptors.response.use(
       }
     }
 
-    const message = data?.message || (data?.errors && data.errors.join(', ')) || error.message || 'Đã xảy ra lỗi kết nối';
+    let message = data?.message;
+    if (!message && data?.errors) {
+      if (Array.isArray(data.errors)) {
+        message = data.errors.join(', ');
+      } else if (typeof data.errors === 'object') {
+        message = Object.values(data.errors).flat().join(', ');
+      } else if (typeof data.errors === 'string') {
+        message = data.errors;
+      }
+    }
+    message = message || error.message || 'Đã xảy ra lỗi kết nối';
     return Promise.reject(new Error(message));
   }
 );

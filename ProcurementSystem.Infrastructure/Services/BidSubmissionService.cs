@@ -30,6 +30,8 @@ namespace ProcurementSystem.Infrastructure.Services
             // 1. Kiểm tra gói thầu tồn tại
             var bidPackage = await _unitOfWork.Repository<BidPackage>()
                 .Query()
+                .Include(bp => bp.Creator)
+                    .ThenInclude(u => u.ProcuringEntity)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(bp => bp.Id == bidPackageId);
 
@@ -208,10 +210,38 @@ namespace ProcurementSystem.Infrastructure.Services
                         sendEmail: true);
 
                     // 2. Thông báo cho Bên mời thầu sở hữu gói thầu (Bảo vệ Sealed Bid - KHÔNG làm lộ danh tính nhà thầu)
+                    var recipientUserIds = new HashSet<int>();
+
+                    // 2.1. Thêm người trực tiếp tạo gói thầu
                     if (bidPackage.CreatedBy > 0)
                     {
+                        recipientUserIds.Add(bidPackage.CreatedBy);
+                    }
+
+                    // 2.2. Thêm UserId của Bên mời thầu (ProcuringEntity) nếu có
+                    if (bidPackage.Creator?.ProcuringEntity != null && bidPackage.Creator.ProcuringEntity.UserId > 0)
+                    {
+                        recipientUserIds.Add(bidPackage.Creator.ProcuringEntity.UserId);
+                    }
+
+                    // 2.3. Đảm bảo tất cả người dùng có vai trò Procurement trong hệ thống đều nhận được thông báo
+                    var procurementUserIds = await _unitOfWork.Repository<UserRole>()
+                        .Query()
+                        .Include(ur => ur.Role)
+                        .Where(ur => ur.Role.Name == "Procurement")
+                        .Select(ur => ur.UserId)
+                        .ToListAsync();
+
+                    foreach (var procId in procurementUserIds)
+                    {
+                        recipientUserIds.Add(procId);
+                    }
+
+                    // Gửi thông báo in-app và email cho từng Bên mời thầu liên quan
+                    foreach (var targetUserId in recipientUserIds)
+                    {
                         await _notificationService.CreateNotificationAsync(
-                            bidPackage.CreatedBy,
+                            targetUserId,
                             "Hồ sơ dự thầu mới đã nộp",
                             $"Gói thầu {bidPackage.Code} - {bidPackage.Name} vừa tiếp nhận 01 hồ sơ dự thầu mới đã được niêm phong an toàn.",
                             ProcurementSystem.Core.Enums.NotificationType.Info,

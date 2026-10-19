@@ -104,5 +104,42 @@ namespace ProcurementSystem.API.Controllers
             if (!result.Success) return BadRequest(result);
             return Ok(result);
         }
+
+        /// <summary>
+        /// Đặt lại mật khẩu tài khoản người dùng bởi Quản trị viên (Admin Reset Password)
+        /// </summary>
+        /// <param name="id">ID của người dùng cần đặt lại mật khẩu</param>
+        /// <param name="request">Mật khẩu mới tùy chọn (nếu để trống hệ thống tự sinh ngẫu nhiên 10 ký tự)</param>
+        /// <response code="200">Đặt lại mật khẩu thành công. Trả về mật khẩu mới để Admin có thể copy trực tiếp.</response>
+        /// <response code="400">Dữ liệu yêu cầu không hợp lệ hoặc lỗi nghiệp vụ.</response>
+        /// <response code="404">Không tìm thấy người dùng.</response>
+        [HttpPost("{id:int}/reset-password")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(ApiResponse<ResetPasswordResponseDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ResetPasswordResponseDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<ResetPasswordResponseDto>), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ApiResponse<ResetPasswordResponseDto>>> ResetPassword(
+            int id, [FromBody] ResetPasswordRequest? request)
+        {
+            if (request != null && !ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                return BadRequest(ApiResponse<ResetPasswordResponseDto>.Fail(errors));
+            }
+
+            var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            int.TryParse(currentUserIdClaim, out int currentUserId);
+
+            var result = await _userService.ResetPasswordAsync(id, request, currentUserId);
+            if (!result.Success)
+            {
+                if (result.Message.Contains("Không tìm thấy"))
+                {
+                    return NotFound(result);
+                }
+                return BadRequest(result);
+            }
+            return Ok(result);
+        }
     }
 }

@@ -30,6 +30,11 @@ export const userApi = {
   getRoles: async () => {
     return await axiosClient.get('/roles');
   },
+
+  // Đặt lại mật khẩu người dùng (Admin Reset Password)
+  resetPassword: async (id, data = {}) => {
+    return await axiosClient.post(`/users/${id}/reset-password`, data);
+  },
 };
 
 export default userApi;

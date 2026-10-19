@@ -8,6 +8,7 @@ import ConfirmModal from '../components/common/ConfirmModal';
 import AssignRolesModal from '../components/users/AssignRolesModal';
 import EditUserModal from '../components/users/EditUserModal';
 import UserDetailModal from '../components/users/UserDetailModal';
+import ResetPasswordModal from '../components/users/ResetPasswordModal';
 import toast from 'react-hot-toast';
 import {
   Users,
@@ -26,7 +27,8 @@ import {
   ChevronRight,
   ShieldAlert,
   UserCheck,
-  Download
+  Download,
+  KeyRound
 } from 'lucide-react';
 import { reportApi } from '../api/reportApi';
 
@@ -49,6 +51,7 @@ export const UsersPage = () => {
   const [detailUser, setDetailUser] = useState(null);
   const [editUser, setEditUser] = useState(null);
   const [rolesUser, setRolesUser] = useState(null);
+  const [resetUser, setResetUser] = useState(null);
   const [toggleUser, setToggleUser] = useState(null);
   const [toggleLoading, setToggleLoading] = useState(false);
   const [exportingContractors, setExportingContractors] = useState(false);
@@ -472,6 +475,16 @@ export const UsersPage = () => {
                             <Shield className="w-4 h-4" />
                           </button>
 
+                          {/* Đặt lại mật khẩu */}
+                          <button
+                            type="button"
+                            onClick={() => setResetUser(user)}
+                            className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
+                            title="Đặt lại mật khẩu"
+                          >
+                            <KeyRound className="w-4 h-4" />
+                          </button>
+
                           {/* Khóa / Mở khóa */}
                           {user.isActive ? (
                             <button
@@ -572,6 +585,14 @@ export const UsersPage = () => {
         onClose={() => setRolesUser(null)}
         user={rolesUser}
         availableRoles={availableRoles}
+        onSuccess={fetchUsers}
+      />
+
+      {/* Modal Đặt lại mật khẩu */}
+      <ResetPasswordModal
+        isOpen={!!resetUser}
+        onClose={() => setResetUser(null)}
+        user={resetUser}
         onSuccess={fetchUsers}
       />
 

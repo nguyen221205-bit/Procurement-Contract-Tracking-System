@@ -14,12 +14,23 @@ import ForceChangePasswordModal from '../components/common/ForceChangePasswordMo
 
 export const LoginPage = () => {
   const navigate = useNavigate();
-  const { login, loading } = useAuth();
+  const { login, loading, user } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showForceChangeModal, setShowForceChangeModal] = useState(false);
+
+  // Điều hướng chính xác theo vai trò của người dùng
+  const navigateByUserRole = (targetUser) => {
+    const activeUser = targetUser || user || JSON.parse(sessionStorage.getItem('user') || '{}');
+    const userRoles = activeUser?.roles || [];
+    if (userRoles.includes(ROLES.ADMIN)) {
+      navigate('/dashboard');
+    } else {
+      navigate('/packages');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -31,18 +42,13 @@ export const LoginPage = () => {
         setShowForceChangeModal(true);
         return;
       }
-      const userRoles = result.user.roles || [];
-      if (userRoles.includes(ROLES.ADMIN)) {
-        navigate('/dashboard');
-      } else {
-        navigate('/packages');
-      }
+      navigateByUserRole(result.user);
     }
   };
 
   const handlePasswordChanged = () => {
     setShowForceChangeModal(false);
-    navigate('/packages');
+    navigateByUserRole();
   };
 
   return (
