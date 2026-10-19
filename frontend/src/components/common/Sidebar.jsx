@@ -32,7 +32,7 @@ const MENU_ITEMS = [
     name: 'Nhật ký kiểm toán',
     path: '/audit-logs',
     icon: History,
-    roles: [ROLES.ADMIN, ROLES.PROCUREMENT],
+    roles: [ROLES.ADMIN],
   },
   {
     name: 'Gói thầu',
