@@ -8,17 +8,69 @@ import {
   Save,
   Calculator,
   Building2,
-  FileDown,
   Clock,
   Award,
   ChevronRight,
   Info,
-  Lock
+  Lock,
+  Eye,
+  Download,
+  ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { evaluationApi } from '../../api/evaluationApi';
 import { bidSubmissionApi } from '../../api/bidSubmissionApi';
 import { formatCurrency, formatDate, formatNumber } from '../../utils/formatters';
+import { previewSecureFile, downloadSecureFile } from '../../utils/fileDownload';
+
+/**
+ * Hàm trợ giúp chuyển đổi loại tài liệu dự thầu sang tiếng Việt kèm style badge
+ * - 0 hoặc 'Quotation': Báo giá dự thầu (emerald)
+ * - 1 hoặc 'Capability': Hồ sơ năng lực (blue)
+ * - 2 hoặc 'Schedule': Đề xuất kỹ thuật & Tiến độ (indigo / purple)
+ * - 3 hoặc 'Other': Tài liệu khác (slate)
+ */
+const getFileTypeBadge = (fileType, fileTypeName) => {
+  const typeStr = String(fileTypeName || fileType || '').toLowerCase();
+  const typeNum = Number(fileType);
+
+  if (
+    typeNum === 0 ||
+    typeStr.includes('quotation') ||
+    typeStr.includes('báo giá') ||
+    typeStr.includes('tài chính')
+  ) {
+    return {
+      label: 'Báo giá dự thầu',
+      badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    };
+  }
+  if (
+    typeNum === 1 ||
+    typeStr.includes('capability') ||
+    typeStr.includes('năng lực')
+  ) {
+    return {
+      label: 'Hồ sơ năng lực',
+      badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+    };
+  }
+  if (
+    typeNum === 2 ||
+    typeStr.includes('schedule') ||
+    typeStr.includes('tiến độ') ||
+    typeStr.includes('kỹ thuật')
+  ) {
+    return {
+      label: 'Đề xuất kỹ thuật & Tiến độ',
+      badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    };
+  }
+  return {
+    label: fileTypeName || 'Tài liệu khác',
+    badgeClass: 'bg-slate-100 text-slate-700 border-slate-200',
+  };
+};
 
 export const ScorecardForm = ({
   packageData,
@@ -77,6 +129,20 @@ export const ScorecardForm = ({
   const isViewingOwnScorecard = Number(targetEvaluatorId) === Number(user?.id);
   const isFormReadOnly = readOnly || !isViewingOwnScorecard;
 
+  // Lắng nghe phím Escape để đóng modal xem tài liệu
+  useEffect(() => {
+    if (!showFilesModal) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowFilesModal(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showFilesModal]);
+
   // When switching submission or target evaluator, load existing scores if any for THAT evaluator
   useEffect(() => {
     if (!currentSubmission || !criteriaList.length) return;
@@ -98,15 +164,20 @@ export const ScorecardForm = ({
   // Fetch files for current submission
   useEffect(() => {
     const fetchFiles = async () => {
-      if (!currentSubmission?.submissionId) return;
+      if (!currentSubmission?.submissionId) {
+        setSubmissionFiles([]);
+        return;
+      }
       try {
         setLoadingFiles(true);
+        setSubmissionFiles([]); // Reset danh sách tệp cũ để tránh hiển thị sai giữa các nhà thầu
         const res = await bidSubmissionApi.getSubmissionById(currentSubmission.submissionId);
         if (res?.data) {
           setSubmissionFiles(res.data.files || []);
         }
       } catch (err) {
         console.error('Failed to load submission files:', err);
+        toast.error('Không thể tải danh sách tài liệu đính kèm của nhà thầu này.');
       } finally {
         setLoadingFiles(false);
       }
@@ -590,56 +661,107 @@ export const ScorecardForm = ({
 
       {/* Modal xem danh sách tệp đính kèm */}
       {showFilesModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-150">
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="submission-files-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowFilesModal(false);
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <h4 id="submission-files-modal-title" className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-blue-600" />
-                Tài liệu dự thầu - {currentSubmission?.companyName}
+                <span>Tài liệu dự thầu - {currentSubmission?.companyName}</span>
               </h4>
               <button
                 type="button"
                 onClick={() => setShowFilesModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Đóng modal"
               >
                 ✕
               </button>
             </div>
-            <div className="p-4 max-h-96 overflow-y-auto space-y-2">
+            <div className="p-4 max-h-[28rem] overflow-y-auto space-y-2.5">
               {loadingFiles ? (
-                <div className="text-center py-6 text-xs text-slate-400">Đang tải danh sách tài liệu...</div>
+                <div className="text-center py-8 text-xs text-slate-400 space-y-2">
+                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p>Đang tải danh sách tài liệu...</p>
+                </div>
               ) : submissionFiles.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-400">Không tìm thấy tài liệu đính kèm.</div>
+                <div className="text-center py-8 text-xs text-slate-400">
+                  <FileText className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p>Không tìm thấy tài liệu đính kèm nào cho hồ sơ này.</p>
+                </div>
               ) : (
-                submissionFiles.map((file, i) => (
-                  <div
-                    key={file.id || i}
-                    className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs"
-                  >
-                    <div className="min-w-0 flex-1 mr-2">
-                      <p className="font-semibold text-slate-700 truncate">{file.fileName || file.fileType}</p>
-                      <span className="text-[10px] text-slate-400">{file.fileType || 'Hồ sơ kỹ thuật'}</span>
+                submissionFiles.map((file, i) => {
+                  const fileInfo = getFileTypeBadge(file.fileType, file.fileTypeName);
+                  const downloadEndpoint = `/api/submissions/files/${file.id}/download`;
+
+                  return (
+                    <div
+                      key={file.id || i}
+                      className="flex items-center justify-between gap-3 p-3 bg-slate-50 hover:bg-slate-100/70 transition-colors rounded-xl border border-slate-200 text-xs"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100/60 text-blue-600 flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-slate-800 truncate" title={file.fileName || 'Tài liệu không tên'}>
+                            {file.fileName || 'Tài liệu không tên'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border ${fileInfo.badgeClass}`}>
+                              {fileInfo.label}
+                            </span>
+                            {file.uploadedAt && (
+                              <span className="text-[10px] text-slate-400">
+                                {formatDate(file.uploadedAt)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Cụm nút hành động */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => previewSecureFile(downloadEndpoint, file.fileName)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 shadow-2xs"
+                          title="Xem trước tài liệu trong tab mới"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Xem trước</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => downloadSecureFile(downloadEndpoint, file.fileName)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 shadow-2xs"
+                          title="Tải tệp tin về máy"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Tải về</span>
+                        </button>
+                      </div>
                     </div>
-                    {file.fileUrl && (
-                      <a
-                        href={file.fileUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-colors"
-                      >
-                        <FileDown className="w-3.5 h-3.5" />
-                        Tải về
-                      </a>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
-            <div className="p-3 bg-slate-50 border-t border-slate-200 text-right">
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
+              <span className="text-[11px] text-slate-500 pl-1">
+                Tổng số: <strong>{submissionFiles.length}</strong> tài liệu
+              </span>
               <button
                 type="button"
                 onClick={() => setShowFilesModal(false)}
-                className="px-4 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg"
+                className="px-4 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
               >
                 Đóng
               </button>
