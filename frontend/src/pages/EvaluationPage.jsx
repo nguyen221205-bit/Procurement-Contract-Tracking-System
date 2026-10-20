@@ -430,6 +430,7 @@ export const EvaluationPage = () => {
           submissions={rankings}
           onScoreSaved={() => fetchData(true)}
           readOnly={isAwarded || !canScore}
+          canScore={canScore}
         />
       )}
 

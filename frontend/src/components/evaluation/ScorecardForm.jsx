@@ -78,6 +78,7 @@ export const ScorecardForm = ({
   submissions = [],
   onScoreSaved,
   readOnly = false,
+  canScore = true,
 }) => {
   const { user, hasRole } = useAuth();
   const isAdminOrProcurement = hasRole(['Admin', 'Procurement']);
@@ -85,20 +86,20 @@ export const ScorecardForm = ({
   const [selectedSubmissionId, setSelectedSubmissionId] = useState(
     submissions.length > 0 ? submissions[0].submissionId : null
   );
-  // Evaluator selection: default to currently logged-in user
-  const [viewEvaluatorId, setViewEvaluatorId] = useState(user?.id);
+  // Evaluator selection: default to currently logged-in user if canScore, else null
+  const [viewEvaluatorId, setViewEvaluatorId] = useState(canScore ? user?.id : null);
   const [scoresMap, setScoresMap] = useState({}); // { [criteriaId]: { score: number, comment: string } }
   const [saving, setSaving] = useState(false);
   const [submissionFiles, setSubmissionFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [showFilesModal, setShowFilesModal] = useState(false);
 
-  // Sync viewEvaluatorId with user.id when user loads
+  // Sync viewEvaluatorId with user.id when user loads (chỉ khi có quyền chấm điểm)
   useEffect(() => {
-    if (user?.id && !viewEvaluatorId) {
+    if (canScore && user?.id && !viewEvaluatorId) {
       setViewEvaluatorId(user.id);
     }
-  }, [user?.id]);
+  }, [user?.id, canScore]);
 
   // Sync selected submission when submissions list changes
   useEffect(() => {
@@ -125,8 +126,24 @@ export const ScorecardForm = ({
     }
   });
 
-  const targetEvaluatorId = viewEvaluatorId || user?.id;
-  const isViewingOwnScorecard = Number(targetEvaluatorId) === Number(user?.id);
+  // Tự động chọn Giám khảo đầu tiên khi tài khoản không có quyền chấm (!canScore)
+  useEffect(() => {
+    if (!canScore) {
+      if (distinctEvaluators.length > 0) {
+        const exists = distinctEvaluators.some((e) => e.id === Number(viewEvaluatorId));
+        if (!exists) {
+          setViewEvaluatorId(distinctEvaluators[0].id);
+        }
+      } else {
+        setViewEvaluatorId(null);
+      }
+    }
+  }, [canScore, selectedSubmissionId, distinctEvaluators.length]);
+
+  const targetEvaluatorId = canScore
+    ? (viewEvaluatorId || user?.id)
+    : (viewEvaluatorId || distinctEvaluators[0]?.id || null);
+  const isViewingOwnScorecard = canScore && Number(targetEvaluatorId) === Number(user?.id);
   const isFormReadOnly = readOnly || !isViewingOwnScorecard;
 
   // Lắng nghe phím Escape để đóng modal xem tài liệu
@@ -321,7 +338,9 @@ export const ScorecardForm = ({
             <Building2 className="w-4 h-4 text-slate-400" />
             Nhà thầu tham gia ({submissions.length})
           </h3>
-          <span className="text-[11px] text-slate-400">Chọn để chấm điểm</span>
+          <span className="text-[11px] text-slate-400">
+            {canScore ? 'Chọn để chấm điểm' : 'Chọn để xem điểm'}
+          </span>
         </div>
 
         <div className="space-y-2">
@@ -379,7 +398,19 @@ export const ScorecardForm = ({
 
                 <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs pl-6">
                   <div>
-                    {isScoredByMe ? (
+                    {!canScore ? (
+                      uniqueEvaluatorsCount > 0 ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                          <CheckCircle2 className="w-3 h-3 mr-1 text-blue-600" />
+                          Đã có {uniqueEvaluatorsCount} giám khảo chấm
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-300">
+                          <Clock className="w-3 h-3 mr-1 text-slate-500" />
+                          Chờ tổ chuyên gia chấm
+                        </span>
+                      )
+                    ) : isScoredByMe ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
                         <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" />
                         Bạn đã chấm ({formatNumber(myTotalScore)} đ)
@@ -427,7 +458,9 @@ export const ScorecardForm = ({
                     <span>
                       {isViewingOwnScorecard
                         ? `Phiếu chấm của bạn: ${user?.fullName || 'Giám khảo'}`
-                        : `Phiếu chấm của: ${distinctEvaluators.find((e) => e.id === Number(targetEvaluatorId))?.name || 'Giám khảo'}`}
+                        : distinctEvaluators.find((e) => e.id === Number(targetEvaluatorId))?.name
+                        ? `Phiếu chấm của Giám khảo: ${distinctEvaluators.find((e) => e.id === Number(targetEvaluatorId))?.name}`
+                        : 'Chưa có phiếu chấm từ giám khảo'}
                     </span>
                   </span>
                   <span className="text-xs text-slate-400 font-mono">Mã hồ sơ: #{currentSubmission.submissionId}</span>
@@ -453,13 +486,15 @@ export const ScorecardForm = ({
                   <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200/60">
                     <span className="text-[11px] text-slate-600 font-semibold">Xem phiếu chấm của:</span>
                     <select
-                      value={targetEvaluatorId}
+                      value={targetEvaluatorId || ''}
                       onChange={(e) => setViewEvaluatorId(Number(e.target.value))}
                       className="text-xs bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-semibold text-slate-800 shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-blue-500 cursor-pointer"
                     >
-                      <option value={user?.id}>Phiếu của tôi ({user?.fullName})</option>
+                      {canScore && (
+                        <option value={user?.id}>Phiếu của tôi ({user?.fullName})</option>
+                      )}
                       {distinctEvaluators
-                        .filter((e) => e.id !== user?.id)
+                        .filter((e) => !canScore || e.id !== user?.id)
                         .map((e) => (
                           <option key={e.id} value={e.id}>
                             Phiếu của: {e.name}
@@ -489,7 +524,15 @@ export const ScorecardForm = ({
                 <div className="bg-sky-50 border border-sky-200 rounded-xl p-3.5 text-xs text-sky-900 flex items-start gap-2.5">
                   <Info className="w-4 h-4 text-sky-600 flex-shrink-0 mt-0.5" />
                   <div className="leading-relaxed">
-                    <strong>Chế độ xem phiếu chấm:</strong> Bạn đang xem phiếu điểm do giám khảo <strong>{distinctEvaluators.find((e) => e.id === Number(targetEvaluatorId))?.name}</strong> thực hiện. Chế độ này là chỉ đọc để đảm bảo tính độc lập.
+                    {distinctEvaluators.find((e) => e.id === Number(targetEvaluatorId)) ? (
+                      <>
+                        <strong>Chế độ xem phiếu chấm:</strong> Bạn đang xem phiếu điểm do giám khảo <strong>{distinctEvaluators.find((e) => e.id === Number(targetEvaluatorId))?.name}</strong> thực hiện. Chế độ này là chỉ đọc để đảm bảo tính độc lập.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Chế độ xem phiếu chấm:</strong> Chưa có phiếu chấm từ giám khảo nào cho hồ sơ này. Hội đồng chuyên gia đang trong quá trình thẩm định & chấm điểm.
+                      </>
+                    )}
                   </div>
                 </div>
               ) : readOnly ? (
