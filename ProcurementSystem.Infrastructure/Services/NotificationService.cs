@@ -9,6 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using System.Text.Encodings.Web;
 using ProcurementSystem.Core.Enums;
+using Microsoft.AspNetCore.SignalR;
+using ProcurementSystem.Infrastructure.Hubs;
 
 namespace ProcurementSystem.Infrastructure.Services
 {
@@ -18,17 +20,20 @@ namespace ProcurementSystem.Infrastructure.Services
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly IConfiguration _configuration;
         private readonly ILogger<NotificationService> _logger;
+        private readonly IHubContext<NotificationHub> _hubContext;
 
         public NotificationService(
             IUnitOfWork unitOfWork,
             IServiceScopeFactory scopeFactory,
             IConfiguration configuration,
-            ILogger<NotificationService> logger)
+            ILogger<NotificationService> logger,
+            IHubContext<NotificationHub> hubContext)
         {
             _unitOfWork = unitOfWork;
             _scopeFactory = scopeFactory;
             _configuration = configuration;
             _logger = logger;
+            _hubContext = hubContext;
         }
 
         public async Task<ApiResponse<PaginatedList<NotificationDto>>> GetMyNotificationsAsync(int userId, int pageIndex = 1, int pageSize = 20)
@@ -131,7 +136,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 });
             }
 
-            return new NotificationDto
+            var dto = new NotificationDto
             {
                 Id = notif.Id,
                 UserId = notif.UserId,
@@ -142,6 +147,18 @@ namespace ProcurementSystem.Infrastructure.Services
                 IsRead = notif.IsRead,
                 CreatedAt = notif.CreatedAt
             };
+
+            // Đẩy thông báo thời gian thực qua SignalR (Real-time Push, 0s delay)
+            try
+            {
+                await _hubContext.Clients.User(userId.ToString()).SendAsync("ReceiveNotification", dto);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Lỗi khi đẩy thông báo SignalR tức thì cho người dùng {UserId}", userId);
+            }
+
+            return dto;
         }
 
         public async Task CreateBulkNotificationsAsync(
@@ -169,6 +186,26 @@ namespace ProcurementSystem.Infrastructure.Services
                 await _unitOfWork.Repository<Notification>().AddAsync(n);
             }
             await _unitOfWork.SaveChangesAsync();
+
+            // Đẩy thông báo hàng loạt tức thì qua SignalR
+            try
+            {
+                var userIdsList = distinctIds.Select(id => id.ToString()).ToList();
+                var bulkDto = new NotificationDto
+                {
+                    Title = title,
+                    Message = message,
+                    Type = type,
+                    TypeName = type.ToString(),
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _hubContext.Clients.Users(userIdsList).SendAsync("ReceiveNotification", bulkDto);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Lỗi khi đẩy thông báo SignalR hàng loạt");
+            }
 
             if (sendEmail)
             {

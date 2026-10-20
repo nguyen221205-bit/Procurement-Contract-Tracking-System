@@ -62,6 +62,21 @@ export const bidPackageApi = {
   replaceEvaluator: async (packageId, data) => {
     return await axiosClient.post(`/bid-packages/${packageId}/evaluators/replace`, data);
   },
+
+  // Lấy danh sách yêu cầu phê duyệt thay đổi trạng thái của gói thầu
+  getStatusApprovals: async (packageId) => {
+    return await axiosClient.get(`/bid-packages/${packageId}/status-approvals`);
+  },
+
+  // Lấy các yêu cầu phê duyệt trạng thái đang chờ xử lý (Toàn hệ thống cho Admin)
+  getPendingStatusApprovals: async () => {
+    return await axiosClient.get('/bid-packages/status-approvals/pending');
+  },
+
+  // Admin xem xét phê duyệt hoặc từ chối yêu cầu thay đổi trạng thái gói thầu
+  reviewStatusApproval: async (requestId, data) => {
+    return await axiosClient.post(`/bid-packages/status-approvals/${requestId}/review`, data);
+  },
 };
 
 export default bidPackageApi;

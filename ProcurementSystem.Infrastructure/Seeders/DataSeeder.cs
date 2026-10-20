@@ -165,6 +165,61 @@ namespace ProcurementSystem.Infrastructure.Seeders
                 BEGIN
                     ALTER TABLE [ProcuringEntities] ADD [DigitalSignMessage] NVARCHAR(500) NULL;
                 END
+
+                -- Tự động khởi tạo bảng PackageStatusApprovalRequests (Thẩm quyền phê duyệt đóng/mở/hủy thầu)
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PackageStatusApprovalRequests')
+                BEGIN
+                    CREATE TABLE [PackageStatusApprovalRequests] (
+                        [Id] INT IDENTITY(1,1) NOT NULL,
+                        [BidPackageId] INT NOT NULL,
+                        [RequestedByUserId] INT NOT NULL,
+                        [CurrentStatus] INT NOT NULL,
+                        [TargetStatus] INT NOT NULL,
+                        [Reason] NVARCHAR(1000) NOT NULL,
+                        [NewDeadline] DATETIME2 NULL,
+                        [Status] INT NOT NULL CONSTRAINT DF_PackageStatusApprovalRequests_Status DEFAULT 0,
+                        [AdminComment] NVARCHAR(1000) NULL,
+                        [ReviewedByUserId] INT NULL,
+                        [ReviewedAt] DATETIME2 NULL,
+                        [CreatedAt] DATETIME2 NOT NULL CONSTRAINT DF_PackageStatusApprovalRequests_CreatedAt DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT PK_PackageStatusApprovalRequests PRIMARY KEY CLUSTERED ([Id] ASC),
+                        CONSTRAINT FK_PackageStatusApprovalRequests_BidPackages FOREIGN KEY ([BidPackageId]) REFERENCES [BidPackages]([Id]) ON DELETE CASCADE,
+                        CONSTRAINT FK_PackageStatusApprovalRequests_Users_Requested FOREIGN KEY ([RequestedByUserId]) REFERENCES [Users]([Id]),
+                        CONSTRAINT FK_PackageStatusApprovalRequests_Users_Reviewed FOREIGN KEY ([ReviewedByUserId]) REFERENCES [Users]([Id])
+                    );
+                    CREATE NONCLUSTERED INDEX IX_PackageStatusApprovalRequests_Status ON [PackageStatusApprovalRequests] ([Status]);
+                    CREATE NONCLUSTERED INDEX IX_PackageStatusApprovalRequests_BidPackageId ON [PackageStatusApprovalRequests] ([BidPackageId]);
+                END
+
+                -- Tự động khởi tạo bảng BidClarifications (Kênh hỏi đáp làm rõ HSMT & HSDT)
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'BidClarifications')
+                BEGIN
+                    CREATE TABLE [BidClarifications] (
+                        [Id] INT IDENTITY(1,1) NOT NULL,
+                        [BidPackageId] INT NOT NULL,
+                        [BidSubmissionId] INT NULL,
+                        [Type] INT NOT NULL CONSTRAINT DF_BidClarifications_Type DEFAULT 0,
+                        [Title] NVARCHAR(250) NOT NULL,
+                        [QuestionContent] NVARCHAR(3000) NOT NULL,
+                        [QuestionAttachmentUrl] NVARCHAR(500) NULL,
+                        [AskedByUserId] INT NOT NULL,
+                        [AskedAt] DATETIME2 NOT NULL CONSTRAINT DF_BidClarifications_AskedAt DEFAULT SYSUTCDATETIME(),
+                        [Deadline] DATETIME2 NULL,
+                        [AnswerContent] NVARCHAR(3000) NULL,
+                        [AnswerAttachmentUrl] NVARCHAR(500) NULL,
+                        [AnsweredByUserId] INT NULL,
+                        [AnsweredAt] DATETIME2 NULL,
+                        [Status] INT NOT NULL CONSTRAINT DF_BidClarifications_Status DEFAULT 0,
+                        CONSTRAINT PK_BidClarifications PRIMARY KEY CLUSTERED ([Id] ASC),
+                        CONSTRAINT FK_BidClarifications_BidPackages FOREIGN KEY ([BidPackageId]) REFERENCES [BidPackages]([Id]) ON DELETE CASCADE,
+                        CONSTRAINT FK_BidClarifications_BidSubmissions FOREIGN KEY ([BidSubmissionId]) REFERENCES [BidSubmissions]([Id]) ON DELETE SET NULL,
+                        CONSTRAINT FK_BidClarifications_Users_Asked FOREIGN KEY ([AskedByUserId]) REFERENCES [Users]([Id]),
+                        CONSTRAINT FK_BidClarifications_Users_Answered FOREIGN KEY ([AnsweredByUserId]) REFERENCES [Users]([Id])
+                    );
+                    CREATE NONCLUSTERED INDEX IX_BidClarifications_BidPackageId ON [BidClarifications] ([BidPackageId]);
+                    CREATE NONCLUSTERED INDEX IX_BidClarifications_BidSubmissionId ON [BidClarifications] ([BidSubmissionId]);
+                    CREATE NONCLUSTERED INDEX IX_BidClarifications_Type ON [BidClarifications] ([Type]);
+                END
             ");
 
             // Tự động mở khóa toàn bộ tài khoản Giám khảo không bắt buộc đổi mật khẩu

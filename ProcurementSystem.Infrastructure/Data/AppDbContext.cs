@@ -27,6 +27,8 @@ namespace ProcurementSystem.Infrastructure.Data
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
         public DbSet<EvaluatorProposal> EvaluatorProposals => Set<EvaluatorProposal>();
         public DbSet<ProcuringEntity> ProcuringEntities => Set<ProcuringEntity>();
+        public DbSet<PackageStatusApprovalRequest> PackageStatusApprovalRequests => Set<PackageStatusApprovalRequest>();
+        public DbSet<BidClarification> BidClarifications => Set<BidClarification>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -291,6 +293,57 @@ namespace ProcurementSystem.Infrastructure.Data
             modelBuilder.Entity<ProcuringEntity>().HasIndex(pe => pe.TaxCode);
             modelBuilder.Entity<ProcuringEntity>().HasIndex(pe => pe.VerificationStatus);
             modelBuilder.Entity<ProcuringEntity>().HasIndex(pe => pe.UserId).IsUnique();
+
+            // PackageStatusApprovalRequest relationships & indexes
+            modelBuilder.Entity<PackageStatusApprovalRequest>()
+                .HasOne(r => r.BidPackage)
+                .WithMany()
+                .HasForeignKey(r => r.BidPackageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PackageStatusApprovalRequest>()
+                .HasOne(r => r.RequestedByUser)
+                .WithMany()
+                .HasForeignKey(r => r.RequestedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<PackageStatusApprovalRequest>()
+                .HasOne(r => r.ReviewedByUser)
+                .WithMany()
+                .HasForeignKey(r => r.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<PackageStatusApprovalRequest>().HasIndex(r => r.Status);
+            modelBuilder.Entity<PackageStatusApprovalRequest>().HasIndex(r => r.BidPackageId);
+
+            // BidClarification relationships & indexes
+            modelBuilder.Entity<BidClarification>()
+                .HasOne(c => c.BidPackage)
+                .WithMany()
+                .HasForeignKey(c => c.BidPackageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<BidClarification>()
+                .HasOne(c => c.BidSubmission)
+                .WithMany()
+                .HasForeignKey(c => c.BidSubmissionId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<BidClarification>()
+                .HasOne(c => c.AskedByUser)
+                .WithMany()
+                .HasForeignKey(c => c.AskedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<BidClarification>()
+                .HasOne(c => c.AnsweredByUser)
+                .WithMany()
+                .HasForeignKey(c => c.AnsweredByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<BidClarification>().HasIndex(c => c.BidPackageId);
+            modelBuilder.Entity<BidClarification>().HasIndex(c => c.BidSubmissionId);
+            modelBuilder.Entity<BidClarification>().HasIndex(c => c.Type);
         }
     }
 }
