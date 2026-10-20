@@ -447,6 +447,33 @@ namespace ProcurementSystem.Infrastructure.Services
 
             await _unitOfWork.SaveChangesAsync();
 
+            // Gửi thông báo cho Tổ chuyên gia chấm thầu khi gói thầu chuyển sang giai đoạn Chấm điểm
+            if (request.NewStatus == BidPackageStatus.Evaluating)
+            {
+                try
+                {
+                    var evaluatorUserIds = await _unitOfWork.Repository<BidPackageEvaluator>()
+                        .Query()
+                        .Where(pe => pe.BidPackageId == id)
+                        .Select(pe => pe.EvaluatorId)
+                        .ToListAsync();
+
+                    if (evaluatorUserIds.Count > 0)
+                    {
+                        await _notificationService.CreateBulkNotificationsAsync(
+                            evaluatorUserIds,
+                            $"Bắt đầu chấm điểm gói thầu {package.Code}",
+                            $"Gói thầu '{package.Name}' ({package.Code}) đã chính thức bước vào giai đoạn Chấm điểm. Kính mời các giám khảo tiến hành đánh giá hồ sơ dự thầu.",
+                            NotificationType.Info,
+                            sendEmail: false);
+                    }
+                }
+                catch
+                {
+                    // Tránh lỗi thông báo làm ảnh hưởng giao dịch
+                }
+            }
+
             return ApiResponse<BidPackageDto>.Ok(MapToBidPackageDto(package), $"Chuyển trạng thái gói thầu sang '{request.NewStatus}' thành công.");
         }
 
@@ -695,7 +722,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     "Phân công tham gia Tổ chuyên gia xét thầu",
                     $"Bạn đã được phân công tham gia Tổ chuyên gia xét thầu gói thầu: {package.Code} - {package.Name}.",
                     ProcurementSystem.Core.Enums.NotificationType.Info,
-                    sendEmail: true);
+                    sendEmail: false);
             }
             catch
             {
@@ -915,7 +942,7 @@ namespace ProcurementSystem.Infrastructure.Services
                         "Phân công tham gia Tổ chuyên gia xét thầu",
                         $"Bạn đã được phân công tham gia Tổ chuyên gia xét thầu gói thầu: {package.Code} - {package.Name} (Thay thế thành viên).",
                         ProcurementSystem.Core.Enums.NotificationType.Info,
-                        sendEmail: true);
+                        sendEmail: false);
                 }
                 catch
                 {

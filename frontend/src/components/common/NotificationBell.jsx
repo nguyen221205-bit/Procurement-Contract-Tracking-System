@@ -25,25 +25,47 @@ export const NotificationBell = () => {
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef(null);
 
+  // Điều hướng thông minh theo ngữ cảnh nghiệp vụ của thông báo
+  const getTargetRoute = (notif) => {
+    if (!notif) return '/notifications';
+    const text = `${notif.title || ''} ${notif.message || ''}`.toLowerCase();
+    if (text.includes('hợp đồng') || text.includes('tiến độ') || text.includes('nghiệm thu')) {
+      return '/contracts';
+    }
+    if (text.includes('tổ chuyên gia') || text.includes('chấm thầu') || text.includes('xét thầu') || text.includes('giám khảo')) {
+      return '/evaluation';
+    }
+    if (text.includes('gói thầu') || text.includes('dự thầu') || text.includes('mở thầu') || text.includes('đóng thầu')) {
+      return '/packages';
+    }
+    return '/notifications';
+  };
+
   // Lấy số lượng thông báo chưa đọc
   const fetchUnreadCount = async () => {
     try {
       const res = await notificationApi.getUnreadCount();
       if (res && res.success && typeof res.data === 'number') {
         setUnreadCount(res.data);
+      } else if (typeof res === 'number') {
+        setUnreadCount(res);
       }
     } catch {
       // Bỏ qua lỗi polling im lặng
     }
   };
 
-  // Lấy danh sách thông báo xem nhanh (5 thông báo mới nhất)
+  // Lấy danh sách thông báo xem nhanh (6 thông báo mới nhất)
   const fetchRecentNotifications = async () => {
     setLoading(true);
     try {
       const res = await notificationApi.getNotifications(1, 6);
       if (res && res.success && res.data?.items) {
         setNotifications(res.data.items);
+      } else if (Array.isArray(res?.items)) {
+        setNotifications(res.items);
+      } else if (Array.isArray(res?.data)) {
+        setNotifications(res.data);
       }
     } catch (err) {
       toast.error('Không thể tải danh sách thông báo');
@@ -98,7 +120,7 @@ export const NotificationBell = () => {
     setIsOpen(!isOpen);
   };
 
-  // Đánh dấu 1 thông báo là đã đọc
+  // Đánh dấu 1 thông báo là đã đọc và điều hướng thông minh
   const handleItemClick = async (notif) => {
     if (!notif.isRead) {
       try {
@@ -108,11 +130,12 @@ export const NotificationBell = () => {
         );
         setUnreadCount((c) => Math.max(0, c - 1));
       } catch {
-        // Tiếp tục chuyển trang
+        // Tiếp tục chuyển trang dù patch ngầm thất bại
       }
     }
     setIsOpen(false);
-    navigate('/notifications');
+    const targetRoute = getTargetRoute(notif);
+    navigate(targetRoute);
   };
 
   // Đánh dấu tất cả là đã đọc

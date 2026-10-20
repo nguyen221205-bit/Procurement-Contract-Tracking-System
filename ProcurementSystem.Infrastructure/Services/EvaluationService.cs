@@ -264,6 +264,7 @@ namespace ProcurementSystem.Infrastructure.Services
             var submission = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
                 .Include(s => s.BidPackage)
+                .Include(s => s.Contractor)
                 .FirstOrDefaultAsync(s => s.Id == submissionId);
 
             if (submission == null)
@@ -435,6 +436,22 @@ namespace ProcurementSystem.Infrastructure.Services
             // THUẬT TOÁN TÍNH ĐIỂM TỔNG HỢP THEO TRỌNG SỐ & TỰ ĐỘNG XẾP HẠNG (AUTO-RANKING)
             // =========================================================================
             await CalculateRankingsForPackageAsync(package.Id);
+
+            // Gửi thông báo cho Bên mời thầu (Chủ gói thầu)
+            try
+            {
+                var contractorName = submission.Contractor?.CompanyName ?? "Nhà thầu";
+                await _notificationService.CreateNotificationAsync(
+                    package.CreatedBy,
+                    $"Giám khảo đã chấm điểm - Gói {package.Code}",
+                    $"Giám khảo {evaluator.FullName} vừa hoàn tất chấm điểm hồ sơ của {contractorName} cho gói thầu '{package.Name}' ({package.Code}).",
+                    NotificationType.Info,
+                    sendEmail: false);
+            }
+            catch
+            {
+                // Không để lỗi thông báo làm gián đoạn luồng chấm điểm
+            }
 
             // Trả về danh sách điểm chấm chi tiết vừa lưu
             return await GetScoresBySubmissionAsync(submissionId, evaluatorId, false);
@@ -609,6 +626,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
             var submissions = await _unitOfWork.Repository<BidSubmission>()
                 .Query()
+                .Include(s => s.Contractor)
                 .Where(s => s.BidPackageId == packageId)
                 .ToListAsync();
 
@@ -700,18 +718,24 @@ namespace ProcurementSystem.Infrastructure.Services
 
             await _unitOfWork.SaveChangesAsync();
 
-            // Gửi thông báo & email cho nhà thầu trúng thầu
+            // Gửi thông báo cho nhà thầu trúng thầu
             if (selectedSubmission.Contractor?.UserId != null)
             {
-                await _notificationService.CreateNotificationAsync(
-                    selectedSubmission.Contractor.UserId,
-                    $"Chúc mừng trúng thầu gói {package.Code}",
-                    $"Hồ sơ dự thầu của doanh nghiệp bạn đối với gói thầu '{package.Name}' ({package.Code}) đã được phê duyệt trúng thầu. Vui lòng chuẩn bị để tiến hành thương thảo và hoàn thiện hợp đồng kinh tế.",
-                    NotificationType.Info,
-                    sendEmail: true);
+                try
+                {
+                    await _notificationService.CreateNotificationAsync(
+                        selectedSubmission.Contractor.UserId,
+                        $"Chúc mừng trúng thầu gói {package.Code}",
+                        $"Hồ sơ dự thầu của doanh nghiệp bạn đối với gói thầu '{package.Name}' ({package.Code}) đã được phê duyệt trúng thầu. Vui lòng chuẩn bị để tiến hành thương thảo và hoàn thiện hợp đồng kinh tế.",
+                        NotificationType.Info,
+                        sendEmail: false);
+                }
+                catch
+                {
+                }
             }
 
-            // Gửi thông báo & email hàng loạt cho các nhà thầu khác không được lựa chọn
+            // Gửi thông báo hàng loạt cho các nhà thầu khác không được lựa chọn
             var rejectedUserIds = submissions
                 .Where(s => s.Id != selectedSubmission.Id && s.Contractor?.UserId != null && s.Status == BidSubmissionStatus.Rejected)
                 .Select(s => s.Contractor.UserId)
@@ -720,12 +744,42 @@ namespace ProcurementSystem.Infrastructure.Services
 
             if (rejectedUserIds.Count != 0)
             {
-                await _notificationService.CreateBulkNotificationsAsync(
-                    rejectedUserIds,
-                    $"Thông báo kết quả xét thầu gói {package.Code}",
-                    $"Gói thầu '{package.Name}' ({package.Code}) đã hoàn tất công tác xét chọn trao thầu. Hồ sơ của quý đơn vị chưa được lựa chọn trong đợt này. Cảm ơn sự quan tâm của quý doanh nghiệp.",
-                    NotificationType.Info,
-                    sendEmail: true);
+                try
+                {
+                    await _notificationService.CreateBulkNotificationsAsync(
+                        rejectedUserIds,
+                        $"Thông báo kết quả xét thầu gói {package.Code}",
+                        $"Gói thầu '{package.Name}' ({package.Code}) đã hoàn tất công tác xét chọn trao thầu. Hồ sơ của quý đơn vị chưa được lựa chọn trong đợt này. Cảm ơn sự quan tâm của quý doanh nghiệp.",
+                        NotificationType.Info,
+                        sendEmail: false);
+                }
+                catch
+                {
+                }
+            }
+
+            // Gửi thông báo cho các Giám khảo thuộc Tổ chuyên gia về việc hoàn tất trao thầu
+            try
+            {
+                var evaluatorUserIds = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .Query()
+                    .Where(pe => pe.BidPackageId == packageId)
+                    .Select(pe => pe.EvaluatorId)
+                    .ToListAsync();
+
+                if (evaluatorUserIds.Count > 0)
+                {
+                    var winningContractorName = selectedSubmission.Contractor?.CompanyName ?? $"Hồ sơ #{selectedSubmission.Id}";
+                    await _notificationService.CreateBulkNotificationsAsync(
+                        evaluatorUserIds,
+                        $"Hoàn tất phê duyệt trao thầu gói {package.Code}",
+                        $"Gói thầu '{package.Name}' ({package.Code}) đã được Bên mời thầu phê duyệt kết quả trao thầu cho đơn vị {winningContractorName}.",
+                        NotificationType.Info,
+                        sendEmail: false);
+                }
+            }
+            catch
+            {
             }
 
             return ApiResponse<bool>.Ok(true, $"Đã phê duyệt nhà thầu (Mã hồ sơ: #{request.SelectedSubmissionId}) trúng thầu thành công. Gói thầu đã chuyển sang trạng thái 'Awarded' và sẵn sàng để ký hợp đồng.");

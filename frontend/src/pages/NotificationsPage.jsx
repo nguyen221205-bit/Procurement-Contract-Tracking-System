@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Bell,
   CheckCheck,
@@ -11,13 +12,14 @@ import {
   BellOff,
   ChevronLeft,
   ChevronRight,
-  Filter
+  ArrowRight
 } from 'lucide-react';
 import notificationApi from '../api/notificationApi';
 import { formatDateTime, formatRelativeTime } from '../utils/formatters';
 import toast from 'react-hot-toast';
 
 export const NotificationsPage = () => {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -26,6 +28,22 @@ export const NotificationsPage = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const pageSize = 15;
+
+  // Lấy liên kết điều hướng thông minh dựa vào nội dung thông báo
+  const getActionLink = (notif) => {
+    if (!notif) return null;
+    const text = `${notif.title || ''} ${notif.message || ''}`.toLowerCase();
+    if (text.includes('hợp đồng') || text.includes('tiến độ') || text.includes('nghiệm thu')) {
+      return { path: '/contracts', label: 'Xem danh sách hợp đồng' };
+    }
+    if (text.includes('tổ chuyên gia') || text.includes('chấm thầu') || text.includes('xét thầu') || text.includes('giám khảo')) {
+      return { path: '/evaluation', label: 'Đến trang chấm thầu' };
+    }
+    if (text.includes('gói thầu') || text.includes('dự thầu') || text.includes('mở thầu') || text.includes('đóng thầu')) {
+      return { path: '/packages', label: 'Xem danh sách gói thầu' };
+    }
+    return null;
+  };
 
   // Lấy dữ liệu thông báo
   const fetchNotifications = useCallback(async () => {
@@ -40,10 +58,16 @@ export const NotificationsPage = () => {
         setNotifications(notifsRes.data.items || []);
         setTotalPages(notifsRes.data.totalPages || 1);
         setTotalCount(notifsRes.data.totalCount || 0);
+      } else if (notifsRes?.items) {
+        setNotifications(notifsRes.items || []);
+        setTotalPages(notifsRes.totalPages || 1);
+        setTotalCount(notifsRes.totalCount || 0);
       }
 
       if (unreadRes && unreadRes.success && typeof unreadRes.data === 'number') {
         setUnreadCount(unreadRes.data);
+      } else if (typeof unreadRes === 'number') {
+        setUnreadCount(unreadRes);
       }
     } catch {
       toast.error('Không thể tải danh sách thông báo');
@@ -60,7 +84,7 @@ export const NotificationsPage = () => {
   const handleMarkAsRead = async (id) => {
     try {
       const res = await notificationApi.markAsRead(id);
-      if (res && res.success) {
+      if (res?.success || res === true) {
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
         );
@@ -76,7 +100,7 @@ export const NotificationsPage = () => {
   const handleMarkAllAsRead = async () => {
     try {
       const res = await notificationApi.markAllAsRead();
-      if (res && res.success) {
+      if (res?.success || res === true) {
         setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
         setUnreadCount(0);
         toast.success('Đã đánh dấu tất cả thông báo là đã đọc');
@@ -247,6 +271,7 @@ export const NotificationsPage = () => {
         <div className="space-y-3">
           {filteredNotifications.map((notif) => {
             const typeInfo = renderTypeInfo(notif.type);
+            const actionLink = getActionLink(notif);
             return (
               <div
                 key={notif.id}
@@ -294,8 +319,8 @@ export const NotificationsPage = () => {
                   </p>
 
                   {/* Hành động */}
-                  {!notif.isRead && (
-                    <div className="mt-3.5 flex items-center space-x-2">
+                  <div className="mt-3.5 flex flex-wrap items-center gap-2">
+                    {!notif.isRead && (
                       <button
                         type="button"
                         onClick={() => handleMarkAsRead(notif.id)}
@@ -304,8 +329,23 @@ export const NotificationsPage = () => {
                         <Check className="w-3.5 h-3.5" />
                         <span>Đánh dấu đã đọc</span>
                       </button>
-                    </div>
-                  )}
+                    )}
+                    {actionLink && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!notif.isRead) {
+                            handleMarkAsRead(notif.id);
+                          }
+                          navigate(actionLink.path);
+                        }}
+                        className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg transition"
+                      >
+                        <span>{actionLink.label}</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
