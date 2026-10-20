@@ -409,19 +409,6 @@ export const EvaluationPage = () => {
         </button>
       </div>
 
-      {/* Cảnh báo quyền truy cập khi Giám khảo không nằm trong Tổ chuyên gia */}
-      {!canScore && (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-3 text-amber-800 text-xs">
-          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-          <div>
-            <p className="font-bold">Chế độ xem (Chỉ đọc)</p>
-            <p className="mt-0.5 text-amber-700">
-              Bạn không thuộc Tổ chuyên gia được bên mời thầu phân công chấm điểm cho gói thầu này. Bạn chỉ có thể xem tiêu chí và bảng xếp hạng tổng hợp theo Luật Đấu thầu.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* TAB CONTENT */}
       {activeTab === 'scorecard' && (
         <ScorecardForm
