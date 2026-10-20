@@ -15,7 +15,8 @@ import {
   ChevronRight,
   RefreshCw,
   RotateCcw,
-  AlertTriangle
+  AlertTriangle,
+  Columns3
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { evaluationApi } from '../api/evaluationApi';
@@ -26,6 +27,7 @@ import ScorecardForm from '../components/evaluation/ScorecardForm';
 import LeaderboardView from '../components/evaluation/LeaderboardView';
 import FinalizeWinnerModal from '../components/evaluation/FinalizeWinnerModal';
 import CommitteeScoringProgress from '../components/evaluation/CommitteeScoringProgress';
+import BidComparisonView from '../components/evaluation/BidComparisonView';
 import { formatCurrency, formatNumber } from '../utils/formatters';
 
 export const EvaluationPage = () => {
@@ -407,6 +409,22 @@ export const EvaluationPage = () => {
             </span>
           )}
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('comparison')}
+          className={`pb-3 text-xs font-bold transition-all relative flex items-center gap-2 cursor-pointer ${
+            activeTab === 'comparison'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Columns3 className="w-4 h-4 text-indigo-500" />
+          <span>So sánh Song song (Side-by-Side)</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+            Đối chiếu
+          </span>
+        </button>
       </div>
 
       {/* TAB CONTENT */}
@@ -445,6 +463,17 @@ export const EvaluationPage = () => {
             onDisqualifySuccess={() => fetchData(true)}
           />
         </div>
+      )}
+
+      {activeTab === 'comparison' && (
+        <BidComparisonView
+          packageData={packageData}
+          rankings={rankings}
+          criteriaList={criteriaList}
+          summary={summary}
+          onFinalizeClick={handleOpenFinalizeModal}
+          isAdminOrProcurement={isAdminOrProcurement}
+        />
       )}
 
       {/* FINALIZE WINNER MODAL */}
