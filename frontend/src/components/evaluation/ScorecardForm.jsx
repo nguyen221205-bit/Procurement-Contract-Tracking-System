@@ -142,7 +142,9 @@ export const ScorecardForm = ({
 
   const targetEvaluatorId = canScore
     ? (viewEvaluatorId || user?.id)
-    : (viewEvaluatorId || distinctEvaluators[0]?.id || null);
+    : (distinctEvaluators.some((e) => e.id === Number(viewEvaluatorId))
+        ? viewEvaluatorId
+        : distinctEvaluators[0]?.id || null);
   const isViewingOwnScorecard = canScore && Number(targetEvaluatorId) === Number(user?.id);
   const isFormReadOnly = readOnly || !isViewingOwnScorecard;
 
@@ -349,7 +351,7 @@ export const ScorecardForm = ({
             const hasScore = sub.totalScore !== null && sub.totalScore !== undefined;
 
             // Kiểm tra trạng thái chấm điểm của chính người đang đăng nhập
-            const myScores = sub.scores?.filter((es) => es.evaluatorId === user?.id) || [];
+            const myScores = sub.scores?.filter((es) => Number(es.evaluatorId) === Number(user?.id)) || [];
             const requiredCount = manualCriteria.length > 0 ? manualCriteria.length : criteriaList.length;
             const isScoredByMe = requiredCount > 0 && myScores.length >= requiredCount;
             const isPartiallyScored = myScores.length > 0 && myScores.length < requiredCount;
@@ -494,7 +496,7 @@ export const ScorecardForm = ({
                         <option value={user?.id}>Phiếu của tôi ({user?.fullName})</option>
                       )}
                       {distinctEvaluators
-                        .filter((e) => !canScore || e.id !== user?.id)
+                        .filter((e) => !canScore || Number(e.id) !== Number(user?.id))
                         .map((e) => (
                           <option key={e.id} value={e.id}>
                             Phiếu của: {e.name}

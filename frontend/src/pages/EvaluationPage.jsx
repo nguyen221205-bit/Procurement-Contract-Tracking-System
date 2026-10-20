@@ -59,8 +59,8 @@ export const EvaluationPage = () => {
   const isAdminOrProcurement = hasRole(['Admin', 'Procurement']);
   const isEvaluatorOrAdmin = hasRole(['Admin', 'Evaluator']);
   const isAdmin = hasRole('Admin');
-  const isAssignedEvaluator = evaluators.some((e) => e.evaluatorId === user?.id);
-  const canScore = isAdmin || isAssignedEvaluator;
+  const isAssignedEvaluator = evaluators.some((e) => Number(e.evaluatorId) === Number(user?.id));
+  const canScore = isAssignedEvaluator;
 
   // Fetch all necessary evaluation data
   const fetchData = async (isBackground = false) => {
