@@ -92,3 +92,5 @@ e2e_test_report.json
 scripts/e2e_integration_suite.py
 scripts/test_e2e_procurement_lifecycle.py
 .codegraph
+
+*.lnk
