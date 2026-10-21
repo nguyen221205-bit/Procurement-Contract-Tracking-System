@@ -337,6 +337,141 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.ToTable("Contracts");
                 });
 
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ContractAddendum", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AddendumNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal>("AdditionalValue")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("AdjustedEndDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ApprovedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ExtensionDays")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ScannedDocumentPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("SignedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AddendumNumber");
+
+                    b.HasIndex("ApprovedBy");
+
+                    b.HasIndex("ContractId");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.ToTable("ContractAddenda");
+                });
+
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ContractGuarantee", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("BankName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("EffectiveDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiryDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("GuaranteeNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal>("Percentage")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("ScannedDocumentPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContractId");
+
+                    b.HasIndex("ExpiryDate");
+
+                    b.HasIndex("GuaranteeNumber");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("ContractGuarantees");
+                });
+
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ContractMilestone", b =>
                 {
                     b.Property<int>("Id")
@@ -428,6 +563,58 @@ namespace ProcurementSystem.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Contractors");
+                });
+
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ContractorEvaluation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Comments")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<decimal>("ComplianceScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ContractorId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("EvaluatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("EvaluatorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("QualityScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("RatingGrade")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<decimal>("ScheduleScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal>("TotalScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContractorId");
+
+                    b.HasIndex("EvaluatorUserId");
+
+                    b.HasIndex("ContractId", "ContractorId");
+
+                    b.ToTable("ContractorEvaluations");
                 });
 
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.EvaluationCriteria", b =>
@@ -1009,6 +1196,43 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.Navigation("Contractor");
                 });
 
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ContractAddendum", b =>
+                {
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "Approver")
+                        .WithMany()
+                        .HasForeignKey("ApprovedBy")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.Contract", "Contract")
+                        .WithMany("Addenda")
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "Creator")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Approver");
+
+                    b.Navigation("Contract");
+
+                    b.Navigation("Creator");
+                });
+
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ContractGuarantee", b =>
+                {
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.Contract", "Contract")
+                        .WithMany("Guarantees")
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+                });
+
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ContractMilestone", b =>
                 {
                     b.HasOne("ProcurementSystem.Infrastructure.Entities.Contract", "Contract")
@@ -1029,6 +1253,33 @@ namespace ProcurementSystem.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ContractorEvaluation", b =>
+                {
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.Contract", "Contract")
+                        .WithMany("Evaluations")
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.Contractor", "Contractor")
+                        .WithMany("Evaluations")
+                        .HasForeignKey("ContractorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "EvaluatorUser")
+                        .WithMany()
+                        .HasForeignKey("EvaluatorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+
+                    b.Navigation("Contractor");
+
+                    b.Navigation("EvaluatorUser");
                 });
 
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.EvaluationCriteria", b =>
@@ -1188,6 +1439,12 @@ namespace ProcurementSystem.Infrastructure.Migrations
                 {
                     b.Navigation("Acceptances");
 
+                    b.Navigation("Addenda");
+
+                    b.Navigation("Evaluations");
+
+                    b.Navigation("Guarantees");
+
                     b.Navigation("Milestones");
 
                     b.Navigation("ProgressUpdates");
@@ -1203,6 +1460,8 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.Navigation("BidSubmissions");
 
                     b.Navigation("Contracts");
+
+                    b.Navigation("Evaluations");
                 });
 
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.EvaluationCriteria", b =>

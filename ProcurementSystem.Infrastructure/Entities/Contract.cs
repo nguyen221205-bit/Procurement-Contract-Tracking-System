@@ -42,5 +42,8 @@ namespace ProcurementSystem.Infrastructure.Entities
         public virtual ICollection<ContractMilestone> Milestones { get; set; } = new List<ContractMilestone>();
         public virtual ICollection<ProgressUpdate> ProgressUpdates { get; set; } = new List<ProgressUpdate>();
         public virtual ICollection<Acceptance> Acceptances { get; set; } = new List<Acceptance>();
+        public virtual ICollection<ContractGuarantee> Guarantees { get; set; } = new List<ContractGuarantee>();
+        public virtual ICollection<ContractAddendum> Addenda { get; set; } = new List<ContractAddendum>();
+        public virtual ICollection<ContractorEvaluation> Evaluations { get; set; } = new List<ContractorEvaluation>();
     }
 }

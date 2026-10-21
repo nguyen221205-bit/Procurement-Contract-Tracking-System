@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Contract;
@@ -130,6 +130,13 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Include(c => c.BidPackage)
                 .Include(c => c.Contractor)
                 .Include(c => c.Milestones)
+                .Include(c => c.Guarantees)
+                .Include(c => c.Addenda)
+                    .ThenInclude(a => a.Creator)
+                .Include(c => c.Addenda)
+                    .ThenInclude(a => a.Approver)
+                .Include(c => c.Evaluations)
+                    .ThenInclude(e => e.EvaluatorUser)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == id);
 
@@ -828,7 +835,61 @@ namespace ProcurementSystem.Infrastructure.Services
                 DisbursementRate = contract.Value > 0
                     ? Math.Round((totalDisbursedAmount / contract.Value) * 100, 2)
                     : 0,
-                Milestones = contract.Milestones?.Select(MapMilestoneToDto).ToList() ?? new()
+                Milestones = contract.Milestones?.Select(MapMilestoneToDto).ToList() ?? new(),
+                Guarantees = contract.Guarantees?.Select(g => new ContractGuaranteeDto
+                {
+                    Id = g.Id,
+                    ContractId = g.ContractId,
+                    GuaranteeNumber = g.GuaranteeNumber,
+                    BankName = g.BankName,
+                    Amount = g.Amount,
+                    Percentage = g.Percentage,
+                    EffectiveDate = g.EffectiveDate,
+                    ExpiryDate = g.ExpiryDate,
+                    ScannedDocumentPath = g.ScannedDocumentPath,
+                    Status = g.Status,
+                    Notes = g.Notes,
+                    CreatedAt = g.CreatedAt
+                }).OrderByDescending(g => g.CreatedAt).ToList() ?? new(),
+                Addenda = contract.Addenda?.Select(a => new ContractAddendumDto
+                {
+                    Id = a.Id,
+                    ContractId = a.ContractId,
+                    AddendumNumber = a.AddendumNumber,
+                    Title = a.Title,
+                    Type = a.Type,
+                    AdditionalValue = a.AdditionalValue,
+                    AdjustedEndDate = a.AdjustedEndDate,
+                    ExtensionDays = a.ExtensionDays,
+                    Reason = a.Reason,
+                    SignedDate = a.SignedDate,
+                    ScannedDocumentPath = a.ScannedDocumentPath,
+                    Status = a.Status,
+                    CreatedBy = a.CreatedBy,
+                    CreatedByName = a.Creator?.FullName,
+                    CreatedAt = a.CreatedAt,
+                    ApprovedBy = a.ApprovedBy,
+                    ApprovedByName = a.Approver?.FullName,
+                    ApprovedAt = a.ApprovedAt
+                }).OrderByDescending(a => a.SignedDate).ToList() ?? new(),
+                Evaluation = contract.Evaluations?.OrderByDescending(e => e.EvaluatedAt).Select(e => new ContractorEvaluationDto
+                {
+                    Id = e.Id,
+                    ContractId = e.ContractId,
+                    ContractNumber = contract.ContractNumber,
+                    BidPackageName = contract.BidPackage?.Name,
+                    ContractorId = e.ContractorId,
+                    ContractorName = contract.Contractor?.CompanyName ?? string.Empty,
+                    EvaluatorUserId = e.EvaluatorUserId,
+                    EvaluatorName = e.EvaluatorUser?.FullName ?? "Bên mời thầu",
+                    QualityScore = e.QualityScore,
+                    ScheduleScore = e.ScheduleScore,
+                    ComplianceScore = e.ComplianceScore,
+                    TotalScore = e.TotalScore,
+                    RatingGrade = e.RatingGrade,
+                    Comments = e.Comments,
+                    EvaluatedAt = e.EvaluatedAt
+                }).FirstOrDefault()
             };
         }
 
@@ -1169,6 +1230,849 @@ namespace ProcurementSystem.Infrastructure.Services
                 resultDto,
                 $"{actionMsg} biên bản nghiệm thu mốc '{milestone.Title}' thành công.{completedMsg}");
         }
+
+        #region Contract Guarantees (Bảo lãnh hợp đồng)
+        public async Task<ApiResponse<List<ContractGuaranteeDto>>> GetContractGuaranteesAsync(
+            int contractId, int userId, bool isInternalStaff)
+        {
+            var contract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.Guarantees)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == contractId);
+
+            if (contract == null)
+            {
+                return ApiResponse<List<ContractGuaranteeDto>>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            if (!isInternalStaff)
+            {
+                var contractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.UserId == userId);
+
+                if (contractor == null || contractor.Id != contract.ContractorId)
+                {
+                    return ApiResponse<List<ContractGuaranteeDto>>.Forbidden("Bạn không có quyền xem thông tin bảo lãnh của hợp đồng này.");
+                }
+            }
+
+            var dtos = contract.Guarantees
+                .OrderByDescending(g => g.CreatedAt)
+                .Select(g => new ContractGuaranteeDto
+                {
+                    Id = g.Id,
+                    ContractId = g.ContractId,
+                    GuaranteeNumber = g.GuaranteeNumber,
+                    BankName = g.BankName,
+                    Amount = g.Amount,
+                    Percentage = g.Percentage,
+                    EffectiveDate = g.EffectiveDate,
+                    ExpiryDate = g.ExpiryDate,
+                    ScannedDocumentPath = g.ScannedDocumentPath,
+                    Status = g.Status,
+                    Notes = g.Notes,
+                    CreatedAt = g.CreatedAt
+                }).ToList();
+
+            return ApiResponse<List<ContractGuaranteeDto>>.Ok(dtos);
+        }
+
+        public async Task<ApiResponse<ContractGuaranteeDto>> AddContractGuaranteeAsync(
+            int contractId, CreateContractGuaranteeRequest request, int userId, bool isAdmin)
+        {
+            var contract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.BidPackage)
+                .Include(c => c.Contractor)
+                .FirstOrDefaultAsync(c => c.Id == contractId);
+
+            if (contract == null)
+            {
+                return ApiResponse<ContractGuaranteeDto>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            if (!isAdmin && contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<ContractGuaranteeDto>.Forbidden("Bạn chỉ có quyền thêm bảo lãnh cho gói thầu do chính mình phụ trách.");
+            }
+
+            if (contract.Status == ContractStatus.Terminated)
+            {
+                return ApiResponse<ContractGuaranteeDto>.Fail("Không thể thêm chứng thư bảo lãnh cho hợp đồng đã bị chấm dứt.");
+            }
+
+            if (request.ExpiryDate <= request.EffectiveDate)
+            {
+                return ApiResponse<ContractGuaranteeDto>.Fail("Ngày hết hạn bảo lãnh phải sau ngày có hiệu lực.");
+            }
+
+            var pct = request.Percentage > 0
+                ? request.Percentage
+                : (contract.Value > 0 ? Math.Round((request.Amount / contract.Value) * 100, 2) : 0);
+
+            var guarantee = new ContractGuarantee
+            {
+                ContractId = contractId,
+                GuaranteeNumber = request.GuaranteeNumber.Trim(),
+                BankName = request.BankName.Trim(),
+                Amount = request.Amount,
+                Percentage = pct,
+                EffectiveDate = request.EffectiveDate,
+                ExpiryDate = request.ExpiryDate,
+                Status = GuaranteeStatus.Valid,
+                Notes = request.Notes?.Trim(),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.Repository<ContractGuarantee>().AddAsync(guarantee);
+            await _unitOfWork.SaveChangesAsync();
+
+            var dto = new ContractGuaranteeDto
+            {
+                Id = guarantee.Id,
+                ContractId = guarantee.ContractId,
+                GuaranteeNumber = guarantee.GuaranteeNumber,
+                BankName = guarantee.BankName,
+                Amount = guarantee.Amount,
+                Percentage = guarantee.Percentage,
+                EffectiveDate = guarantee.EffectiveDate,
+                ExpiryDate = guarantee.ExpiryDate,
+                ScannedDocumentPath = guarantee.ScannedDocumentPath,
+                Status = guarantee.Status,
+                Notes = guarantee.Notes,
+                CreatedAt = guarantee.CreatedAt
+            };
+
+            return ApiResponse<ContractGuaranteeDto>.Ok(dto, "Lưu chứng thư bảo lãnh thực hiện hợp đồng thành công.");
+        }
+
+        public async Task<ApiResponse<ContractGuaranteeDto>> UpdateGuaranteeStatusAsync(
+            int contractId, int guaranteeId, UpdateGuaranteeStatusRequest request, int userId, bool isAdmin)
+        {
+            var guarantee = await _unitOfWork.Repository<ContractGuarantee>()
+                .Query()
+                .Include(g => g.Contract)
+                    .ThenInclude(c => c.BidPackage)
+                .FirstOrDefaultAsync(g => g.Id == guaranteeId && g.ContractId == contractId);
+
+            if (guarantee == null)
+            {
+                return ApiResponse<ContractGuaranteeDto>.Fail("Không tìm thấy chứng thư bảo lãnh.");
+            }
+
+            if (!isAdmin && guarantee.Contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<ContractGuaranteeDto>.Forbidden("Bạn không có quyền cập nhật trạng thái bảo lãnh của hợp đồng này.");
+            }
+
+            guarantee.Status = request.Status;
+            if (!string.IsNullOrWhiteSpace(request.Notes))
+            {
+                guarantee.Notes = request.Notes.Trim();
+            }
+            guarantee.UpdatedAt = DateTime.UtcNow;
+
+            _unitOfWork.Repository<ContractGuarantee>().Update(guarantee);
+            await _unitOfWork.SaveChangesAsync();
+
+            var dto = new ContractGuaranteeDto
+            {
+                Id = guarantee.Id,
+                ContractId = guarantee.ContractId,
+                GuaranteeNumber = guarantee.GuaranteeNumber,
+                BankName = guarantee.BankName,
+                Amount = guarantee.Amount,
+                Percentage = guarantee.Percentage,
+                EffectiveDate = guarantee.EffectiveDate,
+                ExpiryDate = guarantee.ExpiryDate,
+                ScannedDocumentPath = guarantee.ScannedDocumentPath,
+                Status = guarantee.Status,
+                Notes = guarantee.Notes,
+                CreatedAt = guarantee.CreatedAt
+            };
+
+            return ApiResponse<ContractGuaranteeDto>.Ok(dto, "Cập nhật trạng thái chứng thư bảo lãnh thành công.");
+        }
+
+        public async Task<ApiResponse<string>> UploadGuaranteeDocumentAsync(
+            int contractId, int guaranteeId, IFormFile file, int userId, bool isAdmin)
+        {
+            var guarantee = await _unitOfWork.Repository<ContractGuarantee>()
+                .Query()
+                .Include(g => g.Contract)
+                    .ThenInclude(c => c.BidPackage)
+                .FirstOrDefaultAsync(g => g.Id == guaranteeId && g.ContractId == contractId);
+
+            if (guarantee == null)
+            {
+                return ApiResponse<string>.Fail("Không tìm thấy chứng thư bảo lãnh.");
+            }
+
+            if (!isAdmin && guarantee.Contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<string>.Forbidden("Bạn không có quyền tải lên tệp scan cho bảo lãnh này.");
+            }
+
+            var allowedExts = new[] { ".pdf", ".jpg", ".jpeg", ".png" };
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!allowedExts.Contains(ext))
+            {
+                return ApiResponse<string>.Fail("Tệp đính kèm phải là định dạng PDF hoặc hình ảnh (PNG, JPG).");
+            }
+
+            if (file.Length > 15 * 1024 * 1024)
+            {
+                return ApiResponse<string>.Fail("Dung lượng tệp không được vượt quá 15MB.");
+            }
+
+            var savedPath = await _fileStorageService.SaveFileAsync(file, $"contracts/{contractId}/guarantees");
+            guarantee.ScannedDocumentPath = savedPath;
+            guarantee.UpdatedAt = DateTime.UtcNow;
+
+            _unitOfWork.Repository<ContractGuarantee>().Update(guarantee);
+            await _unitOfWork.SaveChangesAsync();
+
+            return ApiResponse<string>.Ok(savedPath, "Tải lên bản scan chứng thư bảo lãnh thành công.");
+        }
+
+        public async Task<(byte[] Bytes, string ContentType, string FileName)?> GetGuaranteeDocumentForDownloadAsync(
+            int contractId, int guaranteeId, int userId, bool isInternalStaff)
+        {
+            var guarantee = await _unitOfWork.Repository<ContractGuarantee>()
+                .Query()
+                .Include(g => g.Contract)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(g => g.Id == guaranteeId && g.ContractId == contractId);
+
+            if (guarantee == null || string.IsNullOrWhiteSpace(guarantee.ScannedDocumentPath))
+            {
+                return null;
+            }
+
+            if (!isInternalStaff)
+            {
+                var contractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.UserId == userId);
+
+                if (contractor == null || contractor.Id != guarantee.Contract.ContractorId)
+                {
+                    return null;
+                }
+            }
+
+            var physicalPath = _fileStorageService.GetPhysicalFilePath(guarantee.ScannedDocumentPath);
+            if (!File.Exists(physicalPath))
+            {
+                return null;
+            }
+
+            var bytes = await File.ReadAllBytesAsync(physicalPath);
+            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var contentType = ext switch
+            {
+                ".pdf" => "application/pdf",
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                _ => "application/octet-stream"
+            };
+
+            var fileName = $"BaoLanh_{guarantee.GuaranteeNumber}{ext}";
+            return (bytes, contentType, fileName);
+        }
+        #endregion
+
+        #region Contract Addenda (Phụ lục hợp đồng)
+        public async Task<ApiResponse<List<ContractAddendumDto>>> GetContractAddendaAsync(
+            int contractId, int userId, bool isInternalStaff)
+        {
+            var contract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.Addenda)
+                    .ThenInclude(a => a.Creator)
+                .Include(c => c.Addenda)
+                    .ThenInclude(a => a.Approver)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == contractId);
+
+            if (contract == null)
+            {
+                return ApiResponse<List<ContractAddendumDto>>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            if (!isInternalStaff)
+            {
+                var contractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.UserId == userId);
+
+                if (contractor == null || contractor.Id != contract.ContractorId)
+                {
+                    return ApiResponse<List<ContractAddendumDto>>.Forbidden("Bạn không có quyền xem danh sách phụ lục của hợp đồng này.");
+                }
+            }
+
+            var dtos = contract.Addenda
+                .OrderByDescending(a => a.SignedDate)
+                .Select(a => new ContractAddendumDto
+                {
+                    Id = a.Id,
+                    ContractId = a.ContractId,
+                    AddendumNumber = a.AddendumNumber,
+                    Title = a.Title,
+                    Type = a.Type,
+                    AdditionalValue = a.AdditionalValue,
+                    AdjustedEndDate = a.AdjustedEndDate,
+                    ExtensionDays = a.ExtensionDays,
+                    Reason = a.Reason,
+                    SignedDate = a.SignedDate,
+                    ScannedDocumentPath = a.ScannedDocumentPath,
+                    Status = a.Status,
+                    CreatedBy = a.CreatedBy,
+                    CreatedByName = a.Creator?.FullName,
+                    CreatedAt = a.CreatedAt,
+                    ApprovedBy = a.ApprovedBy,
+                    ApprovedByName = a.Approver?.FullName,
+                    ApprovedAt = a.ApprovedAt
+                }).ToList();
+
+            return ApiResponse<List<ContractAddendumDto>>.Ok(dtos);
+        }
+
+        public async Task<ApiResponse<ContractAddendumDto>> CreateContractAddendumAsync(
+            int contractId, CreateContractAddendumRequest request, int userId, bool isAdmin)
+        {
+            var contract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.BidPackage)
+                .Include(c => c.Contractor)
+                .FirstOrDefaultAsync(c => c.Id == contractId);
+
+            if (contract == null)
+            {
+                return ApiResponse<ContractAddendumDto>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            if (!isAdmin && contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<ContractAddendumDto>.Forbidden("Bạn chỉ có quyền tạo phụ lục cho hợp đồng do chính mình phụ trách.");
+            }
+
+            if (contract.Status == ContractStatus.Draft)
+            {
+                return ApiResponse<ContractAddendumDto>.Fail("Hợp đồng đang ở trạng thái Nháp (Draft). Vui lòng chuyển sang có hiệu lực (Active) trước khi lập phụ lục.");
+            }
+
+            if (contract.Status == ContractStatus.Terminated)
+            {
+                return ApiResponse<ContractAddendumDto>.Fail("Không thể lập phụ lục cho hợp đồng đã bị chấm dứt.");
+            }
+
+            var exists = await _unitOfWork.Repository<ContractAddendum>()
+                .Query()
+                .AnyAsync(a => a.ContractId == contractId && a.AddendumNumber == request.AddendumNumber.Trim());
+
+            if (exists)
+            {
+                return ApiResponse<ContractAddendumDto>.Fail($"Số phụ lục '{request.AddendumNumber}' đã tồn tại trong hợp đồng này.");
+            }
+
+            var addendum = new ContractAddendum
+            {
+                ContractId = contractId,
+                AddendumNumber = request.AddendumNumber.Trim(),
+                Title = request.Title.Trim(),
+                Type = request.Type,
+                AdditionalValue = request.AdditionalValue,
+                AdjustedEndDate = request.AdjustedEndDate,
+                ExtensionDays = request.ExtensionDays,
+                Reason = request.Reason?.Trim(),
+                SignedDate = request.SignedDate,
+                Status = AddendumStatus.Approved,
+                CreatedBy = userId,
+                ApprovedBy = userId,
+                ApprovedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            if (request.AdditionalValue != 0)
+            {
+                contract.Value += request.AdditionalValue;
+                if (contract.Value < 0) contract.Value = 0;
+            }
+
+            if (request.AdjustedEndDate.HasValue && request.AdjustedEndDate.Value > contract.EndDate)
+            {
+                contract.EndDate = request.AdjustedEndDate.Value;
+            }
+
+            contract.UpdatedAt = DateTime.UtcNow;
+
+            await _unitOfWork.Repository<ContractAddendum>().AddAsync(addendum);
+            _unitOfWork.Repository<Contract>().Update(contract);
+            await _unitOfWork.SaveChangesAsync();
+
+            var user = await _unitOfWork.Repository<User>().Query().AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+
+            var dto = new ContractAddendumDto
+            {
+                Id = addendum.Id,
+                ContractId = addendum.ContractId,
+                AddendumNumber = addendum.AddendumNumber,
+                Title = addendum.Title,
+                Type = addendum.Type,
+                AdditionalValue = addendum.AdditionalValue,
+                AdjustedEndDate = addendum.AdjustedEndDate,
+                ExtensionDays = addendum.ExtensionDays,
+                Reason = addendum.Reason,
+                SignedDate = addendum.SignedDate,
+                ScannedDocumentPath = addendum.ScannedDocumentPath,
+                Status = addendum.Status,
+                CreatedBy = addendum.CreatedBy,
+                CreatedByName = user?.FullName,
+                CreatedAt = addendum.CreatedAt,
+                ApprovedBy = addendum.ApprovedBy,
+                ApprovedByName = user?.FullName,
+                ApprovedAt = addendum.ApprovedAt
+            };
+
+            return ApiResponse<ContractAddendumDto>.Ok(dto, $"Ban hành phụ lục hợp đồng #{addendum.AddendumNumber} thành công.");
+        }
+
+        public async Task<ApiResponse<ContractAddendumDto>> ApproveContractAddendumAsync(
+            int contractId, int addendumId, ApproveContractAddendumRequest request, int userId, bool isAdmin)
+        {
+            var addendum = await _unitOfWork.Repository<ContractAddendum>()
+                .Query()
+                .Include(a => a.Contract)
+                    .ThenInclude(c => c.BidPackage)
+                .FirstOrDefaultAsync(a => a.Id == addendumId && a.ContractId == contractId);
+
+            if (addendum == null)
+            {
+                return ApiResponse<ContractAddendumDto>.Fail("Không tìm thấy phụ lục hợp đồng.");
+            }
+
+            if (!isAdmin && addendum.Contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<ContractAddendumDto>.Forbidden("Bạn không có quyền phê duyệt phụ lục này.");
+            }
+
+            addendum.Status = request.IsApproved ? AddendumStatus.Approved : AddendumStatus.Rejected;
+            addendum.ApprovedBy = userId;
+            addendum.ApprovedAt = DateTime.UtcNow;
+
+            if (request.IsApproved)
+            {
+                var contract = addendum.Contract;
+                if (addendum.AdditionalValue != 0)
+                {
+                    contract.Value += addendum.AdditionalValue;
+                    if (contract.Value < 0) contract.Value = 0;
+                }
+
+                if (addendum.AdjustedEndDate.HasValue && addendum.AdjustedEndDate.Value > contract.EndDate)
+                {
+                    contract.EndDate = addendum.AdjustedEndDate.Value;
+                }
+                contract.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.Repository<Contract>().Update(contract);
+            }
+
+            _unitOfWork.Repository<ContractAddendum>().Update(addendum);
+            await _unitOfWork.SaveChangesAsync();
+
+            var user = await _unitOfWork.Repository<User>().Query().AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+
+            var dto = new ContractAddendumDto
+            {
+                Id = addendum.Id,
+                ContractId = addendum.ContractId,
+                AddendumNumber = addendum.AddendumNumber,
+                Title = addendum.Title,
+                Type = addendum.Type,
+                AdditionalValue = addendum.AdditionalValue,
+                AdjustedEndDate = addendum.AdjustedEndDate,
+                ExtensionDays = addendum.ExtensionDays,
+                Reason = addendum.Reason,
+                SignedDate = addendum.SignedDate,
+                ScannedDocumentPath = addendum.ScannedDocumentPath,
+                Status = addendum.Status,
+                CreatedBy = addendum.CreatedBy,
+                CreatedByName = addendum.Creator?.FullName,
+                CreatedAt = addendum.CreatedAt,
+                ApprovedBy = addendum.ApprovedBy,
+                ApprovedByName = user?.FullName,
+                ApprovedAt = addendum.ApprovedAt
+            };
+
+            var msg = request.IsApproved ? "Phê duyệt phụ lục thành công." : "Từ chối phụ lục thành công.";
+            return ApiResponse<ContractAddendumDto>.Ok(dto, msg);
+        }
+
+        public async Task<ApiResponse<string>> UploadAddendumDocumentAsync(
+            int contractId, int addendumId, IFormFile file, int userId, bool isAdmin)
+        {
+            var addendum = await _unitOfWork.Repository<ContractAddendum>()
+                .Query()
+                .Include(a => a.Contract)
+                    .ThenInclude(c => c.BidPackage)
+                .FirstOrDefaultAsync(a => a.Id == addendumId && a.ContractId == contractId);
+
+            if (addendum == null)
+            {
+                return ApiResponse<string>.Fail("Không tìm thấy phụ lục hợp đồng.");
+            }
+
+            if (!isAdmin && addendum.Contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<string>.Forbidden("Bạn không có quyền tải lên tệp scan cho phụ lục này.");
+            }
+
+            var allowedExts = new[] { ".pdf", ".jpg", ".jpeg", ".png" };
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!allowedExts.Contains(ext))
+            {
+                return ApiResponse<string>.Fail("Tệp đính kèm phải là định dạng PDF hoặc hình ảnh (PNG, JPG).");
+            }
+
+            if (file.Length > 20 * 1024 * 1024)
+            {
+                return ApiResponse<string>.Fail("Dung lượng tệp không được vượt quá 20MB.");
+            }
+
+            var savedPath = await _fileStorageService.SaveFileAsync(file, $"contracts/{contractId}/addenda");
+            addendum.ScannedDocumentPath = savedPath;
+
+            _unitOfWork.Repository<ContractAddendum>().Update(addendum);
+            await _unitOfWork.SaveChangesAsync();
+
+            return ApiResponse<string>.Ok(savedPath, "Tải lên bản scan phụ lục hợp đồng thành công.");
+        }
+
+        public async Task<(byte[] Bytes, string ContentType, string FileName)?> GetAddendumDocumentForDownloadAsync(
+            int contractId, int addendumId, int userId, bool isInternalStaff)
+        {
+            var addendum = await _unitOfWork.Repository<ContractAddendum>()
+                .Query()
+                .Include(a => a.Contract)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == addendumId && a.ContractId == contractId);
+
+            if (addendum == null || string.IsNullOrWhiteSpace(addendum.ScannedDocumentPath))
+            {
+                return null;
+            }
+
+            if (!isInternalStaff)
+            {
+                var contractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.UserId == userId);
+
+                if (contractor == null || contractor.Id != addendum.Contract.ContractorId)
+                {
+                    return null;
+                }
+            }
+
+            var physicalPath = _fileStorageService.GetPhysicalFilePath(addendum.ScannedDocumentPath);
+            if (!File.Exists(physicalPath))
+            {
+                return null;
+            }
+
+            var bytes = await File.ReadAllBytesAsync(physicalPath);
+            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var contentType = ext switch
+            {
+                ".pdf" => "application/pdf",
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                _ => "application/octet-stream"
+            };
+
+            var fileName = $"PhuLuc_{addendum.AddendumNumber}{ext}";
+            return (bytes, contentType, fileName);
+        }
+        #endregion
+
+        #region Contractor Evaluation (Đánh giá uy tín & xếp hạng nhà thầu)
+        public async Task<ApiResponse<ContractorEvaluationDto>> EvaluateContractorAsync(
+            int contractId, CreateContractorEvaluationRequest request, int userId, bool isAdmin)
+        {
+            var contract = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.BidPackage)
+                .Include(c => c.Contractor)
+                .FirstOrDefaultAsync(c => c.Id == contractId);
+
+            if (contract == null)
+            {
+                return ApiResponse<ContractorEvaluationDto>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            if (!isAdmin && contract.BidPackage.CreatedBy != userId)
+            {
+                return ApiResponse<ContractorEvaluationDto>.Forbidden("Bạn chỉ có quyền đánh giá nghiệm thu cho gói thầu do chính mình phụ trách.");
+            }
+
+            if (contract.Status != ContractStatus.Completed && contract.Status != ContractStatus.Terminated)
+            {
+                return ApiResponse<ContractorEvaluationDto>.Fail("Chỉ được đánh giá nghiệm thu tổng kết khi hợp đồng đã ở trạng thái Hoàn thành (Completed) hoặc Chấm dứt (Terminated).");
+            }
+
+            var total = Math.Round(request.QualityScore + request.ScheduleScore + request.ComplianceScore, 2);
+            string grade = total switch
+            {
+                >= 85 => "A",
+                >= 70 => "B",
+                >= 50 => "C",
+                _ => "D"
+            };
+
+            var existingEval = await _unitOfWork.Repository<ContractorEvaluation>()
+                .Query()
+                .FirstOrDefaultAsync(e => e.ContractId == contractId);
+
+            if (existingEval != null)
+            {
+                existingEval.QualityScore = request.QualityScore;
+                existingEval.ScheduleScore = request.ScheduleScore;
+                existingEval.ComplianceScore = request.ComplianceScore;
+                existingEval.TotalScore = total;
+                existingEval.RatingGrade = grade;
+                existingEval.Comments = request.Comments?.Trim();
+                existingEval.EvaluatorUserId = userId;
+                existingEval.EvaluatedAt = DateTime.UtcNow;
+
+                _unitOfWork.Repository<ContractorEvaluation>().Update(existingEval);
+            }
+            else
+            {
+                existingEval = new ContractorEvaluation
+                {
+                    ContractId = contractId,
+                    ContractorId = contract.ContractorId,
+                    EvaluatorUserId = userId,
+                    QualityScore = request.QualityScore,
+                    ScheduleScore = request.ScheduleScore,
+                    ComplianceScore = request.ComplianceScore,
+                    TotalScore = total,
+                    RatingGrade = grade,
+                    Comments = request.Comments?.Trim(),
+                    EvaluatedAt = DateTime.UtcNow
+                };
+
+                await _unitOfWork.Repository<ContractorEvaluation>().AddAsync(existingEval);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+
+            // Tự động tính toán lại điểm Contractor.Rating
+            var allContractorEvals = await _unitOfWork.Repository<ContractorEvaluation>()
+                .Query()
+                .Where(e => e.ContractorId == contract.ContractorId)
+                .ToListAsync();
+
+            if (allContractorEvals.Count > 0)
+            {
+                var contractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .FirstOrDefaultAsync(c => c.Id == contract.ContractorId);
+
+                if (contractor != null)
+                {
+                    contractor.Rating = Math.Round(allContractorEvals.Average(e => e.TotalScore), 2);
+                    _unitOfWork.Repository<Contractor>().Update(contractor);
+                    await _unitOfWork.SaveChangesAsync();
+                }
+            }
+
+            // Gửi thông báo cho nhà thầu
+            try
+            {
+                if (contract.Contractor != null && contract.Contractor.UserId > 0)
+                {
+                    await _notificationService.CreateNotificationAsync(
+                        contract.Contractor.UserId,
+                        $"Đánh giá hoàn thành hợp đồng #{contract.ContractNumber}",
+                        $"Đơn vị của bạn được xếp Hạng {grade} ({total}/100 điểm) cho hợp đồng '{contract.ContractNumber}'.",
+                        NotificationType.Info,
+                        sendEmail: false);
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            var evaluatorUser = await _unitOfWork.Repository<User>().Query().AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+
+            var dto = new ContractorEvaluationDto
+            {
+                Id = existingEval.Id,
+                ContractId = existingEval.ContractId,
+                ContractNumber = contract.ContractNumber,
+                BidPackageName = contract.BidPackage?.Name,
+                ContractorId = existingEval.ContractorId,
+                ContractorName = contract.Contractor?.CompanyName ?? string.Empty,
+                EvaluatorUserId = existingEval.EvaluatorUserId,
+                EvaluatorName = evaluatorUser?.FullName ?? "Bên mời thầu",
+                QualityScore = existingEval.QualityScore,
+                ScheduleScore = existingEval.ScheduleScore,
+                ComplianceScore = existingEval.ComplianceScore,
+                TotalScore = existingEval.TotalScore,
+                RatingGrade = existingEval.RatingGrade,
+                Comments = existingEval.Comments,
+                EvaluatedAt = existingEval.EvaluatedAt
+            };
+
+            return ApiResponse<ContractorEvaluationDto>.Ok(dto, $"Đánh giá nghiệm thu nhà thầu thành công. Xếp hạng: Hạng {grade} ({total}/100 điểm).");
+        }
+
+        public async Task<ApiResponse<ContractorEvaluationDto?>> GetContractEvaluationAsync(
+            int contractId, int userId, bool isInternalStaff)
+        {
+            var evaluation = await _unitOfWork.Repository<ContractorEvaluation>()
+                .Query()
+                .Include(e => e.Contract)
+                    .ThenInclude(c => c.BidPackage)
+                .Include(e => e.Contractor)
+                .Include(e => e.EvaluatorUser)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.ContractId == contractId);
+
+            if (evaluation == null)
+            {
+                return ApiResponse<ContractorEvaluationDto?>.Ok(null, "Hợp đồng chưa có đánh giá nghiệm thu.");
+            }
+
+            if (!isInternalStaff)
+            {
+                var contractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.UserId == userId);
+
+                if (contractor == null || contractor.Id != evaluation.ContractorId)
+                {
+                    return ApiResponse<ContractorEvaluationDto?>.Forbidden("Bạn không có quyền xem đánh giá này.");
+                }
+            }
+
+            var dto = new ContractorEvaluationDto
+            {
+                Id = evaluation.Id,
+                ContractId = evaluation.ContractId,
+                ContractNumber = evaluation.Contract?.ContractNumber ?? string.Empty,
+                BidPackageName = evaluation.Contract?.BidPackage?.Name,
+                ContractorId = evaluation.ContractorId,
+                ContractorName = evaluation.Contractor?.CompanyName ?? string.Empty,
+                EvaluatorUserId = evaluation.EvaluatorUserId,
+                EvaluatorName = evaluation.EvaluatorUser?.FullName ?? "Bên mời thầu",
+                QualityScore = evaluation.QualityScore,
+                ScheduleScore = evaluation.ScheduleScore,
+                ComplianceScore = evaluation.ComplianceScore,
+                TotalScore = evaluation.TotalScore,
+                RatingGrade = evaluation.RatingGrade,
+                Comments = evaluation.Comments,
+                EvaluatedAt = evaluation.EvaluatedAt
+            };
+
+            return ApiResponse<ContractorEvaluationDto?>.Ok(dto);
+        }
+
+        public async Task<ApiResponse<ContractorCreditProfileDto>> GetContractorCreditProfileAsync(
+            int contractorId, int userId, bool isInternalStaff)
+        {
+            var contractor = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == contractorId);
+
+            if (contractor == null)
+            {
+                return ApiResponse<ContractorCreditProfileDto>.Fail("Không tìm thấy nhà thầu.");
+            }
+
+            if (!isInternalStaff)
+            {
+                var currentContractor = await _unitOfWork.Repository<Contractor>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.UserId == userId);
+
+                if (currentContractor == null || currentContractor.Id != contractorId)
+                {
+                    return ApiResponse<ContractorCreditProfileDto>.Forbidden("Bạn không có quyền xem hồ sơ uy tín của nhà thầu khác.");
+                }
+            }
+
+            var contracts = await _unitOfWork.Repository<Contract>()
+                .Query()
+                .Where(c => c.ContractorId == contractorId)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var evals = await _unitOfWork.Repository<ContractorEvaluation>()
+                .Query()
+                .Include(e => e.Contract)
+                    .ThenInclude(c => c.BidPackage)
+                .Include(e => e.EvaluatorUser)
+                .Where(e => e.ContractorId == contractorId)
+                .OrderByDescending(e => e.EvaluatedAt)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var totalContracts = contracts.Count;
+            var completedContracts = contracts.Count(c => c.Status == ContractStatus.Completed);
+            var terminatedContracts = contracts.Count(c => c.Status == ContractStatus.Terminated);
+
+            var avgQuality = evals.Count > 0 ? Math.Round(evals.Average(e => e.QualityScore), 2) : 0;
+            var avgSchedule = evals.Count > 0 ? Math.Round(evals.Average(e => e.ScheduleScore), 2) : 0;
+            var avgCompliance = evals.Count > 0 ? Math.Round(evals.Average(e => e.ComplianceScore), 2) : 0;
+
+            var profile = new ContractorCreditProfileDto
+            {
+                ContractorId = contractor.Id,
+                CompanyName = contractor.CompanyName,
+                TaxCode = contractor.TaxCode,
+                Rating = contractor.Rating,
+                TotalContractsCount = totalContracts,
+                CompletedContractsCount = completedContracts,
+                TerminatedContractsCount = terminatedContracts,
+                AverageQualityScore = avgQuality,
+                AverageScheduleScore = avgSchedule,
+                AverageComplianceScore = avgCompliance,
+                Evaluations = evals.Select(e => new ContractorEvaluationDto
+                {
+                    Id = e.Id,
+                    ContractId = e.ContractId,
+                    ContractNumber = e.Contract?.ContractNumber ?? string.Empty,
+                    BidPackageName = e.Contract?.BidPackage?.Name,
+                    ContractorId = e.ContractorId,
+                    ContractorName = contractor.CompanyName,
+                    EvaluatorUserId = e.EvaluatorUserId,
+                    EvaluatorName = e.EvaluatorUser?.FullName ?? "Bên mời thầu",
+                    QualityScore = e.QualityScore,
+                    ScheduleScore = e.ScheduleScore,
+                    ComplianceScore = e.ComplianceScore,
+                    TotalScore = e.TotalScore,
+                    RatingGrade = e.RatingGrade,
+                    Comments = e.Comments,
+                    EvaluatedAt = e.EvaluatedAt
+                }).ToList()
+            };
+
+            return ApiResponse<ContractorCreditProfileDto>.Ok(profile);
+        }
+        #endregion
 
         private static decimal GetTotalDisbursedAmount(Contract contract)
         {

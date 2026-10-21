@@ -25,13 +25,13 @@ namespace ProcurementSystem.Core.DTOs.Contract
 
         /// <summary>Số hợp đồng duy nhất trong hệ thống.</summary>
         public string ContractNumber { get; set; } = string.Empty;
-        /// <summary>Tổng giá trị hợp đồng.</summary>
+        /// <summary>Tổng giá trị hợp đồng (đã bao gồm các phụ lục điều chỉnh).</summary>
         public decimal Value { get; set; }
         /// <summary>Điều khoản hợp đồng.</summary>
         public string? Terms { get; set; }
         /// <summary>Ngày bắt đầu hiệu lực.</summary>
         public DateTime StartDate { get; set; }
-        /// <summary>Ngày kết thúc dự kiến.</summary>
+        /// <summary>Ngày kết thúc dự kiến (đã bao gồm các phụ lục gia hạn).</summary>
         public DateTime EndDate { get; set; }
 
         /// <summary>Trạng thái hợp đồng dạng enum.</summary>
@@ -55,5 +55,23 @@ namespace ProcurementSystem.Core.DTOs.Contract
 
         /// <summary>Danh sách mốc thanh toán/nghiệm thu của hợp đồng.</summary>
         public List<ContractMilestoneDto> Milestones { get; set; } = new();
+
+        /// <summary>Danh sách bảo lãnh thực hiện hợp đồng và bảo lãnh dự thầu.</summary>
+        public List<ContractGuaranteeDto> Guarantees { get; set; } = new();
+
+        /// <summary>Danh sách phụ lục hợp đồng đã phát hành.</summary>
+        public List<ContractAddendumDto> Addenda { get; set; } = new();
+
+        /// <summary>Kết quả đánh giá nghiệm thu tổng kết nhà thầu (nếu có).</summary>
+        public ContractorEvaluationDto? Evaluation { get; set; }
+
+        /// <summary>Hợp đồng đã có bảo lãnh có hiệu lực hay chưa.</summary>
+        public bool HasActiveGuarantee => Guarantees.Any(g => g.Status == GuaranteeStatus.Valid);
+
+        /// <summary>Tổng giá trị bảo lãnh đang có hiệu lực.</summary>
+        public decimal TotalActiveGuaranteeAmount => Guarantees.Where(g => g.Status == GuaranteeStatus.Valid).Sum(g => g.Amount);
+
+        /// <summary>Tổng giá trị điều chỉnh từ các phụ lục hợp đồng đã duyệt.</summary>
+        public decimal TotalAdjustedValue => Addenda.Where(a => a.Status == AddendumStatus.Approved).Sum(a => a.AdditionalValue);
     }
 }

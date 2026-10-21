@@ -75,5 +75,76 @@ namespace ProcurementSystem.Core.Interfaces
         /// Phê duyệt hoặc từ chối biên bản nghiệm thu mốc thanh toán (chỉ Admin/Procurement phụ trách gói thầu)
         /// </summary>
         Task<ApiResponse<MilestoneAcceptanceDto>> ApproveMilestoneAcceptanceAsync(int milestoneId, ApproveMilestoneAcceptanceRequest request, int userId, bool isAdmin);
+
+        #region Contract Guarantees (Bảo lãnh hợp đồng)
+        /// <summary>
+        /// Lấy danh sách bảo lãnh của hợp đồng
+        /// </summary>
+        Task<ApiResponse<List<ContractGuaranteeDto>>> GetContractGuaranteesAsync(int contractId, int userId, bool isInternalStaff);
+
+        /// <summary>
+        /// Thêm mới chứng thư bảo lãnh (chỉ Admin/Procurement phụ trách gói thầu)
+        /// </summary>
+        Task<ApiResponse<ContractGuaranteeDto>> AddContractGuaranteeAsync(int contractId, CreateContractGuaranteeRequest request, int userId, bool isAdmin);
+
+        /// <summary>
+        /// Cập nhật trạng thái chứng thư bảo lãnh (Valid, Released, Claimed, Expired)
+        /// </summary>
+        Task<ApiResponse<ContractGuaranteeDto>> UpdateGuaranteeStatusAsync(int contractId, int guaranteeId, UpdateGuaranteeStatusRequest request, int userId, bool isAdmin);
+
+        /// <summary>
+        /// Upload file scan chứng thư bảo lãnh ngân hàng
+        /// </summary>
+        Task<ApiResponse<string>> UploadGuaranteeDocumentAsync(int contractId, int guaranteeId, IFormFile file, int userId, bool isAdmin);
+
+        /// <summary>
+        /// Tải/xem file chứng thư bảo lãnh an toàn
+        /// </summary>
+        Task<(byte[] Bytes, string ContentType, string FileName)?> GetGuaranteeDocumentForDownloadAsync(int contractId, int guaranteeId, int userId, bool isInternalStaff);
+        #endregion
+
+        #region Contract Addenda (Phụ lục hợp đồng)
+        /// <summary>
+        /// Lấy danh sách phụ lục của hợp đồng
+        /// </summary>
+        Task<ApiResponse<List<ContractAddendumDto>>> GetContractAddendaAsync(int contractId, int userId, bool isInternalStaff);
+
+        /// <summary>
+        /// Tạo mới phụ lục hợp đồng (gia hạn thời gian, điều chỉnh giá trị, thay đổi phạm vi)
+        /// </summary>
+        Task<ApiResponse<ContractAddendumDto>> CreateContractAddendumAsync(int contractId, CreateContractAddendumRequest request, int userId, bool isAdmin);
+
+        /// <summary>
+        /// Phê duyệt phụ lục hợp đồng (tự động cập nhật giá trị/ngày kết thúc hợp đồng)
+        /// </summary>
+        Task<ApiResponse<ContractAddendumDto>> ApproveContractAddendumAsync(int contractId, int addendumId, ApproveContractAddendumRequest request, int userId, bool isAdmin);
+
+        /// <summary>
+        /// Upload file scan phụ lục hợp đồng đã ký
+        /// </summary>
+        Task<ApiResponse<string>> UploadAddendumDocumentAsync(int contractId, int addendumId, IFormFile file, int userId, bool isAdmin);
+
+        /// <summary>
+        /// Tải/xem file phụ lục hợp đồng an toàn
+        /// </summary>
+        Task<(byte[] Bytes, string ContentType, string FileName)?> GetAddendumDocumentForDownloadAsync(int contractId, int addendumId, int userId, bool isInternalStaff);
+        #endregion
+
+        #region Contractor Evaluation (Đánh giá uy tín & xếp hạng nhà thầu)
+        /// <summary>
+        /// Đánh giá nghiệm thu tổng kết nhà thầu khi hợp đồng hoàn thành (thang 100 điểm)
+        /// </summary>
+        Task<ApiResponse<ContractorEvaluationDto>> EvaluateContractorAsync(int contractId, CreateContractorEvaluationRequest request, int userId, bool isAdmin);
+
+        /// <summary>
+        /// Xem đánh giá nghiệm thu của hợp đồng
+        /// </summary>
+        Task<ApiResponse<ContractorEvaluationDto?>> GetContractEvaluationAsync(int contractId, int userId, bool isInternalStaff);
+
+        /// <summary>
+        /// Tra cứu hồ sơ uy tín tín nhiệm tổng hợp của nhà thầu (Credit Profile và Performance Rating)
+        /// </summary>
+        Task<ApiResponse<ContractorCreditProfileDto>> GetContractorCreditProfileAsync(int contractorId, int userId, bool isInternalStaff);
+        #endregion
     }
 }

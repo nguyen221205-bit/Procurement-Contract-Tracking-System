@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -670,6 +670,230 @@ namespace ProcurementSystem.API.Controllers
             var fileName = $"HopDong_{contract.ContractNumber}.pdf";
             return PhysicalFile(physicalPath, "application/pdf", fileName);
         }
+
+        #region Contract Guarantees Endpoints (Bảo lãnh hợp đồng)
+        /// <summary>
+        /// Danh sách chứng thư bảo lãnh của hợp đồng
+        /// </summary>
+        [HttpGet("api/contracts/{contractId:int}/guarantees")]
+        [Authorize(Roles = "Admin,Procurement,Contractor")]
+        public async Task<ActionResult<ApiResponse<List<ContractGuaranteeDto>>>> GetGuarantees(int contractId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<List<ContractGuaranteeDto>>.Fail("Không xác định được danh tính."));
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _contractService.GetContractGuaranteesAsync(contractId, userId.Value, isInternalStaff);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Thêm mới chứng thư bảo lãnh ngân hàng (Admin / Procurement)
+        /// </summary>
+        [HttpPost("api/contracts/{contractId:int}/guarantees")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<ContractGuaranteeDto>>> AddGuarantee(
+            int contractId, [FromBody] CreateContractGuaranteeRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<ContractGuaranteeDto>.Fail("Không xác định được danh tính."));
+
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.AddContractGuaranteeAsync(contractId, request, userId.Value, isAdmin);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Cập nhật trạng thái chứng thư bảo lãnh (Valid, Released, Claimed, Expired)
+        /// </summary>
+        [HttpPatch("api/contracts/{contractId:int}/guarantees/{guaranteeId:int}/status")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<ContractGuaranteeDto>>> UpdateGuaranteeStatus(
+            int contractId, int guaranteeId, [FromBody] UpdateGuaranteeStatusRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<ContractGuaranteeDto>.Fail("Không xác định được danh tính."));
+
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.UpdateGuaranteeStatusAsync(contractId, guaranteeId, request, userId.Value, isAdmin);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Tải lên bản scan chứng thư bảo lãnh ngân hàng
+        /// </summary>
+        [HttpPost("api/contracts/{contractId:int}/guarantees/{guaranteeId:int}/document")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<ApiResponse<string>>> UploadGuaranteeDocument(
+            int contractId, int guaranteeId, IFormFile file)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính."));
+
+            if (file == null || file.Length == 0) return BadRequest(ApiResponse<string>.Fail("Vui lòng đính kèm tệp tài liệu scan."));
+
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.UploadGuaranteeDocumentAsync(contractId, guaranteeId, file, userId.Value, isAdmin);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Tải về file scan chứng thư bảo lãnh ngân hàng (kiểm soát IDOR)
+        /// </summary>
+        [HttpGet("api/contracts/{contractId:int}/guarantees/{guaranteeId:int}/document/download")]
+        [Authorize(Roles = "Admin,Procurement,Contractor")]
+        public async Task<IActionResult> DownloadGuaranteeDocument(int contractId, int guaranteeId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính."));
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var fileData = await _contractService.GetGuaranteeDocumentForDownloadAsync(contractId, guaranteeId, userId.Value, isInternalStaff);
+            if (fileData == null)
+            {
+                return NotFound(ApiResponse<string>.Fail("Không tìm thấy tệp tài liệu scan hoặc bạn không có quyền truy cập."));
+            }
+
+            return File(fileData.Value.Bytes, fileData.Value.ContentType, fileData.Value.FileName);
+        }
+        #endregion
+
+        #region Contract Addenda Endpoints (Phụ lục hợp đồng)
+        /// <summary>
+        /// Danh sách phụ lục hợp đồng
+        /// </summary>
+        [HttpGet("api/contracts/{contractId:int}/addenda")]
+        [Authorize(Roles = "Admin,Procurement,Contractor")]
+        public async Task<ActionResult<ApiResponse<List<ContractAddendumDto>>>> GetAddenda(int contractId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<List<ContractAddendumDto>>.Fail("Không xác định được danh tính."));
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _contractService.GetContractAddendaAsync(contractId, userId.Value, isInternalStaff);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Tạo mới phụ lục hợp đồng (Admin / Procurement)
+        /// </summary>
+        [HttpPost("api/contracts/{contractId:int}/addenda")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<ContractAddendumDto>>> CreateAddendum(
+            int contractId, [FromBody] CreateContractAddendumRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<ContractAddendumDto>.Fail("Không xác định được danh tính."));
+
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.CreateContractAddendumAsync(contractId, request, userId.Value, isAdmin);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Phê duyệt hoặc từ chối phụ lục hợp đồng (Admin / Procurement)
+        /// </summary>
+        [HttpPatch("api/contracts/{contractId:int}/addenda/{addendumId:int}/approve")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<ContractAddendumDto>>> ApproveAddendum(
+            int contractId, int addendumId, [FromBody] ApproveContractAddendumRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<ContractAddendumDto>.Fail("Không xác định được danh tính."));
+
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.ApproveContractAddendumAsync(contractId, addendumId, request, userId.Value, isAdmin);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Tải lên bản scan phụ lục hợp đồng
+        /// </summary>
+        [HttpPost("api/contracts/{contractId:int}/addenda/{addendumId:int}/document")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<ApiResponse<string>>> UploadAddendumDocument(
+            int contractId, int addendumId, IFormFile file)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính."));
+
+            if (file == null || file.Length == 0) return BadRequest(ApiResponse<string>.Fail("Vui lòng đính kèm tệp tài liệu scan."));
+
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.UploadAddendumDocumentAsync(contractId, addendumId, file, userId.Value, isAdmin);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Tải về file scan phụ lục hợp đồng
+        /// </summary>
+        [HttpGet("api/contracts/{contractId:int}/addenda/{addendumId:int}/document/download")]
+        [Authorize(Roles = "Admin,Procurement,Contractor")]
+        public async Task<IActionResult> DownloadAddendumDocument(int contractId, int addendumId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính."));
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var fileData = await _contractService.GetAddendumDocumentForDownloadAsync(contractId, addendumId, userId.Value, isInternalStaff);
+            if (fileData == null)
+            {
+                return NotFound(ApiResponse<string>.Fail("Không tìm thấy tệp tài liệu scan hoặc bạn không có quyền truy cập."));
+            }
+
+            return File(fileData.Value.Bytes, fileData.Value.ContentType, fileData.Value.FileName);
+        }
+        #endregion
+
+        #region Contractor Evaluation Endpoints (Đánh giá uy tín nhà thầu)
+        /// <summary>
+        /// Đánh giá nghiệm thu tổng kết nhà thầu (Admin / Procurement)
+        /// </summary>
+        [HttpPost("api/contracts/{contractId:int}/evaluation")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<ContractorEvaluationDto>>> EvaluateContractor(
+            int contractId, [FromBody] CreateContractorEvaluationRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<ContractorEvaluationDto>.Fail("Không xác định được danh tính."));
+
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.EvaluateContractorAsync(contractId, request, userId.Value, isAdmin);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Xem kết quả đánh giá nghiệm thu của hợp đồng
+        /// </summary>
+        [HttpGet("api/contracts/{contractId:int}/evaluation")]
+        [Authorize(Roles = "Admin,Procurement,Contractor")]
+        public async Task<ActionResult<ApiResponse<ContractorEvaluationDto?>>> GetContractEvaluation(int contractId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<ContractorEvaluationDto?>.Fail("Không xác định được danh tính."));
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _contractService.GetContractEvaluationAsync(contractId, userId.Value, isInternalStaff);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Tra cứu hồ sơ năng lực và uy tín lũy kế của nhà thầu (Credit Profile và Performance Rating)
+        /// </summary>
+        [HttpGet("api/contracts/contractor/{contractorId:int}/credit-profile")]
+        [Authorize(Roles = "Admin,Procurement,Contractor")]
+        public async Task<ActionResult<ApiResponse<ContractorCreditProfileDto>>> GetContractorCreditProfile(int contractorId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<ContractorCreditProfileDto>.Fail("Không xác định được danh tính."));
+
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _contractService.GetContractorCreditProfileAsync(contractorId, userId.Value, isInternalStaff);
+            return StatusCode(result.StatusCode, result);
+        }
+        #endregion
 
         private int? GetCurrentUserId()
         {

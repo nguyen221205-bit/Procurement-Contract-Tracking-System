@@ -72,6 +72,69 @@ export const contractApi = {
   addMilestoneProgressUpdate: async (milestoneId, data) => {
     return await axiosClient.post(`/contracts/milestones/${milestoneId}/progress`, data);
   },
+
+  // ==========================================
+  // NHÓM B: BẢO LÃNH HỢP ĐỒNG (CONTRACT GUARANTEES)
+  // ==========================================
+  getGuarantees: async (contractId) => {
+    return await axiosClient.get(`/contracts/${contractId}/guarantees`);
+  },
+
+  addGuarantee: async (contractId, data) => {
+    return await axiosClient.post(`/contracts/${contractId}/guarantees`, data);
+  },
+
+  updateGuaranteeStatus: async (contractId, guaranteeId, status, notes = '') => {
+    return await axiosClient.patch(`/contracts/${contractId}/guarantees/${guaranteeId}/status`, {
+      status,
+      notes,
+    });
+  },
+
+  uploadGuaranteeDocument: async (contractId, guaranteeId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return await axiosClient.post(`/contracts/${contractId}/guarantees/${guaranteeId}/document`, formData);
+  },
+
+  // ==========================================
+  // NHÓM B: PHỤ LỤC HỢP ĐỒNG (CONTRACT ADDENDA)
+  // ==========================================
+  getAddenda: async (contractId) => {
+    return await axiosClient.get(`/contracts/${contractId}/addenda`);
+  },
+
+  createAddendum: async (contractId, data) => {
+    return await axiosClient.post(`/contracts/${contractId}/addenda`, data);
+  },
+
+  approveAddendum: async (contractId, addendumId, isApproved = true, notes = '') => {
+    return await axiosClient.patch(`/contracts/${contractId}/addenda/${addendumId}/approve`, {
+      isApproved,
+      notes,
+    });
+  },
+
+  uploadAddendumDocument: async (contractId, addendumId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return await axiosClient.post(`/contracts/${contractId}/addenda/${addendumId}/document`, formData);
+  },
+
+  // ==========================================
+  // NHÓM B: ĐÁNH GIÁ UY TÍN NHÀ THẦU (CONTRACTOR EVALUATION & CREDIT)
+  // ==========================================
+  evaluateContractor: async (contractId, data) => {
+    return await axiosClient.post(`/contracts/${contractId}/evaluation`, data);
+  },
+
+  getContractEvaluation: async (contractId) => {
+    return await axiosClient.get(`/contracts/${contractId}/evaluation`);
+  },
+
+  getContractorCreditProfile: async (contractorId) => {
+    return await axiosClient.get(`/contracts/contractor/${contractorId}/credit-profile`);
+  },
 };
 
 export default contractApi;

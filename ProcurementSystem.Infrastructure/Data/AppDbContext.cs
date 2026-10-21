@@ -27,6 +27,9 @@ namespace ProcurementSystem.Infrastructure.Data
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
         public DbSet<EvaluatorProposal> EvaluatorProposals => Set<EvaluatorProposal>();
         public DbSet<ProcuringEntity> ProcuringEntities => Set<ProcuringEntity>();
+        public DbSet<ContractGuarantee> ContractGuarantees => Set<ContractGuarantee>();
+        public DbSet<ContractAddendum> ContractAddenda => Set<ContractAddendum>();
+        public DbSet<ContractorEvaluation> ContractorEvaluations => Set<ContractorEvaluation>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -291,6 +294,61 @@ namespace ProcurementSystem.Infrastructure.Data
             modelBuilder.Entity<ProcuringEntity>().HasIndex(pe => pe.TaxCode);
             modelBuilder.Entity<ProcuringEntity>().HasIndex(pe => pe.VerificationStatus);
             modelBuilder.Entity<ProcuringEntity>().HasIndex(pe => pe.UserId).IsUnique();
+
+            // ContractGuarantee relationships & indexes
+            modelBuilder.Entity<ContractGuarantee>()
+                .HasOne(cg => cg.Contract)
+                .WithMany(c => c.Guarantees)
+                .HasForeignKey(cg => cg.ContractId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ContractGuarantee>().HasIndex(cg => cg.GuaranteeNumber);
+            modelBuilder.Entity<ContractGuarantee>().HasIndex(cg => cg.ExpiryDate);
+            modelBuilder.Entity<ContractGuarantee>().HasIndex(cg => cg.Status);
+
+            // ContractAddendum relationships & indexes
+            modelBuilder.Entity<ContractAddendum>()
+                .HasOne(ca => ca.Contract)
+                .WithMany(c => c.Addenda)
+                .HasForeignKey(ca => ca.ContractId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ContractAddendum>()
+                .HasOne(ca => ca.Creator)
+                .WithMany()
+                .HasForeignKey(ca => ca.CreatedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ContractAddendum>()
+                .HasOne(ca => ca.Approver)
+                .WithMany()
+                .HasForeignKey(ca => ca.ApprovedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ContractAddendum>().HasIndex(ca => ca.AddendumNumber);
+            modelBuilder.Entity<ContractAddendum>().HasIndex(ca => ca.ContractId);
+
+            // ContractorEvaluation relationships & indexes
+            modelBuilder.Entity<ContractorEvaluation>()
+                .HasOne(ce => ce.Contract)
+                .WithMany(c => c.Evaluations)
+                .HasForeignKey(ce => ce.ContractId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ContractorEvaluation>()
+                .HasOne(ce => ce.Contractor)
+                .WithMany(c => c.Evaluations)
+                .HasForeignKey(ce => ce.ContractorId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ContractorEvaluation>()
+                .HasOne(ce => ce.EvaluatorUser)
+                .WithMany()
+                .HasForeignKey(ce => ce.EvaluatorUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ContractorEvaluation>().HasIndex(ce => ce.ContractorId);
+            modelBuilder.Entity<ContractorEvaluation>().HasIndex(ce => new { ce.ContractId, ce.ContractorId });
         }
     }
 }
