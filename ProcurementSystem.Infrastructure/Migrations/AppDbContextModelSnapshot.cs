@@ -108,6 +108,78 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.ToTable("AuditLogs");
                 });
 
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.BidClarification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AnswerAttachmentUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("AnswerContent")
+                        .HasMaxLength(3000)
+                        .HasColumnType("nvarchar(3000)");
+
+                    b.Property<DateTime?>("AnsweredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("AnsweredByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("AskedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("AskedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BidPackageId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("BidSubmissionId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("Deadline")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("QuestionAttachmentUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("QuestionContent")
+                        .IsRequired()
+                        .HasMaxLength(3000)
+                        .HasColumnType("nvarchar(3000)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AnsweredByUserId");
+
+                    b.HasIndex("AskedByUserId");
+
+                    b.HasIndex("BidPackageId");
+
+                    b.HasIndex("BidSubmissionId");
+
+                    b.HasIndex("Type");
+
+                    b.ToTable("BidClarifications");
+                });
+
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.BidDocument", b =>
                 {
                     b.Property<int>("Id")
@@ -813,6 +885,63 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.ToTable("Notifications");
                 });
 
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.PackageStatusApprovalRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AdminComment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("BidPackageId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CurrentStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("NewDeadline")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("RequestedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TargetStatus")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BidPackageId");
+
+                    b.HasIndex("RequestedByUserId");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("PackageStatusApprovalRequests");
+                });
+
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ProcuringEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -1110,6 +1239,39 @@ namespace ProcurementSystem.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.BidClarification", b =>
+                {
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "AnsweredByUser")
+                        .WithMany()
+                        .HasForeignKey("AnsweredByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "AskedByUser")
+                        .WithMany()
+                        .HasForeignKey("AskedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.BidPackage", "BidPackage")
+                        .WithMany()
+                        .HasForeignKey("BidPackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.BidSubmission", "BidSubmission")
+                        .WithMany()
+                        .HasForeignKey("BidSubmissionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("AnsweredByUser");
+
+                    b.Navigation("AskedByUser");
+
+                    b.Navigation("BidPackage");
+
+                    b.Navigation("BidSubmission");
+                });
+
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.BidDocument", b =>
                 {
                     b.HasOne("ProcurementSystem.Infrastructure.Entities.BidPackage", "BidPackage")
@@ -1354,6 +1516,32 @@ namespace ProcurementSystem.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.PackageStatusApprovalRequest", b =>
+                {
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.BidPackage", "BidPackage")
+                        .WithMany()
+                        .HasForeignKey("BidPackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "RequestedByUser")
+                        .WithMany()
+                        .HasForeignKey("RequestedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ProcurementSystem.Infrastructure.Entities.User", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("BidPackage");
+
+                    b.Navigation("RequestedByUser");
+
+                    b.Navigation("ReviewedByUser");
                 });
 
             modelBuilder.Entity("ProcurementSystem.Infrastructure.Entities.ProcuringEntity", b =>
