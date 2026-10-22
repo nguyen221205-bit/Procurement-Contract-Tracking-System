@@ -28,6 +28,7 @@ import {
   UserMinus,
   Ban,
   RefreshCw,
+  HelpCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -43,6 +44,8 @@ import AssignEvaluatorModal from '../components/packages/AssignEvaluatorModal';
 import ReopenPackageModal from '../components/packages/ReopenPackageModal';
 import SubmitBidModal from '../components/submissions/SubmitBidModal';
 import DisqualifySubmissionModal from '../components/evaluation/DisqualifySubmissionModal';
+import ClarificationTab from '../components/clarifications/ClarificationTab';
+import ReviewApprovalModal from '../components/packages/ReviewApprovalModal';
 import { PACKAGE_TYPES, ROLES } from '../utils/constants';
 import { formatVND, formatCurrency, formatDate, formatDateTime } from '../utils/formatters';
 import { downloadSecureFile, previewSecureFile } from '../utils/fileDownload';
@@ -61,8 +64,13 @@ export const PackageDetailPage = () => {
   const [mySubmission, setMySubmission] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Status Approval Workflow States (Thẩm quyền phê duyệt đóng/mở/hủy thầu)
+  const [approvalRequests, setApprovalRequests] = useState([]);
+  const [selectedApprovalRequest, setSelectedApprovalRequest] = useState(null);
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+
   // Tab navigation
-  const [activeTab, setActiveTab] = useState('info'); // 'info', 'criteria', 'submissions'
+  const [activeTab, setActiveTab] = useState('info'); // 'info', 'criteria', 'submissions', 'committee', 'clarifications'
 
   // Quick Action Modal State (Admin / Procurement)
   const [statusModal, setStatusModal] = useState({
@@ -191,6 +199,18 @@ export const PackageDetailPage = () => {
           setEvaluatorsLoading(false);
         }
       }
+
+      // 5. Tải danh sách yêu cầu phê duyệt trạng thái gói thầu (Admin, Procurement)
+      if (hasRole([ROLES.ADMIN, ROLES.PROCUREMENT])) {
+        try {
+          const resApprovals = await bidPackageApi.getStatusApprovals(id);
+          if (resApprovals?.data) {
+            setApprovalRequests(resApprovals.data);
+          }
+        } catch (err) {
+          console.warn('Lỗi tải yêu cầu phê duyệt trạng thái:', err);
+        }
+      }
     } catch (error) {
       toast.error(error.message || 'Không thể tải thông tin gói thầu');
     } finally {
@@ -254,8 +274,8 @@ export const PackageDetailPage = () => {
 
     try {
       setStatusLoading(true);
-      await bidPackageApi.changeStatus(pkg.id, statusModal.targetStatus, statusModal.reason?.trim() || null);
-      toast.success('Cập nhật trạng thái gói thầu thành công');
+      const res = await bidPackageApi.changeStatus(pkg.id, statusModal.targetStatus, statusModal.reason?.trim() || null);
+      toast.success(res?.message || 'Thao tác cập nhật trạng thái hoàn tất');
       setStatusModal((prev) => ({ ...prev, isOpen: false, reason: '' }));
       loadPackageData();
     } catch (error) {
@@ -430,6 +450,39 @@ export const PackageDetailPage = () => {
         </div>
       </div>
 
+      {/* Banner Cảnh báo Yêu cầu Phê duyệt Trạng thái đang chờ xử lý (Approval Workflow) */}
+      {(() => {
+        const pendingApproval = approvalRequests.find((r) => r.status === 'Pending' || r.status === 0);
+        if (!pendingApproval) return null;
+        return (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in shadow-sm">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl shrink-0 mt-0.5 sm:mt-0">
+                <AlertCircle className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-amber-300">
+                  Gói thầu đang có yêu cầu thay đổi trạng thái chờ Chủ đầu tư / Admin phê duyệt
+                </h4>
+                <p className="text-xs text-amber-400/90 mt-0.5">
+                  Bên mời thầu (<strong className="text-slate-200">{pendingApproval.requestedByUserName}</strong>) đề xuất:{' '}
+                  <span className="font-bold text-amber-200">{pendingApproval.targetStatusName || pendingApproval.targetStatus}</span>. Căn cứ: "{pendingApproval.reason}"
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedApprovalRequest(pendingApproval);
+                setIsApprovalModalOpen(true);
+              }}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 transition-all shrink-0 shadow-md shadow-amber-500/20"
+            >
+              {isAdmin ? 'Xem xét & Phê duyệt ngay' : 'Xem chi tiết yêu cầu'}
+            </button>
+          </div>
+        );
+      })()}
+
       {/* 2. Package Banner & Title Header */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -529,6 +582,19 @@ export const PackageDetailPage = () => {
                 )}
               </button>
             )}
+
+            {/* Tab 5: HỎI ĐÁP & LÀM RÕ THẦU (Clarification Q&A) */}
+            <button
+              onClick={() => setActiveTab('clarifications')}
+              className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center space-x-1.5 ${
+                activeTab === 'clarifications'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <HelpCircle className="w-4 h-4" />
+              <span>Hỏi - Đáp & Làm rõ (Q&A)</span>
+            </button>
           </div>
 
           {/* TAB 1: THÔNG TIN CHUNG & TÀI LIỆU HSMT */}
@@ -1512,6 +1578,20 @@ export const PackageDetailPage = () => {
         </div>
       )}
 
+      {/* TAB 5: LÀM RÕ HỒ SƠ MỜI THẦU & HỒ SƠ DỰ THẦU (CLARIFICATION Q&A) */}
+      {activeTab === 'clarifications' && (
+        <ClarificationTab
+          packageId={Number(id)}
+          packageCode={pkg.code}
+          isAdmin={isAdmin}
+          isProcurement={isProcurement}
+          isEvaluator={isEvaluator}
+          isContractor={isContractor}
+          submissions={submissions}
+          mySubmission={mySubmission}
+        />
+      )}
+
       {/* Criteria Management Modals */}
       <CriteriaModal
         isOpen={criteriaModalState.isOpen}
@@ -1588,6 +1668,18 @@ export const PackageDetailPage = () => {
         isOpen={isReopenModalOpen}
         onClose={() => setIsReopenModalOpen(false)}
         pkg={pkg}
+        onSuccess={loadPackageData}
+      />
+
+      {/* Status Approval Review Modal (Chủ đầu tư / Admin duyệt đóng/mở/hủy thầu) */}
+      <ReviewApprovalModal
+        isOpen={isApprovalModalOpen}
+        onClose={() => {
+          setIsApprovalModalOpen(false);
+          setSelectedApprovalRequest(null);
+        }}
+        request={selectedApprovalRequest}
+        isAdmin={isAdmin}
         onSuccess={loadPackageData}
       />
 

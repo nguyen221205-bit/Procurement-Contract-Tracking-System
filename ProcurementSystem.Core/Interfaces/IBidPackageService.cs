@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.BidPackage;
+using ProcurementSystem.Core.Enums;
 
 namespace ProcurementSystem.Core.Interfaces
 {
@@ -17,5 +18,7 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<PackageEvaluatorDto>> AssignEvaluatorAsync(int packageId, AssignEvaluatorRequest request, int currentUserId, bool isAdmin);
         Task<ApiResponse<bool>> RemoveEvaluatorAsync(int packageId, int evaluatorId, int currentUserId, bool isAdmin);
         Task<ApiResponse<PackageEvaluatorDto>> ReplaceEvaluatorAsync(int packageId, ReplaceEvaluatorRequest request, int currentUserId, bool isAdmin);
+        Task<ApiResponse<List<PackageStatusApprovalRequestDto>>> GetStatusApprovalRequestsAsync(int? packageId = null, ApprovalStatus? status = null);
+        Task<ApiResponse<PackageStatusApprovalRequestDto>> ReviewStatusApprovalRequestAsync(int requestId, ReviewPackageStatusApprovalRequest request, int adminUserId);
     }
 }

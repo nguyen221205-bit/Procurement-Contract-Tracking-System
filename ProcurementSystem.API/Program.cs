@@ -13,6 +13,8 @@ using ProcurementSystem.Infrastructure.Services;
 using ProcurementSystem.API.BackgroundServices;
 using ProcurementSystem.Infrastructure.Interceptors;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.SignalR;
+using ProcurementSystem.Infrastructure.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,6 +61,7 @@ builder.Services.AddScoped<IUserService, UserService>();
 
 // Bid Package Services
 builder.Services.AddScoped<IBidPackageService, BidPackageService>();
+builder.Services.AddScoped<IClarificationService, ClarificationService>();
 
 // Bid Submission Services
 builder.Services.AddScoped<IBidSubmissionService, BidSubmissionService>();
@@ -80,6 +83,10 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Background Workers (Cronjob cảnh báo hạn 1 giờ/lần + startup)
 builder.Services.AddHostedService<ContractExpiryNotificationWorker>();
+
+// SignalR Real-time Hub & User ID Provider
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
 
 // ==========================================
 // 3. AUTHENTICATION - JWT
@@ -110,6 +117,16 @@ builder.Services.AddAuthentication(options =>
 
     options.Events = new JwtBearerEvents
     {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        },
         OnTokenValidated = async context =>
         {
             var userIdClaim = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -292,6 +309,9 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<MustChangePasswordMiddleware>();
+
+// Map Hubs (SignalR)
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 // Map Controllers
 app.MapControllers();

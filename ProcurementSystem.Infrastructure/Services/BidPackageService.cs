@@ -420,6 +420,76 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
+            // Quy trình Thẩm quyền Phê duyệt (Approval Workflow) - Tránh Bên mời thầu (Procurement) lạm quyền
+            // Áp dụng cho: 1) Đóng thầu trước hạn, 2) Mở lại thầu / Gia hạn, 3) Hủy thầu
+            var isEarlyClose = package.Status == BidPackageStatus.Open && request.NewStatus == BidPackageStatus.Closed && package.Deadline > DateTime.UtcNow;
+            var isReopenOrExtend = package.Status == BidPackageStatus.Closed && request.NewStatus == BidPackageStatus.Open;
+            var isCancel = request.NewStatus == BidPackageStatus.Cancelled;
+
+            if (!isAdmin && (isEarlyClose || isReopenOrExtend || isCancel))
+            {
+                if (string.IsNullOrWhiteSpace(request.Reason))
+                {
+                    return ApiResponse<BidPackageDto>.Fail("Thao tác thay đổi trạng thái đặc biệt này bắt buộc phải có lý do / căn cứ pháp lý để gửi Chủ đầu tư / Admin phê duyệt.");
+                }
+
+                var existingPending = await _unitOfWork.Repository<PackageStatusApprovalRequest>()
+                    .Query()
+                    .AnyAsync(r => r.BidPackageId == id && r.Status == ApprovalStatus.Pending);
+
+                if (existingPending)
+                {
+                    return ApiResponse<BidPackageDto>.Fail("Gói thầu này hiện đang có một yêu cầu thay đổi trạng thái chờ Chủ đầu tư / Admin phê duyệt. Vui lòng đợi kết quả xem xét.");
+                }
+
+                var approvalReq = new PackageStatusApprovalRequest
+                {
+                    BidPackageId = id,
+                    RequestedByUserId = userId,
+                    CurrentStatus = package.Status,
+                    TargetStatus = request.NewStatus,
+                    Reason = request.Reason.Trim(),
+                    NewDeadline = request.NewDeadline,
+                    Status = ApprovalStatus.Pending,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _unitOfWork.Repository<PackageStatusApprovalRequest>().AddAsync(approvalReq);
+                await _unitOfWork.SaveChangesAsync();
+
+                // Gửi thông báo & SignalR đến toàn bộ Admin hệ thống
+                var adminUserIds = await _unitOfWork.Repository<UserRole>()
+                    .Query()
+                    .Include(ur => ur.Role)
+                    .Where(ur => ur.Role.Name == "Admin")
+                    .Select(ur => ur.UserId)
+                    .Distinct()
+                    .ToListAsync();
+
+                var actionLabel = request.NewStatus switch
+                {
+                    BidPackageStatus.Closed => "Đóng thầu trước thời hạn",
+                    BidPackageStatus.Open => "Mở lại / Gia hạn thời gian nộp thầu",
+                    BidPackageStatus.Cancelled => "Hủy gói thầu",
+                    _ => $"Chuyển trạng thái sang {request.NewStatus}"
+                };
+
+                if (adminUserIds.Any())
+                {
+                    await _notificationService.CreateBulkNotificationsAsync(
+                        adminUserIds,
+                        "Yêu cầu phê duyệt trạng thái gói thầu",
+                        $"Bên mời thầu vừa gửi yêu cầu '{actionLabel}' cho gói thầu [{package.Code}] {package.Name}. Lý do: {request.Reason}",
+                        NotificationType.Warning,
+                        sendEmail: false
+                    );
+                }
+
+                return ApiResponse<BidPackageDto>.Ok(
+                    MapToBidPackageDto(package),
+                    $"Yêu cầu '{actionLabel}' đã được chuyển tới Chủ đầu tư / Admin phê duyệt theo quy trình thẩm quyền phòng ngừa lạm quyền.");
+            }
+
             var oldStatus = package.Status;
             var oldDeadline = package.Deadline;
 
@@ -999,6 +1069,166 @@ namespace ProcurementSystem.Infrastructure.Services
                 SubmissionsCount = package.BidSubmissions?.Count ?? 0,
                 IsAwarded = package.BidSubmissions != null && package.BidSubmissions.Any(s => s.Status == BidSubmissionStatus.Selected)
             };
+        }
+
+        public async Task<ApiResponse<List<PackageStatusApprovalRequestDto>>> GetStatusApprovalRequestsAsync(int? packageId = null, ApprovalStatus? status = null)
+        {
+            var query = _unitOfWork.Repository<PackageStatusApprovalRequest>()
+                .Query()
+                .Include(r => r.BidPackage)
+                .Include(r => r.RequestedByUser)
+                .Include(r => r.ReviewedByUser)
+                .AsNoTracking();
+
+            if (packageId.HasValue)
+            {
+                query = query.Where(r => r.BidPackageId == packageId.Value);
+            }
+
+            if (status.HasValue)
+            {
+                query = query.Where(r => r.Status == status.Value);
+            }
+
+            var list = await query
+                .OrderByDescending(r => r.CreatedAt)
+                .Select(r => new PackageStatusApprovalRequestDto
+                {
+                    Id = r.Id,
+                    BidPackageId = r.BidPackageId,
+                    BidPackageCode = r.BidPackage.Code,
+                    BidPackageName = r.BidPackage.Name,
+                    RequestedByUserId = r.RequestedByUserId,
+                    RequestedByUserName = r.RequestedByUser.FullName,
+                    CurrentStatus = r.CurrentStatus,
+                    CurrentStatusName = r.CurrentStatus.ToString(),
+                    TargetStatus = r.TargetStatus,
+                    TargetStatusName = r.TargetStatus.ToString(),
+                    Reason = r.Reason,
+                    NewDeadline = r.NewDeadline,
+                    Status = r.Status,
+                    StatusName = r.Status.ToString(),
+                    AdminComment = r.AdminComment,
+                    ReviewedByUserId = r.ReviewedByUserId,
+                    ReviewedByUserName = r.ReviewedByUser != null ? r.ReviewedByUser.FullName : null,
+                    ReviewedAt = r.ReviewedAt,
+                    CreatedAt = r.CreatedAt
+                })
+                .ToListAsync();
+
+            return ApiResponse<List<PackageStatusApprovalRequestDto>>.Ok(list);
+        }
+
+        public async Task<ApiResponse<PackageStatusApprovalRequestDto>> ReviewStatusApprovalRequestAsync(
+            int requestId,
+            ReviewPackageStatusApprovalRequest request,
+            int adminUserId)
+        {
+            var approvalReq = await _unitOfWork.Repository<PackageStatusApprovalRequest>()
+                .Query()
+                .Include(r => r.BidPackage)
+                .Include(r => r.RequestedByUser)
+                .FirstOrDefaultAsync(r => r.Id == requestId);
+
+            if (approvalReq == null)
+            {
+                return ApiResponse<PackageStatusApprovalRequestDto>.Fail("Không tìm thấy yêu cầu phê duyệt.");
+            }
+
+            if (approvalReq.Status != ApprovalStatus.Pending)
+            {
+                return ApiResponse<PackageStatusApprovalRequestDto>.Fail("Yêu cầu này đã được xử lý trước đó.");
+            }
+
+            approvalReq.ReviewedByUserId = adminUserId;
+            approvalReq.ReviewedAt = DateTime.UtcNow;
+            approvalReq.AdminComment = request.AdminComment;
+
+            var package = approvalReq.BidPackage;
+
+            if (request.IsApproved)
+            {
+                approvalReq.Status = ApprovalStatus.Approved;
+
+                var oldStatus = package.Status;
+                var oldDeadline = package.Deadline;
+
+                package.Status = approvalReq.TargetStatus;
+                if (approvalReq.NewDeadline.HasValue)
+                {
+                    package.Deadline = approvalReq.NewDeadline.Value;
+                }
+                package.UpdatedAt = DateTime.UtcNow;
+
+                _unitOfWork.Repository<BidPackage>().Update(package);
+
+                // Ghi nhận AuditLog chuyên biệt
+                var auditLog = new AuditLog
+                {
+                    UserId = adminUserId,
+                    Action = "APPROVE_PACKAGE_STATUS_CHANGE",
+                    EntityType = "BidPackage",
+                    EntityId = package.Id,
+                    OldValues = JsonSerializer.Serialize(new { Status = oldStatus.ToString(), Deadline = oldDeadline }),
+                    NewValues = JsonSerializer.Serialize(new { Status = package.Status.ToString(), Deadline = package.Deadline, Reason = approvalReq.Reason, AdminComment = request.AdminComment }),
+                    Timestamp = DateTime.UtcNow
+                };
+                await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
+
+                // Gửi thông báo & SignalR cho Bên mời thầu (người gửi yêu cầu)
+                await _notificationService.CreateNotificationAsync(
+                    approvalReq.RequestedByUserId,
+                    "Yêu cầu thay đổi trạng thái gói thầu ĐÃ ĐƯỢC PHÊ DUYỆT",
+                    $"Chủ đầu tư / Admin đã chấp thuận yêu cầu chuyển trạng thái gói thầu [{package.Code}] sang {approvalReq.TargetStatus}.{(string.IsNullOrWhiteSpace(request.AdminComment) ? "" : $" Nhận xét: {request.AdminComment}")}",
+                    NotificationType.Success,
+                    sendEmail: false
+                );
+            }
+            else
+            {
+                approvalReq.Status = ApprovalStatus.Rejected;
+
+                // Gửi thông báo & SignalR từ chối cho Bên mời thầu
+                await _notificationService.CreateNotificationAsync(
+                    approvalReq.RequestedByUserId,
+                    "Yêu cầu thay đổi trạng thái gói thầu ĐÃ BỊ TỪ CHỐI",
+                    $"Chủ đầu tư / Admin đã từ chối yêu cầu chuyển trạng thái gói thầu [{package.Code}] sang {approvalReq.TargetStatus}. Lý do: {request.AdminComment ?? "Không có lý do chi tiết"}",
+                    NotificationType.Warning,
+                    sendEmail: false
+                );
+            }
+
+            _unitOfWork.Repository<PackageStatusApprovalRequest>().Update(approvalReq);
+            await _unitOfWork.SaveChangesAsync();
+
+            var adminUser = await _unitOfWork.Repository<User>().GetByIdAsync(adminUserId);
+
+            var resultDto = new PackageStatusApprovalRequestDto
+            {
+                Id = approvalReq.Id,
+                BidPackageId = approvalReq.BidPackageId,
+                BidPackageCode = package.Code,
+                BidPackageName = package.Name,
+                RequestedByUserId = approvalReq.RequestedByUserId,
+                RequestedByUserName = approvalReq.RequestedByUser.FullName,
+                CurrentStatus = approvalReq.CurrentStatus,
+                CurrentStatusName = approvalReq.CurrentStatus.ToString(),
+                TargetStatus = approvalReq.TargetStatus,
+                TargetStatusName = approvalReq.TargetStatus.ToString(),
+                Reason = approvalReq.Reason,
+                NewDeadline = approvalReq.NewDeadline,
+                Status = approvalReq.Status,
+                StatusName = approvalReq.Status.ToString(),
+                AdminComment = approvalReq.AdminComment,
+                ReviewedByUserId = adminUserId,
+                ReviewedByUserName = adminUser?.FullName,
+                ReviewedAt = approvalReq.ReviewedAt,
+                CreatedAt = approvalReq.CreatedAt
+            };
+
+            return ApiResponse<PackageStatusApprovalRequestDto>.Ok(
+                resultDto,
+                request.IsApproved ? "Đã phê duyệt yêu cầu thay đổi trạng thái gói thầu thành công." : "Đã từ chối yêu cầu thay đổi trạng thái gói thầu.");
         }
     }
 }

@@ -15,6 +15,8 @@ import notificationApi from '../../api/notificationApi';
 import { formatRelativeTime } from '../../utils/formatters';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
+import * as signalR from '@microsoft/signalr';
+import { playNotificationSound } from '../../utils/notificationSound';
 
 export const NotificationBell = () => {
   const navigate = useNavigate();
@@ -74,7 +76,7 @@ export const NotificationBell = () => {
     }
   };
 
-  // Khởi tạo và thiết lập polling mỗi 30 giây khi người dùng đã đăng nhập
+  // Khởi tạo SignalR Real-time Connection và HTTP Polling dự phòng khi đã đăng nhập
   useEffect(() => {
     if (!user) {
       setUnreadCount(0);
@@ -82,6 +84,68 @@ export const NotificationBell = () => {
     }
 
     fetchUnreadCount();
+
+    // 1. Thiết lập kết nối SignalR thời gian thực (0 giây độ trễ)
+    const hubUrl = 'http://localhost:5225/hubs/notifications';
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl(hubUrl, {
+        accessTokenFactory: () => sessionStorage.getItem('token') || '',
+        skipNegotiation: false,
+        transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.LongPolling,
+      })
+      .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
+      .configureLogging(signalR.LogLevel.None)
+      .build();
+
+    connection.on('ReceiveNotification', (newNotif) => {
+      // Tăng số lượng thông báo chưa đọc
+      setUnreadCount((prev) => prev + 1);
+
+      // Cập nhật danh sách thông báo xem nhanh nếu đang mở dropdown hoặc đã load
+      setNotifications((prev) => [newNotif, ...prev.slice(0, 5)]);
+
+      // Phát âm báo chuông nhẹ nhàng
+      playNotificationSound();
+
+      // Hiển thị Toast nổi bật tức thì
+      toast.custom(
+        (t) => (
+          <div
+            className={`${
+              t.visible ? 'animate-enter' : 'animate-leave'
+            } max-w-md w-full bg-slate-900 border border-emerald-500/50 shadow-2xl rounded-xl pointer-events-auto flex ring-1 ring-black ring-opacity-5 p-4 cursor-pointer hover:border-emerald-400 transition-all`}
+            onClick={() => {
+              toast.dismiss(t.id);
+              const route = getTargetRoute(newNotif);
+              navigate(route);
+            }}
+          >
+            <div className="flex items-start gap-3 w-full">
+              <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg shrink-0">
+                <Bell className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Thông báo mới</p>
+                  <span className="text-[10px] text-slate-400">Vừa xong</span>
+                </div>
+                <p className="text-sm font-medium text-slate-100 truncate mt-0.5">{newNotif.title || 'Thông báo hệ thống'}</p>
+                <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">{newNotif.message}</p>
+              </div>
+            </div>
+          </div>
+        ),
+        { duration: 6000, position: 'top-right' }
+      );
+    });
+
+    connection
+      .start()
+      .catch((err) => {
+        console.debug('SignalR kết nối không thành công, tiếp tục cơ chế HTTP Polling:', err);
+      });
+
+    // 2. HTTP Polling dự phòng (30s) đảm bảo đồng bộ trạng thái khi mất mạng
     const interval = setInterval(fetchUnreadCount, 30000);
 
     const handleVisibility = () => {
@@ -92,10 +156,11 @@ export const NotificationBell = () => {
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
+      connection.stop().catch(() => {});
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [user]);
+  }, [user, navigate]);
 
   // Xử lý đóng dropdown khi bấm ra ngoài
   useEffect(() => {

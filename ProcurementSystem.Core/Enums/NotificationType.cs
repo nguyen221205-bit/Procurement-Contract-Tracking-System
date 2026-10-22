@@ -6,6 +6,7 @@ namespace ProcurementSystem.Core.Enums
         Warning = 1,
         ContractExpiring = 2,
         DeadlineApproaching = 3,
-        ProgressOverdue = 4
+        ProgressOverdue = 4,
+        Success = 5
     }
 }

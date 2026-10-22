@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.BidPackage;
+using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
 
@@ -338,6 +339,53 @@ namespace ProcurementSystem.API.Controllers
             };
 
             return PhysicalFile(physicalPath, contentType, document.FileName);
+        }
+
+        /// <summary>
+        /// Lấy danh sách các yêu cầu thay đổi trạng thái của gói thầu
+        /// </summary>
+        [HttpGet("{id:int}/status-approvals")]
+        [Authorize(Roles = "Admin,Procurement")]
+        [ProducesResponseType(typeof(ApiResponse<List<PackageStatusApprovalRequestDto>>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<ApiResponse<List<PackageStatusApprovalRequestDto>>>> GetPackageStatusApprovals(int id)
+        {
+            var result = await _bidPackageService.GetStatusApprovalRequestsAsync(id, null);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Lấy tất cả yêu cầu thay đổi trạng thái gói thầu đang chờ Admin phê duyệt (Toàn hệ thống)
+        /// </summary>
+        [HttpGet("status-approvals/pending")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(ApiResponse<List<PackageStatusApprovalRequestDto>>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<ApiResponse<List<PackageStatusApprovalRequestDto>>>> GetPendingStatusApprovals()
+        {
+            var result = await _bidPackageService.GetStatusApprovalRequestsAsync(null, ApprovalStatus.Pending);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Chủ đầu tư / Admin xem xét phê duyệt hoặc từ chối yêu cầu thay đổi trạng thái gói thầu
+        /// </summary>
+        [HttpPost("status-approvals/{requestId:int}/review")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(ApiResponse<PackageStatusApprovalRequestDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<PackageStatusApprovalRequestDto>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<PackageStatusApprovalRequestDto>>> ReviewStatusApproval(
+            int requestId,
+            [FromBody] ReviewPackageStatusApprovalRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                return BadRequest(ApiResponse<PackageStatusApprovalRequestDto>.Fail(errors));
+            }
+
+            var adminUserId = GetCurrentUserId();
+            var result = await _bidPackageService.ReviewStatusApprovalRequestAsync(requestId, request, adminUserId);
+            if (!result.Success) return BadRequest(result);
+            return Ok(result);
         }
 
         private int GetCurrentUserId()
