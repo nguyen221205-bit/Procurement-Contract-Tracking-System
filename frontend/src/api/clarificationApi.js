@@ -17,6 +17,15 @@ export const clarificationApi = {
     return await axiosClient.post(`/bid-packages/${packageId}/clarifications/submission`, data);
   },
 
+  // Tải lên tệp đính kèm câu hỏi làm rõ hoặc giải trình (F5-8)
+  uploadAttachment: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return await axiosClient.post('/clarifications/attachments', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
   // Phản hồi làm rõ HSMT hoặc gửi văn bản giải trình HSDT
   answerClarification: async (clarificationId, data) => {
     return await axiosClient.post(`/clarifications/${clarificationId}/answer`, data);

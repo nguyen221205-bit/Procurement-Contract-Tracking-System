@@ -80,7 +80,7 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Lấy danh sách bảo lãnh của hợp đồng
         /// </summary>
-        Task<ApiResponse<List<ContractGuaranteeDto>>> GetContractGuaranteesAsync(int contractId, int userId, bool isInternalStaff);
+        Task<ApiResponse<List<ContractGuaranteeDto>>> GetContractGuaranteesAsync(int contractId, int userId, bool isInternalStaff, bool isAdmin);
 
         /// <summary>
         /// Thêm mới chứng thư bảo lãnh (chỉ Admin/Procurement phụ trách gói thầu)
@@ -100,14 +100,14 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Tải/xem file chứng thư bảo lãnh an toàn
         /// </summary>
-        Task<(byte[] Bytes, string ContentType, string FileName)?> GetGuaranteeDocumentForDownloadAsync(int contractId, int guaranteeId, int userId, bool isInternalStaff);
+        Task<(string PhysicalPath, string ContentType, string FileName)?> GetGuaranteeDocumentForDownloadAsync(int contractId, int guaranteeId, int userId, bool isInternalStaff, bool isAdmin);
         #endregion
 
         #region Contract Addenda (Phụ lục hợp đồng)
         /// <summary>
         /// Lấy danh sách phụ lục của hợp đồng
         /// </summary>
-        Task<ApiResponse<List<ContractAddendumDto>>> GetContractAddendaAsync(int contractId, int userId, bool isInternalStaff);
+        Task<ApiResponse<List<ContractAddendumDto>>> GetContractAddendaAsync(int contractId, int userId, bool isInternalStaff, bool isAdmin);
 
         /// <summary>
         /// Tạo mới phụ lục hợp đồng (gia hạn thời gian, điều chỉnh giá trị, thay đổi phạm vi)
@@ -127,7 +127,7 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Tải/xem file phụ lục hợp đồng an toàn
         /// </summary>
-        Task<(byte[] Bytes, string ContentType, string FileName)?> GetAddendumDocumentForDownloadAsync(int contractId, int addendumId, int userId, bool isInternalStaff);
+        Task<(string PhysicalPath, string ContentType, string FileName)?> GetAddendumDocumentForDownloadAsync(int contractId, int addendumId, int userId, bool isInternalStaff, bool isAdmin);
         #endregion
 
         #region Contractor Evaluation (Đánh giá uy tín & xếp hạng nhà thầu)
@@ -139,7 +139,7 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Xem đánh giá nghiệm thu của hợp đồng
         /// </summary>
-        Task<ApiResponse<ContractorEvaluationDto?>> GetContractEvaluationAsync(int contractId, int userId, bool isInternalStaff);
+        Task<ApiResponse<ContractorEvaluationDto?>> GetContractEvaluationAsync(int contractId, int userId, bool isInternalStaff, bool isAdmin);
 
         /// <summary>
         /// Tra cứu hồ sơ uy tín tín nhiệm tổng hợp của nhà thầu (Credit Profile và Performance Rating)

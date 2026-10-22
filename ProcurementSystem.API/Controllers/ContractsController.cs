@@ -17,11 +17,16 @@ namespace ProcurementSystem.API.Controllers
     {
         private readonly IContractService _contractService;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IFileStorageService _fileStorageService;
 
-        public ContractsController(IContractService contractService, IUnitOfWork unitOfWork)
+        public ContractsController(
+            IContractService contractService,
+            IUnitOfWork unitOfWork,
+            IFileStorageService fileStorageService)
         {
             _contractService = contractService;
             _unitOfWork = unitOfWork;
+            _fileStorageService = fileStorageService;
         }
 
         /// <summary>
@@ -661,7 +666,7 @@ namespace ProcurementSystem.API.Controllers
                 }
             }
 
-            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), contract.ScannedFilePath.TrimStart('/'));
+            var physicalPath = _fileStorageService.GetPhysicalFilePath(contract.ScannedFilePath);
             if (!System.IO.File.Exists(physicalPath))
             {
                 return NotFound(ApiResponse<string>.Fail("Tệp tài liệu scan không tồn tại trên hệ thống lưu trữ."));
@@ -683,7 +688,8 @@ namespace ProcurementSystem.API.Controllers
             if (!userId.HasValue) return Unauthorized(ApiResponse<List<ContractGuaranteeDto>>.Fail("Không xác định được danh tính."));
 
             var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
-            var result = await _contractService.GetContractGuaranteesAsync(contractId, userId.Value, isInternalStaff);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.GetContractGuaranteesAsync(contractId, userId.Value, isInternalStaff, isAdmin);
             return StatusCode(result.StatusCode, result);
         }
 
@@ -748,14 +754,15 @@ namespace ProcurementSystem.API.Controllers
             var userId = GetCurrentUserId();
             if (!userId.HasValue) return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính."));
 
-            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
-            var fileData = await _contractService.GetGuaranteeDocumentForDownloadAsync(contractId, guaranteeId, userId.Value, isInternalStaff);
+            var isAdmin = User.IsInRole("Admin");
+            var isInternalStaff = isAdmin || User.IsInRole("Procurement");
+            var fileData = await _contractService.GetGuaranteeDocumentForDownloadAsync(contractId, guaranteeId, userId.Value, isInternalStaff, isAdmin);
             if (fileData == null)
             {
                 return NotFound(ApiResponse<string>.Fail("Không tìm thấy tệp tài liệu scan hoặc bạn không có quyền truy cập."));
             }
 
-            return File(fileData.Value.Bytes, fileData.Value.ContentType, fileData.Value.FileName);
+            return PhysicalFile(fileData.Value.PhysicalPath, fileData.Value.ContentType, fileData.Value.FileName);
         }
         #endregion
 
@@ -771,7 +778,8 @@ namespace ProcurementSystem.API.Controllers
             if (!userId.HasValue) return Unauthorized(ApiResponse<List<ContractAddendumDto>>.Fail("Không xác định được danh tính."));
 
             var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
-            var result = await _contractService.GetContractAddendaAsync(contractId, userId.Value, isInternalStaff);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.GetContractAddendaAsync(contractId, userId.Value, isInternalStaff, isAdmin);
             return StatusCode(result.StatusCode, result);
         }
 
@@ -836,14 +844,15 @@ namespace ProcurementSystem.API.Controllers
             var userId = GetCurrentUserId();
             if (!userId.HasValue) return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính."));
 
-            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
-            var fileData = await _contractService.GetAddendumDocumentForDownloadAsync(contractId, addendumId, userId.Value, isInternalStaff);
+            var isAdmin = User.IsInRole("Admin");
+            var isInternalStaff = isAdmin || User.IsInRole("Procurement");
+            var fileData = await _contractService.GetAddendumDocumentForDownloadAsync(contractId, addendumId, userId.Value, isInternalStaff, isAdmin);
             if (fileData == null)
             {
                 return NotFound(ApiResponse<string>.Fail("Không tìm thấy tệp tài liệu scan hoặc bạn không có quyền truy cập."));
             }
 
-            return File(fileData.Value.Bytes, fileData.Value.ContentType, fileData.Value.FileName);
+            return PhysicalFile(fileData.Value.PhysicalPath, fileData.Value.ContentType, fileData.Value.FileName);
         }
         #endregion
 
@@ -875,7 +884,8 @@ namespace ProcurementSystem.API.Controllers
             if (!userId.HasValue) return Unauthorized(ApiResponse<ContractorEvaluationDto?>.Fail("Không xác định được danh tính."));
 
             var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
-            var result = await _contractService.GetContractEvaluationAsync(contractId, userId.Value, isInternalStaff);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _contractService.GetContractEvaluationAsync(contractId, userId.Value, isInternalStaff, isAdmin);
             return StatusCode(result.StatusCode, result);
         }
 

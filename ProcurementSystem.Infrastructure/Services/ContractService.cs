@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Contract;
@@ -1198,8 +1198,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Where(m => m.ContractId == milestone.ContractId && m.Status == MilestoneStatus.Completed)
                 .SumAsync(m => (decimal?)m.Amount) ?? 0;
 
-            var totalRemainingAmount = milestone.Contract.Value > totalDisbursedAmount
-                ? milestone.Contract.Value - totalDisbursedAmount
+            var totalRemainingAmount = (milestone.Contract?.Value ?? 0) > totalDisbursedAmount
+                ? (milestone.Contract?.Value ?? 0) - totalDisbursedAmount
                 : 0;
 
             var resultDto = new MilestoneAcceptanceDto
@@ -1215,8 +1215,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 Note = acceptance.Note,
                 MilestoneStatus = milestone.Status,
                 MilestoneStatusName = milestone.Status.ToString(),
-                ContractStatus = milestone.Contract.Status,
-                ContractStatusName = milestone.Contract.Status.ToString(),
+                ContractStatus = milestone.Contract!.Status,
+                ContractStatusName = milestone.Contract!.Status.ToString(),
                 TotalDisbursedAmount = totalDisbursedAmount,
                 TotalRemainingAmount = totalRemainingAmount
             };
@@ -1233,7 +1233,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
         #region Contract Guarantees (Bảo lãnh hợp đồng)
         public async Task<ApiResponse<List<ContractGuaranteeDto>>> GetContractGuaranteesAsync(
-            int contractId, int userId, bool isInternalStaff)
+            int contractId, int userId, bool isInternalStaff, bool isAdmin)
         {
             var contract = await _unitOfWork.Repository<Contract>()
                 .Query()
@@ -1244,6 +1244,11 @@ namespace ProcurementSystem.Infrastructure.Services
             if (contract == null)
             {
                 return ApiResponse<List<ContractGuaranteeDto>>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            if (isInternalStaff && !isAdmin && contract.BidPackage?.CreatedBy != userId)
+            {
+                return ApiResponse<List<ContractGuaranteeDto>>.Forbidden("Bạn chỉ có quyền xem bảo lãnh của hợp đồng do chính mình phụ trách.");
             }
 
             if (!isInternalStaff)
@@ -1428,26 +1433,49 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<string>.Fail("Dung lượng tệp không được vượt quá 15MB.");
             }
 
+            var oldFilePath = guarantee.ScannedDocumentPath;
             var savedPath = await _fileStorageService.SaveFileAsync(file, $"contracts/{contractId}/guarantees");
-            guarantee.ScannedDocumentPath = savedPath;
-            guarantee.UpdatedAt = DateTime.UtcNow;
 
-            _unitOfWork.Repository<ContractGuarantee>().Update(guarantee);
-            await _unitOfWork.SaveChangesAsync();
+            try
+            {
+                guarantee.ScannedDocumentPath = savedPath;
+                guarantee.UpdatedAt = DateTime.UtcNow;
 
-            return ApiResponse<string>.Ok(savedPath, "Tải lên bản scan chứng thư bảo lãnh thành công.");
+                _unitOfWork.Repository<ContractGuarantee>().Update(guarantee);
+                await _unitOfWork.SaveChangesAsync();
+
+                // F5-6 & Rule N17: Dọn dẹp tệp scan cũ trên đĩa sau khi cập nhật thành công
+                if (!string.IsNullOrEmpty(oldFilePath) && !string.Equals(oldFilePath, savedPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _fileStorageService.DeleteFile(oldFilePath);
+                }
+
+                return ApiResponse<string>.Ok(savedPath, "Tải lên bản scan chứng thư bảo lãnh thành công.");
+            }
+            catch
+            {
+                // F5-6 & Rule N17: Dọn dẹp tệp scan mới tải lên nếu thao tác DB thất bại
+                _fileStorageService.DeleteFile(savedPath);
+                throw;
+            }
         }
 
-        public async Task<(byte[] Bytes, string ContentType, string FileName)?> GetGuaranteeDocumentForDownloadAsync(
-            int contractId, int guaranteeId, int userId, bool isInternalStaff)
+        public async Task<(string PhysicalPath, string ContentType, string FileName)?> GetGuaranteeDocumentForDownloadAsync(
+            int contractId, int guaranteeId, int userId, bool isInternalStaff, bool isAdmin)
         {
             var guarantee = await _unitOfWork.Repository<ContractGuarantee>()
                 .Query()
                 .Include(g => g.Contract)
+                    .ThenInclude(c => c.BidPackage)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(g => g.Id == guaranteeId && g.ContractId == contractId);
 
             if (guarantee == null || string.IsNullOrWhiteSpace(guarantee.ScannedDocumentPath))
+            {
+                return null;
+            }
+
+            if (isInternalStaff && !isAdmin && guarantee.Contract.BidPackage?.CreatedBy != userId)
             {
                 return null;
             }
@@ -1471,7 +1499,6 @@ namespace ProcurementSystem.Infrastructure.Services
                 return null;
             }
 
-            var bytes = await File.ReadAllBytesAsync(physicalPath);
             var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
             var contentType = ext switch
             {
@@ -1482,13 +1509,13 @@ namespace ProcurementSystem.Infrastructure.Services
             };
 
             var fileName = $"BaoLanh_{guarantee.GuaranteeNumber}{ext}";
-            return (bytes, contentType, fileName);
+            return (physicalPath, contentType, fileName);
         }
         #endregion
 
         #region Contract Addenda (Phụ lục hợp đồng)
         public async Task<ApiResponse<List<ContractAddendumDto>>> GetContractAddendaAsync(
-            int contractId, int userId, bool isInternalStaff)
+            int contractId, int userId, bool isInternalStaff, bool isAdmin)
         {
             var contract = await _unitOfWork.Repository<Contract>()
                 .Query()
@@ -1502,6 +1529,11 @@ namespace ProcurementSystem.Infrastructure.Services
             if (contract == null)
             {
                 return ApiResponse<List<ContractAddendumDto>>.Fail("Không tìm thấy hợp đồng.");
+            }
+
+            if (isInternalStaff && !isAdmin && contract.BidPackage?.CreatedBy != userId)
+            {
+                return ApiResponse<List<ContractAddendumDto>>.Forbidden("Bạn chỉ có quyền xem phụ lục của hợp đồng do chính mình phụ trách.");
             }
 
             if (!isInternalStaff)
@@ -1824,25 +1856,48 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<string>.Fail("Dung lượng tệp không được vượt quá 20MB.");
             }
 
+            var oldFilePath = addendum.ScannedDocumentPath;
             var savedPath = await _fileStorageService.SaveFileAsync(file, $"contracts/{contractId}/addenda");
-            addendum.ScannedDocumentPath = savedPath;
 
-            _unitOfWork.Repository<ContractAddendum>().Update(addendum);
-            await _unitOfWork.SaveChangesAsync();
+            try
+            {
+                addendum.ScannedDocumentPath = savedPath;
 
-            return ApiResponse<string>.Ok(savedPath, "Tải lên bản scan phụ lục hợp đồng thành công.");
+                _unitOfWork.Repository<ContractAddendum>().Update(addendum);
+                await _unitOfWork.SaveChangesAsync();
+
+                // F5-6 & Rule N17: Dọn dẹp tệp scan cũ trên đĩa sau khi cập nhật thành công
+                if (!string.IsNullOrEmpty(oldFilePath) && !string.Equals(oldFilePath, savedPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _fileStorageService.DeleteFile(oldFilePath);
+                }
+
+                return ApiResponse<string>.Ok(savedPath, "Tải lên bản scan phụ lục hợp đồng thành công.");
+            }
+            catch
+            {
+                // F5-6 & Rule N17: Dọn dẹp tệp scan mới nếu lưu DB thất bại
+                _fileStorageService.DeleteFile(savedPath);
+                throw;
+            }
         }
 
-        public async Task<(byte[] Bytes, string ContentType, string FileName)?> GetAddendumDocumentForDownloadAsync(
-            int contractId, int addendumId, int userId, bool isInternalStaff)
+        public async Task<(string PhysicalPath, string ContentType, string FileName)?> GetAddendumDocumentForDownloadAsync(
+            int contractId, int addendumId, int userId, bool isInternalStaff, bool isAdmin)
         {
             var addendum = await _unitOfWork.Repository<ContractAddendum>()
                 .Query()
                 .Include(a => a.Contract)
+                    .ThenInclude(c => c.BidPackage)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == addendumId && a.ContractId == contractId);
 
             if (addendum == null || string.IsNullOrWhiteSpace(addendum.ScannedDocumentPath))
+            {
+                return null;
+            }
+
+            if (isInternalStaff && !isAdmin && addendum.Contract.BidPackage?.CreatedBy != userId)
             {
                 return null;
             }
@@ -1866,7 +1921,6 @@ namespace ProcurementSystem.Infrastructure.Services
                 return null;
             }
 
-            var bytes = await File.ReadAllBytesAsync(physicalPath);
             var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
             var contentType = ext switch
             {
@@ -1877,7 +1931,7 @@ namespace ProcurementSystem.Infrastructure.Services
             };
 
             var fileName = $"PhuLuc_{addendum.AddendumNumber}{ext}";
-            return (bytes, contentType, fileName);
+            return (physicalPath, contentType, fileName);
         }
         #endregion
 
@@ -1998,7 +2052,7 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
         public async Task<ApiResponse<ContractorEvaluationDto?>> GetContractEvaluationAsync(
-            int contractId, int userId, bool isInternalStaff)
+            int contractId, int userId, bool isInternalStaff, bool isAdmin)
         {
             var evaluation = await _unitOfWork.Repository<ContractorEvaluation>()
                 .Query()
@@ -2012,6 +2066,11 @@ namespace ProcurementSystem.Infrastructure.Services
             if (evaluation == null)
             {
                 return ApiResponse<ContractorEvaluationDto?>.Ok(null, "Hợp đồng chưa có đánh giá nghiệm thu.");
+            }
+
+            if (isInternalStaff && !isAdmin && evaluation.Contract?.BidPackage?.CreatedBy != userId)
+            {
+                return ApiResponse<ContractorEvaluationDto?>.Forbidden("Bạn chỉ có quyền xem đánh giá của hợp đồng do chính mình phụ trách.");
             }
 
             if (!isInternalStaff)

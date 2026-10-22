@@ -8,8 +8,27 @@ export const AskPackageClarificationModal = ({ isOpen, onClose, packageId, packa
   const [content, setContent] = useState('');
   const [attachmentUrl, setAttachmentUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await clarificationApi.uploadAttachment(file);
+      if (res && res.data) {
+        setAttachmentUrl(res.data);
+        toast.success(`Đã tải lên tệp ${file.name} thành công!`);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Không thể tải lên tệp đính kèm');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -106,13 +125,26 @@ export const AskPackageClarificationModal = ({ isOpen, onClose, packageId, packa
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
               <Paperclip className="w-3.5 h-3.5 text-slate-400" /> Đường dẫn tài liệu tham chiếu (Tùy chọn)
             </label>
-            <input
-              type="text"
-              value={attachmentUrl}
-              onChange={(e) => setAttachmentUrl(e.target.value)}
-              placeholder="https://... hoặc tên tệp đính kèm làm rõ"
-              className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/50 transition-all"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={attachmentUrl}
+                onChange={(e) => setAttachmentUrl(e.target.value)}
+                placeholder="Đường dẫn hoặc tải file đính kèm bên cạnh..."
+                className="flex-1 px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/50 transition-all"
+              />
+              <label className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 rounded-xl text-xs font-semibold cursor-pointer transition-colors shrink-0">
+                <Upload className="w-3.5 h-3.5 text-sky-400" />
+                <span>{uploading ? 'Đang tải...' : 'Chọn tệp'}</span>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.zip,.rar"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={handleFileUpload}
+                />
+              </label>
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">

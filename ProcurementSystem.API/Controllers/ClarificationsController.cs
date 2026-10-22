@@ -20,10 +20,14 @@ namespace ProcurementSystem.API.Controllers
     public class ClarificationsController : ControllerBase
     {
         private readonly IClarificationService _clarificationService;
+        private readonly IFileStorageService _fileStorageService;
 
-        public ClarificationsController(IClarificationService clarificationService)
+        public ClarificationsController(
+            IClarificationService clarificationService,
+            IFileStorageService fileStorageService)
         {
             _clarificationService = clarificationService;
+            _fileStorageService = fileStorageService;
         }
 
         /// <summary>
@@ -134,6 +138,74 @@ namespace ProcurementSystem.API.Controllers
 
             if (!result.Success) return BadRequest(result);
             return Ok(result);
+        }
+
+        /// <summary>
+        /// F5-8: Tải lên tệp đính kèm câu hỏi làm rõ HSMT hoặc văn bản giải trình HSDT
+        /// </summary>
+        [HttpPost("clarifications/attachments")]
+        [Authorize]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<ApiResponse<string>>> UploadAttachment([FromForm] IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(ApiResponse<string>.Fail("Vui lòng chọn tệp tin đính kèm hợp lệ."));
+            }
+
+            if (file.Length > 25 * 1024 * 1024)
+            {
+                return BadRequest(ApiResponse<string>.Fail("Dung lượng tệp đính kèm không được vượt quá 25MB."));
+            }
+
+            var allowedExts = new[] { ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".zip", ".rar" };
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!allowedExts.Contains(ext))
+            {
+                return BadRequest(ApiResponse<string>.Fail("Định dạng tệp không được hỗ trợ. Chỉ chấp nhận PDF, Word, Excel, hình ảnh hoặc file nén (ZIP/RAR)."));
+            }
+
+            var savedPath = await _fileStorageService.SaveFileAsync(file, "clarifications");
+            return Ok(ApiResponse<string>.Ok(savedPath, "Tải lên tệp đính kèm thành công."));
+        }
+
+        /// <summary>
+        /// F5-8: Tải về tệp đính kèm làm rõ HSMT hoặc giải trình HSDT có xác thực
+        /// </summary>
+        [HttpGet("clarifications/attachments/download")]
+        [Authorize]
+        public IActionResult DownloadAttachment([FromQuery] string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return BadRequest(ApiResponse<string>.Fail("Đường dẫn tệp tin không hợp lệ."));
+            }
+
+            var physicalPath = _fileStorageService.GetPhysicalFilePath(filePath);
+            if (!System.IO.File.Exists(physicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var contentType = ext switch
+            {
+                ".pdf" => "application/pdf",
+                ".doc" => "application/msword",
+                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".xls" => "application/vnd.ms-excel",
+                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".zip" => "application/zip",
+                ".rar" => "application/x-rar-compressed",
+                _ => "application/octet-stream"
+            };
+
+            var fileName = Path.GetFileName(physicalPath);
+            return PhysicalFile(physicalPath, contentType, fileName);
         }
 
         private int GetCurrentUserId()

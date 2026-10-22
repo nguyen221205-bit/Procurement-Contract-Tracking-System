@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -6,6 +7,7 @@ using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Data;
 using ProcurementSystem.Infrastructure.Entities;
+using ProcurementSystem.Infrastructure.Hubs;
 
 namespace ProcurementSystem.API.BackgroundServices
 {
@@ -246,8 +248,81 @@ namespace ProcurementSystem.API.BackgroundServices
                 }
             }
 
-            // Lưu toàn bộ thông báo mới sinh vào CSDL (kèm trạng thái Closed của các gói thầu quá hạn nếu có)
-            if (notificationsToAdd.Count > 0 || overduePackages.Count > 0)
+            // =========================================================================
+            // D. F5-7: QUÉT VÀ TỰ ĐỘNG CẬP NHẬT TRẠNG THÁI BẢO LÃNH HẾT HẠN (ContractGuarantees)
+            // =========================================================================
+            var validGuarantees = await dbContext.ContractGuarantees
+                .Include(g => g.Contract)
+                    .ThenInclude(c => c.BidPackage)
+                .Where(g => g.Status == GuaranteeStatus.Valid)
+                .ToListAsync(stoppingToken);
+
+            foreach (var g in validGuarantees)
+            {
+                var daysRemaining = (int)Math.Ceiling((g.ExpiryDate - now).TotalDays);
+                if (daysRemaining < 0)
+                {
+                    g.Status = GuaranteeStatus.Expired;
+                    g.UpdatedAt = DateTime.UtcNow;
+
+                    var title = $"[Khẩn cấp] Chứng thư bảo lãnh {g.GuaranteeNumber} đã hết hạn";
+                    var message = $"Chứng thư bảo lãnh ngân hàng #{g.GuaranteeNumber} thuộc hợp đồng {g.Contract?.ContractNumber} đã hết hạn hiệu lực ({g.ExpiryDate:dd/MM/yyyy}). Vui lòng yêu cầu nhà thầu gia hạn hoặc xử lý biện pháp bảo đảm.";
+
+                    if (g.Contract?.BidPackage?.CreatedBy > 0)
+                    {
+                        await TryAddNotification(g.Contract.BidPackage.CreatedBy, title, message, NotificationType.ContractExpiring);
+                    }
+                    foreach (var internalUserId in internalUserIds)
+                    {
+                        await TryAddNotification(internalUserId, title, message, NotificationType.ContractExpiring);
+                    }
+                }
+                else if (daysRemaining <= 7)
+                {
+                    var title = $"[Cảnh báo] Chứng thư bảo lãnh {g.GuaranteeNumber} sắp hết hạn (còn {daysRemaining} ngày)";
+                    var message = $"Chứng thư bảo lãnh ngân hàng #{g.GuaranteeNumber} thuộc hợp đồng {g.Contract?.ContractNumber} sẽ hết hạn vào ngày {g.ExpiryDate:dd/MM/yyyy}. Đề nghị rà soát và yêu cầu nhà thầu gia hạn bảo đảm.";
+
+                    if (g.Contract?.BidPackage?.CreatedBy > 0)
+                    {
+                        await TryAddNotification(g.Contract.BidPackage.CreatedBy, title, message, NotificationType.ContractExpiring);
+                    }
+                    foreach (var internalUserId in internalUserIds)
+                    {
+                        await TryAddNotification(internalUserId, title, message, NotificationType.ContractExpiring);
+                    }
+                }
+            }
+
+            // =========================================================================
+            // E. F5-7: CẢNH BÁO HẠN CHÓT NỘP VĂN BẢN GIẢI TRÌNH HSDT (SubmissionClarification)
+            // =========================================================================
+            var pendingSubmissionClarifications = await dbContext.BidClarifications
+                .Include(c => c.BidPackage)
+                .Include(c => c.BidSubmission)
+                    .ThenInclude(s => s!.Contractor)
+                .Where(c => c.Type == ClarificationType.SubmissionClarification 
+                         && c.Status == ClarificationStatus.Pending 
+                         && c.Deadline.HasValue 
+                         && c.Deadline.Value > now)
+                .ToListAsync(stoppingToken);
+
+            foreach (var clar in pendingSubmissionClarifications)
+            {
+                var hoursRemaining = (clar.Deadline!.Value - now).TotalHours;
+                if (hoursRemaining <= 24 && hoursRemaining > 0)
+                {
+                    var contractorUserId = clar.BidSubmission?.Contractor?.UserId;
+                    if (contractorUserId.HasValue && contractorUserId.Value > 0)
+                    {
+                        var title = $"[Khẩn cấp] Thời hạn giải trình HSDT gói [{clar.BidPackage?.Code}] còn dưới 24 giờ";
+                        var message = $"Yêu cầu giải trình bổ sung hồ sơ '{clar.Title}' cho gói thầu {clar.BidPackage?.Code} sẽ hết hạn vào lúc {clar.Deadline.Value:dd/MM/yyyy HH:mm} UTC. Quý nhà thầu vui lòng khẩn trương nộp văn bản giải trình.";
+                        await TryAddNotification(contractorUserId.Value, title, message, NotificationType.DeadlineApproaching);
+                    }
+                }
+            }
+
+            // Lưu toàn bộ thông báo mới sinh vào CSDL (kèm trạng thái Closed của các gói thầu, Expired của bảo lãnh)
+            if (notificationsToAdd.Count > 0 || overduePackages.Count > 0 || validGuarantees.Any(g => g.Status == GuaranteeStatus.Expired))
             {
                 if (notificationsToAdd.Count > 0)
                 {
@@ -255,6 +330,34 @@ namespace ProcurementSystem.API.BackgroundServices
                 }
                 await dbContext.SaveChangesAsync(stoppingToken);
                 _logger.LogInformation("Đã lưu thông báo và cập nhật dữ liệu quét hạn vào hệ thống.");
+
+                // F5-7: Bắn sự kiện SignalR Real-time cho người dùng đang mở ứng dụng
+                if (notificationsToAdd.Count > 0)
+                {
+                    try
+                    {
+                        var hubContext = scope.ServiceProvider.GetService<IHubContext<NotificationHub>>();
+                        if (hubContext != null)
+                        {
+                            foreach (var notif in notificationsToAdd)
+                            {
+                                await hubContext.Clients.User(notif.UserId.ToString()).SendAsync("ReceiveNotification", new
+                                {
+                                    id = notif.Id,
+                                    title = notif.Title,
+                                    message = notif.Message,
+                                    type = notif.Type.ToString(),
+                                    createdAt = notif.CreatedAt,
+                                    isRead = notif.IsRead
+                                }, stoppingToken);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Lỗi xảy ra khi bắn SignalR từ ContractExpiryNotificationWorker.");
+                    }
+                }
             }
 
             // Gửi email cảnh báo chống trùng lặp (không làm sập worker nếu lỗi SMTP)

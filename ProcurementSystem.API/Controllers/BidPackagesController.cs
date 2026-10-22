@@ -21,11 +21,16 @@ namespace ProcurementSystem.API.Controllers
     {
         private readonly IBidPackageService _bidPackageService;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IFileStorageService _fileStorageService;
 
-        public BidPackagesController(IBidPackageService bidPackageService, IUnitOfWork unitOfWork)
+        public BidPackagesController(
+            IBidPackageService bidPackageService,
+            IUnitOfWork unitOfWork,
+            IFileStorageService fileStorageService)
         {
             _bidPackageService = bidPackageService;
             _unitOfWork = unitOfWork;
+            _fileStorageService = fileStorageService;
         }
 
         /// <summary>
@@ -319,7 +324,7 @@ namespace ProcurementSystem.API.Controllers
                 return NotFound(ApiResponse<string>.Fail("Không tìm thấy tài liệu mời thầu."));
             }
 
-            var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), document.FilePath.TrimStart('/'));
+            var physicalPath = _fileStorageService.GetPhysicalFilePath(document.FilePath);
             if (!System.IO.File.Exists(physicalPath))
             {
                 return NotFound(ApiResponse<string>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ."));

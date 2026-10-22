@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MessageSquare, X, Send, AlertCircle, Clock, Paperclip, FileCheck } from 'lucide-react';
+import { MessageSquare, X, Send, AlertCircle, Clock, Paperclip, Upload, FileCheck } from 'lucide-react';
 import { formatDateTime } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { clarificationApi } from '../../api/clarificationApi';
@@ -8,10 +8,29 @@ export const AnswerClarificationModal = ({ isOpen, onClose, clarification, onSuc
   const [answerContent, setAnswerContent] = useState('');
   const [attachmentUrl, setAttachmentUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   if (!isOpen || !clarification) return null;
 
   const isSubmissionClarification = clarification.type === 'SubmissionClarification' || clarification.type === 1;
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await clarificationApi.uploadAttachment(file);
+      if (res && res.data) {
+        setAttachmentUrl(res.data);
+        toast.success(`Đã tải lên tệp ${file.name} thành công!`);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Không thể tải lên tệp đính kèm');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();

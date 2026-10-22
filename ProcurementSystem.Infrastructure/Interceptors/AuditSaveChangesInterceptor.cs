@@ -27,7 +27,13 @@ namespace ProcurementSystem.Infrastructure.Interceptors
             typeof(Contract),
             typeof(ContractMilestone),
             typeof(Acceptance),
-            typeof(ProgressUpdate)
+            typeof(ProgressUpdate),
+            // F5-9: Đăng ký 5 thực thể pháp lý mới vào hệ thống tự động ghi nhật ký kiểm toán
+            typeof(BidClarification),
+            typeof(PackageStatusApprovalRequest),
+            typeof(ContractGuarantee),
+            typeof(ContractAddendum),
+            typeof(ContractorEvaluation)
         };
 
         private static readonly HashSet<string> SensitivePropertyNames = new(StringComparer.OrdinalIgnoreCase)
