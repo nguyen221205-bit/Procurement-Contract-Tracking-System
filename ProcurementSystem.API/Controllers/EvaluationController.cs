@@ -250,6 +250,36 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
+        /// Lấy dữ liệu Báo cáo Đánh giá Hồ sơ Dự thầu (Biên bản đánh giá E-HSDT chuẩn mẫu hành chính phục vụ in ấn / xuất PDF).
+        /// </summary>
+        /// <param name="packageId">ID gói thầu.</param>
+        /// <response code="200">Lấy dữ liệu báo cáo thành công.</response>
+        /// <response code="404">Không tìm thấy gói thầu.</response>
+        [HttpGet("packages/{packageId:int}/report")]
+        [Authorize(Roles = "Admin,Procurement,Evaluator")]
+        [ProducesResponseType(typeof(ApiResponse<BidEvaluationReportDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<BidEvaluationReportDto>), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
+        public async Task<ActionResult<ApiResponse<BidEvaluationReportDto>>> GetEvaluationReport(int packageId)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            {
+                return Unauthorized(ApiResponse<BidEvaluationReportDto>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            bool isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _evaluationService.GetEvaluationReportAsync(packageId, userId, isInternalStaff);
+            if (!result.Success)
+            {
+                return NotFound(result);
+            }
+
+            return Ok(result);
+        }
+
+        /// <summary>
         /// Lấy thông tin nhà thầu trúng thầu để bàn giao sang phân hệ Quản lý Hợp đồng (Awarded Bid Export)
         /// </summary>
         /// <remarks>

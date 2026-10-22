@@ -1382,6 +1382,213 @@ namespace ProcurementSystem.Infrastructure.Services
             await _unitOfWork.SaveChangesAsync();
         }
 
+
+        public async Task<ApiResponse<BidEvaluationReportDto>> GetEvaluationReportAsync(int packageId, int currentUserId, bool isInternalStaff)
+        {
+            var package = await _unitOfWork.Repository<BidPackage>()
+                .Query()
+                .Include(bp => bp.Creator)
+                .Where(bp => bp.Id == packageId)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
+
+            if (package == null)
+            {
+                return ApiResponse<BidEvaluationReportDto>.Fail("Không tìm thấy gói thầu.");
+            }
+
+            if (!isInternalStaff)
+            {
+                var isPackageEvaluator = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .ExistsAsync(pe => pe.BidPackageId == packageId && pe.EvaluatorId == currentUserId);
+
+                if (!isPackageEvaluator)
+                {
+                    return ApiResponse<BidEvaluationReportDto>.Fail("Bạn không thuộc Tổ chuyên gia đánh giá của gói thầu này.");
+                }
+            }
+
+            // Lấy thông tin Bên mời thầu
+            var procuringEntity = await _unitOfWork.Repository<ProcuringEntity>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(pe => pe.UserId == package.CreatedBy);
+
+            var procuringEntityName = procuringEntity?.OrganizationName 
+                ?? package.Creator?.FullName 
+                ?? "Ban Quản lý Dự án & Đấu thầu";
+            var procuringEntityTaxCode = procuringEntity?.TaxCode;
+
+            // Lấy danh sách Tổ chuyên gia
+            var packageEvaluators = await _unitOfWork.Repository<BidPackageEvaluator>()
+                .Query()
+                .Include(pe => pe.Evaluator)
+                .Where(pe => pe.BidPackageId == packageId)
+                .AsNoTracking()
+                .ToListAsync();
+
+            // Lấy tiêu chí đánh giá
+            var criteriaList = await _unitOfWork.Repository<EvaluationCriteria>()
+                .Query()
+                .Where(c => c.BidPackageId == packageId)
+                .OrderBy(c => c.IsPriceCriteria)
+                .ThenBy(c => c.Id)
+                .AsNoTracking()
+                .ToListAsync();
+
+            // Lấy danh sách hồ sơ dự thầu kèm điểm số
+            var submissions = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Include(s => s.Contractor)
+                .Include(s => s.EvaluationScores)
+                    .ThenInclude(es => es.Criteria)
+                .Include(s => s.EvaluationScores)
+                    .ThenInclude(es => es.Evaluator)
+                .Where(s => s.BidPackageId == packageId)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var committeeMembers = new List<EvaluationCommitteeMemberDto>();
+            int memberIndex = 0;
+            foreach (var pe in packageEvaluators)
+            {
+                var evaluatorName = pe.Evaluator?.FullName ?? "Chuyên gia xét thầu";
+                var hasScoredAll = submissions.Any() && submissions
+                    .Where(s => s.Status != BidSubmissionStatus.Withdrawn && s.Status != BidSubmissionStatus.Disqualified)
+                    .All(s => s.EvaluationScores.Any(es => es.EvaluatorId == pe.EvaluatorId));
+
+                string role = memberIndex == 0 ? "Tổ trưởng Tổ chuyên gia" : 
+                              (memberIndex % 2 == 1 ? "Thành viên - Chuyên gia Đánh giá Kỹ thuật" : "Thành viên - Chuyên gia Thẩm định Tài chính");
+
+                committeeMembers.Add(new EvaluationCommitteeMemberDto
+                {
+                    EvaluatorId = pe.EvaluatorId,
+                    FullName = evaluatorName,
+                    Email = pe.Evaluator?.Email ?? string.Empty,
+                    Phone = pe.Evaluator?.Phone,
+                    CommitteeRole = role,
+                    HasCompletedScoring = hasScoredAll
+                });
+                memberIndex++;
+            }
+
+            var rankingItems = new List<EvaluationReportRankingItemDto>();
+            var sortedSubmissions = submissions
+                .OrderBy(s => s.Rank.HasValue ? s.Rank.Value : int.MaxValue)
+                .ThenByDescending(s => s.TotalScore ?? 0)
+                .ThenBy(s => s.BidPrice ?? decimal.MaxValue)
+                .ToList();
+
+            foreach (var s in sortedSubmissions)
+            {
+                decimal? priceSavings = null;
+                decimal? priceSavingsPercent = null;
+                if (s.BidPrice.HasValue && package.Budget > 0)
+                {
+                    priceSavings = package.Budget - s.BidPrice.Value;
+                    priceSavingsPercent = Math.Round((priceSavings.Value / package.Budget) * 100, 2);
+                }
+
+                // Tách điểm kỹ thuật và điểm tài chính
+                decimal? techScore = null;
+                decimal? priceScore = null;
+                var nonPriceCriteriaIds = criteriaList.Where(c => !c.IsPriceCriteria).Select(c => c.Id).ToHashSet();
+                var priceCriteriaIds = criteriaList.Where(c => c.IsPriceCriteria).Select(c => c.Id).ToHashSet();
+
+                var techScores = s.EvaluationScores.Where(es => nonPriceCriteriaIds.Contains(es.CriteriaId)).ToList();
+                if (techScores.Any())
+                {
+                    techScore = Math.Round(techScores.Average(es => es.Score), 2);
+                }
+
+                var priceScores = s.EvaluationScores.Where(es => priceCriteriaIds.Contains(es.CriteriaId)).ToList();
+                if (priceScores.Any())
+                {
+                    priceScore = Math.Round(priceScores.Average(es => es.Score), 2);
+                }
+
+                rankingItems.Add(new EvaluationReportRankingItemDto
+                {
+                    SubmissionId = s.Id,
+                    ContractorId = s.ContractorId,
+                    CompanyName = s.Contractor?.CompanyName ?? "Nhà thầu",
+                    TaxCode = s.Contractor?.TaxCode,
+                    BidPrice = s.BidPrice,
+                    PriceSavings = priceSavings,
+                    PriceSavingsPercent = priceSavingsPercent,
+                    TotalScore = s.TotalScore,
+                    TechnicalScore = techScore,
+                    PriceScore = priceScore,
+                    Rank = s.Rank,
+                    Status = s.Status.ToString(),
+                    DisqualificationReason = s.DisqualificationReason,
+                    SubmittedAt = s.SubmittedAt,
+                    Scores = s.EvaluationScores.Select(es => new EvaluationScoreDto
+                    {
+                        Id = es.Id,
+                        BidSubmissionId = es.BidSubmissionId,
+                        CriteriaId = es.CriteriaId,
+                        CriteriaName = es.Criteria?.Name ?? string.Empty,
+                        MaxScore = es.Criteria?.MaxScore ?? 0,
+                        Weight = es.Criteria?.Weight ?? 0,
+                        EvaluatorId = es.EvaluatorId,
+                        EvaluatorName = es.Evaluator?.FullName ?? string.Empty,
+                        Score = es.Score,
+                        Comment = es.Comment,
+                        ScoredAt = es.ScoredAt
+                    }).ToList()
+                });
+            }
+
+            var winningSub = sortedSubmissions.FirstOrDefault(s => s.Status == BidSubmissionStatus.Selected || (s.Rank == 1 && s.TotalScore.HasValue));
+            bool isFinalized = package.Status == BidPackageStatus.Awarded || submissions.Any(s => s.Status == BidSubmissionStatus.Selected);
+
+            string conclusion = isFinalized && winningSub != null
+                ? $"Căn cứ kết quả đánh giá toàn diện về năng lực, kinh nghiệm, giải pháp kỹ thuật và giá dự thầu, Tổ chuyên gia thống nhất kiến nghị Bên mời thầu / Người có thẩm quyền phê duyệt trúng thầu cho đơn vị: {winningSub.Contractor?.CompanyName} với giá trúng thầu {winningSub.BidPrice:N0} VND."
+                : (winningSub != null
+                    ? $"Căn cứ tổng hợp kết quả chấm điểm của các thành viên Tổ chuyên gia, Nhà thầu {winningSub.Contractor?.CompanyName} có tổng điểm đánh giá cao nhất ({winningSub.TotalScore:N2}/100 điểm) và xếp hạng thứ nhất (#1), đủ điều kiện kiến nghị trúng thầu sau khi hoàn tất thương thảo hợp đồng."
+                    : "Hội đồng chuyên gia đang trong quá trình đánh giá và tổng hợp kết quả thẩm định E-HSDT.");
+
+            var reportDto = new BidEvaluationReportDto
+            {
+                ReportNumber = $"BC-ĐGHSDT-{package.Code}",
+                GeneratedAt = DateTime.UtcNow,
+                Location = "Hà Nội",
+                PackageId = package.Id,
+                PackageCode = package.Code,
+                PackageName = package.Name,
+                Budget = package.Budget,
+                PackageStatus = package.Status.ToString(),
+                Deadline = package.Deadline,
+                ProcuringEntityName = procuringEntityName,
+                ProcuringEntityTaxCode = procuringEntityTaxCode,
+                BiddingMethod = "Đấu thầu rộng rãi qua mạng (E-Bidding)",
+                BiddingProcedure = "Một giai đoạn một túi hồ sơ",
+                CommitteeMembers = committeeMembers,
+                Criteria = criteriaList.Select(c => new EvaluationCriteriaDto
+                {
+                    Id = c.Id,
+                    BidPackageId = c.BidPackageId,
+                    Name = c.Name,
+                    MaxScore = c.MaxScore,
+                    Weight = c.Weight,
+                    IsPriceCriteria = c.IsPriceCriteria
+                }).ToList(),
+                TotalSubmissions = submissions.Count,
+                EvaluatedSubmissions = submissions.Count(s => s.Status == BidSubmissionStatus.Evaluated || s.Status == BidSubmissionStatus.Selected),
+                Rankings = rankingItems,
+                IsFinalized = isFinalized,
+                WinningContractorName = winningSub?.Contractor?.CompanyName,
+                WinningContractorTaxCode = winningSub?.Contractor?.TaxCode,
+                WinningBidPrice = winningSub?.BidPrice,
+                WinningTotalScore = winningSub?.TotalScore,
+                DecisionReason = winningSub?.SelectionReason ?? "Đạt điểm đánh giá cao nhất và đáp ứng toàn diện hồ sơ mời thầu.",
+                ConclusionSummary = conclusion
+            };
+
+            return ApiResponse<BidEvaluationReportDto>.Ok(reportDto, "Lấy dữ liệu Báo cáo Đánh giá HSDT thành công.");
+        }
+
         public async Task<ApiResponse<bool>> RecalculatePackageRankingsAsync(int packageId)
         {
             await CalculateRankingsForPackageAsync(packageId);

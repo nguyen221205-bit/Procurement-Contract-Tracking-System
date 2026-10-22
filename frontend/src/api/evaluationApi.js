@@ -46,6 +46,10 @@ export const evaluationApi = {
     return await axiosClient.get(`/evaluations/packages/${packageId}/awarded-bid`);
   },
 
+  getEvaluationReport: async (packageId) => {
+    return await axiosClient.get(`/evaluations/packages/${packageId}/report`);
+  },
+
   revokeAward: async (packageId, reason) => {
     return await axiosClient.post(`/evaluations/packages/${packageId}/revoke-award`, { reason });
   },

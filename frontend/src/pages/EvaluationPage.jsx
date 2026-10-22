@@ -16,7 +16,9 @@ import {
   RefreshCw,
   RotateCcw,
   AlertTriangle,
-  Columns3
+  Columns3,
+  FileText,
+  Printer
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { evaluationApi } from '../api/evaluationApi';
@@ -28,6 +30,7 @@ import LeaderboardView from '../components/evaluation/LeaderboardView';
 import FinalizeWinnerModal from '../components/evaluation/FinalizeWinnerModal';
 import CommitteeScoringProgress from '../components/evaluation/CommitteeScoringProgress';
 import BidComparisonView from '../components/evaluation/BidComparisonView';
+import BidEvaluationReportModal from '../components/evaluation/BidEvaluationReportModal';
 import { formatCurrency, formatNumber } from '../utils/formatters';
 
 export const EvaluationPage = () => {
@@ -45,7 +48,8 @@ export const EvaluationPage = () => {
   const [rankings, setRankings] = useState([]);
   const [evaluators, setEvaluators] = useState([]);
 
-  const [activeTab, setActiveTab] = useState('scorecard'); // 'scorecard' | 'leaderboard'
+  const [activeTab, setActiveTab] = useState('scorecard');
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false); // 'scorecard' | 'leaderboard'
 
   // Finalize Award Modal state
   const [isFinalizeModalOpen, setIsFinalizeModalOpen] = useState(false);
@@ -240,6 +244,16 @@ export const EvaluationPage = () => {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setIsReportModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:text-blue-700 hover:border-blue-300 rounded-xl shadow-2xs transition-all cursor-pointer"
+            title="Xem và xuất Báo cáo Đánh giá Hồ sơ Dự thầu (Biên bản hành chính chuẩn PDF/In ấn)"
+          >
+            <FileText className="w-3.5 h-3.5 text-blue-600" />
+            <span>Xuất Biên bản Đánh giá</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => fetchData(true)}
             disabled={refreshing}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl shadow-2xs transition-colors cursor-pointer"
@@ -277,6 +291,15 @@ export const EvaluationPage = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsReportModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+              title="Xuất Biên bản Đánh giá E-HSDT chính thức"
+            >
+              <FileText className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Biên bản đánh giá</span>
+            </button>
             {summary?.winningScore !== null && summary?.winningScore !== undefined && (
               <div className="flex items-center gap-2 bg-white/90 px-3.5 py-1.5 rounded-xl border border-emerald-200">
                 <span className="text-[11px] text-emerald-700 font-medium">Điểm trúng thầu:</span>
@@ -565,6 +588,14 @@ export const EvaluationPage = () => {
           </div>
         </div>
       )}
+
+      {/* BID EVALUATION REPORT MODAL (PDF / PRINT EXPORT) */}
+      <BidEvaluationReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        packageId={packageId}
+        fallbackData={{ packageData, criteriaList, summary, rankings, evaluators }}
+      />
     </div>
   );
 };
