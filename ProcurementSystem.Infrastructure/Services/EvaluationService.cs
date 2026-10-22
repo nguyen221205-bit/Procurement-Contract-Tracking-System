@@ -1383,7 +1383,7 @@ namespace ProcurementSystem.Infrastructure.Services
         }
 
 
-        public async Task<ApiResponse<BidEvaluationReportDto>> GetEvaluationReportAsync(int packageId, int currentUserId, bool isInternalStaff)
+        public async Task<ApiResponse<BidEvaluationReportDto>> GetEvaluationReportAsync(int packageId, int currentUserId, bool isInternalStaff, bool isAdmin)
         {
             var package = await _unitOfWork.Repository<BidPackage>()
                 .Query()
@@ -1397,14 +1397,24 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidEvaluationReportDto>.Fail("Không tìm thấy gói thầu.");
             }
 
-            if (!isInternalStaff)
+            if (!isAdmin)
             {
-                var isPackageEvaluator = await _unitOfWork.Repository<BidPackageEvaluator>()
-                    .ExistsAsync(pe => pe.BidPackageId == packageId && pe.EvaluatorId == currentUserId);
-
-                if (!isPackageEvaluator)
+                if (isInternalStaff)
                 {
-                    return ApiResponse<BidEvaluationReportDto>.Fail("Bạn không thuộc Tổ chuyên gia đánh giá của gói thầu này.");
+                    if (package.CreatedBy != currentUserId)
+                    {
+                        return ApiResponse<BidEvaluationReportDto>.Fail("Bạn chỉ có quyền xem Báo cáo Đánh giá của gói thầu do chính mình phụ trách.");
+                    }
+                }
+                else
+                {
+                    var isPackageEvaluator = await _unitOfWork.Repository<BidPackageEvaluator>()
+                        .ExistsAsync(pe => pe.BidPackageId == packageId && pe.EvaluatorId == currentUserId);
+
+                    if (!isPackageEvaluator)
+                    {
+                        return ApiResponse<BidEvaluationReportDto>.Fail("Bạn không thuộc Tổ chuyên gia đánh giá của gói thầu này.");
+                    }
                 }
             }
 
@@ -1448,14 +1458,33 @@ namespace ProcurementSystem.Infrastructure.Services
                 .AsNoTracking()
                 .ToListAsync();
 
+            var isEvaluating = package.Status == BidPackageStatus.Evaluating;
+            var restrictEvaluator = isEvaluating && !isInternalStaff;
+
+            var validSubmissions = submissions
+                .Where(s => s.Status != BidSubmissionStatus.Withdrawn && s.Status != BidSubmissionStatus.Disqualified)
+                .ToList();
+            var nonPriceCriteriaList = criteriaList.Where(c => !c.IsPriceCriteria).ToList();
+            var priceCriteria = criteriaList.FirstOrDefault(c => c.IsPriceCriteria);
+
+            // Tìm giá dự thầu thấp nhất giữa các hồ sơ hợp lệ có giá dự thầu để áp dụng công thức tỷ lệ nghịch
+            var activeSubmissionsWithPrice = validSubmissions
+                .Where(s => s.BidPrice.HasValue && s.BidPrice.Value > 0)
+                .ToList();
+            decimal? minBidPrice = activeSubmissionsWithPrice.Any()
+                ? activeSubmissionsWithPrice.Min(s => s.BidPrice!.Value)
+                : null;
+
             var committeeMembers = new List<EvaluationCommitteeMemberDto>();
             int memberIndex = 0;
             foreach (var pe in packageEvaluators)
             {
                 var evaluatorName = pe.Evaluator?.FullName ?? "Chuyên gia xét thầu";
-                var hasScoredAll = submissions.Any() && submissions
-                    .Where(s => s.Status != BidSubmissionStatus.Withdrawn && s.Status != BidSubmissionStatus.Disqualified)
-                    .All(s => s.EvaluationScores.Any(es => es.EvaluatorId == pe.EvaluatorId));
+                var hasScoredAll = validSubmissions.Any() && validSubmissions.All(s =>
+                    nonPriceCriteriaList.All(crit =>
+                        s.EvaluationScores.Any(es => es.EvaluatorId == pe.EvaluatorId && es.CriteriaId == crit.Id)
+                    )
+                );
 
                 string role = memberIndex == 0 ? "Tổ trưởng Tổ chuyên gia" : 
                               (memberIndex % 2 == 1 ? "Thành viên - Chuyên gia Đánh giá Kỹ thuật" : "Thành viên - Chuyên gia Thẩm định Tài chính");
@@ -1493,7 +1522,6 @@ namespace ProcurementSystem.Infrastructure.Services
                 decimal? techScore = null;
                 decimal? priceScore = null;
                 var nonPriceCriteriaIds = criteriaList.Where(c => !c.IsPriceCriteria).Select(c => c.Id).ToHashSet();
-                var priceCriteriaIds = criteriaList.Where(c => c.IsPriceCriteria).Select(c => c.Id).ToHashSet();
 
                 var techScores = s.EvaluationScores.Where(es => nonPriceCriteriaIds.Contains(es.CriteriaId)).ToList();
                 if (techScores.Any())
@@ -1501,29 +1529,16 @@ namespace ProcurementSystem.Infrastructure.Services
                     techScore = Math.Round(techScores.Average(es => es.Score), 2);
                 }
 
-                var priceScores = s.EvaluationScores.Where(es => priceCriteriaIds.Contains(es.CriteriaId)).ToList();
-                if (priceScores.Any())
+                // F5-2: Tiêu chí Giá được tính tự động theo công thức tỷ lệ nghịch Luật Đấu thầu
+                if (priceCriteria != null && minBidPrice.HasValue && s.BidPrice.HasValue && s.BidPrice.Value > 0)
                 {
-                    priceScore = Math.Round(priceScores.Average(es => es.Score), 2);
+                    priceScore = Math.Round((minBidPrice.Value / s.BidPrice.Value) * priceCriteria.MaxScore, 2);
                 }
 
-                rankingItems.Add(new EvaluationReportRankingItemDto
-                {
-                    SubmissionId = s.Id,
-                    ContractorId = s.ContractorId,
-                    CompanyName = s.Contractor?.CompanyName ?? "Nhà thầu",
-                    TaxCode = s.Contractor?.TaxCode,
-                    BidPrice = s.BidPrice,
-                    PriceSavings = priceSavings,
-                    PriceSavingsPercent = priceSavingsPercent,
-                    TotalScore = s.TotalScore,
-                    TechnicalScore = techScore,
-                    PriceScore = priceScore,
-                    Rank = s.Rank,
-                    Status = s.Status.ToString(),
-                    DisqualificationReason = s.DisqualificationReason,
-                    SubmittedAt = s.SubmittedAt,
-                    Scores = s.EvaluationScores.Select(es => new EvaluationScoreDto
+                // F5-2 & Rule N14: Bảo mật điểm chéo giữa các giám khảo trong giai đoạn Evaluating
+                var filteredScores = s.EvaluationScores
+                    .Where(es => !restrictEvaluator || es.EvaluatorId == currentUserId)
+                    .Select(es => new EvaluationScoreDto
                     {
                         Id = es.Id,
                         BidSubmissionId = es.BidSubmissionId,
@@ -1536,18 +1551,48 @@ namespace ProcurementSystem.Infrastructure.Services
                         Score = es.Score,
                         Comment = es.Comment,
                         ScoredAt = es.ScoredAt
-                    }).ToList()
+                    }).ToList();
+
+                rankingItems.Add(new EvaluationReportRankingItemDto
+                {
+                    SubmissionId = s.Id,
+                    ContractorId = s.ContractorId,
+                    CompanyName = s.Contractor?.CompanyName ?? "Nhà thầu",
+                    TaxCode = s.Contractor?.TaxCode,
+                    BidPrice = s.BidPrice,
+                    PriceSavings = priceSavings,
+                    PriceSavingsPercent = priceSavingsPercent,
+                    TotalScore = restrictEvaluator ? null : s.TotalScore,
+                    TechnicalScore = restrictEvaluator ? null : techScore,
+                    PriceScore = restrictEvaluator ? null : priceScore,
+                    Rank = restrictEvaluator ? null : s.Rank,
+                    Status = s.Status.ToString(),
+                    DisqualificationReason = s.DisqualificationReason,
+                    SubmittedAt = s.SubmittedAt,
+                    Scores = filteredScores
                 });
             }
 
             var winningSub = sortedSubmissions.FirstOrDefault(s => s.Status == BidSubmissionStatus.Selected || (s.Rank == 1 && s.TotalScore.HasValue));
             bool isFinalized = package.Status == BidPackageStatus.Awarded || submissions.Any(s => s.Status == BidSubmissionStatus.Selected);
 
-            string conclusion = isFinalized && winningSub != null
-                ? $"Căn cứ kết quả đánh giá toàn diện về năng lực, kinh nghiệm, giải pháp kỹ thuật và giá dự thầu, Tổ chuyên gia thống nhất kiến nghị Bên mời thầu / Người có thẩm quyền phê duyệt trúng thầu cho đơn vị: {winningSub.Contractor?.CompanyName} với giá trúng thầu {winningSub.BidPrice:N0} VND."
-                : (winningSub != null
-                    ? $"Căn cứ tổng hợp kết quả chấm điểm của các thành viên Tổ chuyên gia, Nhà thầu {winningSub.Contractor?.CompanyName} có tổng điểm đánh giá cao nhất ({winningSub.TotalScore:N2}/100 điểm) và xếp hạng thứ nhất (#1), đủ điều kiện kiến nghị trúng thầu sau khi hoàn tất thương thảo hợp đồng."
-                    : "Hội đồng chuyên gia đang trong quá trình đánh giá và tổng hợp kết quả thẩm định E-HSDT.");
+            string conclusion;
+            if (restrictEvaluator)
+            {
+                conclusion = "Gói thầu đang trong giai đoạn chấm điểm (Evaluating). Các thành viên Tổ chuyên gia đang tiến hành đánh giá độc lập theo quy định của Luật Đấu thầu.";
+            }
+            else if (isFinalized && winningSub != null)
+            {
+                conclusion = $"Căn cứ kết quả đánh giá toàn diện về năng lực, kinh nghiệm, giải pháp kỹ thuật và giá dự thầu, Tổ chuyên gia thống nhất kiến nghị Bên mời thầu / Người có thẩm quyền phê duyệt trúng thầu cho đơn vị: {winningSub.Contractor?.CompanyName} với giá trúng thầu {winningSub.BidPrice:N0} VND.";
+            }
+            else if (winningSub != null)
+            {
+                conclusion = $"Căn cứ tổng hợp kết quả chấm điểm của các thành viên Tổ chuyên gia, Nhà thầu {winningSub.Contractor?.CompanyName} có tổng điểm đánh giá cao nhất ({winningSub.TotalScore:N2}/100 điểm) và xếp hạng thứ nhất (#1), đủ điều kiện kiến nghị trúng thầu sau khi hoàn tất thương thảo hợp đồng.";
+            }
+            else
+            {
+                conclusion = "Hội đồng chuyên gia đang trong quá trình đánh giá và tổng hợp kết quả thẩm định E-HSDT.";
+            }
 
             var reportDto = new BidEvaluationReportDto
             {
@@ -1577,12 +1622,14 @@ namespace ProcurementSystem.Infrastructure.Services
                 TotalSubmissions = submissions.Count,
                 EvaluatedSubmissions = submissions.Count(s => s.Status == BidSubmissionStatus.Evaluated || s.Status == BidSubmissionStatus.Selected),
                 Rankings = rankingItems,
-                IsFinalized = isFinalized,
-                WinningContractorName = winningSub?.Contractor?.CompanyName,
-                WinningContractorTaxCode = winningSub?.Contractor?.TaxCode,
-                WinningBidPrice = winningSub?.BidPrice,
-                WinningTotalScore = winningSub?.TotalScore,
-                DecisionReason = winningSub?.SelectionReason ?? "Đạt điểm đánh giá cao nhất và đáp ứng toàn diện hồ sơ mời thầu.",
+                IsFinalized = restrictEvaluator ? false : isFinalized,
+                WinningContractorName = restrictEvaluator ? null : winningSub?.Contractor?.CompanyName,
+                WinningContractorTaxCode = restrictEvaluator ? null : winningSub?.Contractor?.TaxCode,
+                WinningBidPrice = restrictEvaluator ? null : winningSub?.BidPrice,
+                WinningTotalScore = restrictEvaluator ? null : winningSub?.TotalScore,
+                DecisionReason = restrictEvaluator
+                    ? "Gói thầu đang trong giai đoạn chấm điểm (Evaluating). Điểm tổng hợp và xếp hạng được bảo mật cho đến khi hoàn tất đánh giá."
+                    : (winningSub?.SelectionReason ?? "Đạt điểm đánh giá cao nhất và đáp ứng toàn diện hồ sơ mời thầu."),
                 ConclusionSummary = conclusion
             };
 

@@ -96,7 +96,8 @@ namespace ProcurementSystem.API.Controllers
             }
 
             var userId = GetCurrentUserId();
-            var result = await _clarificationService.CreateSubmissionClarificationAsync(packageId, request, userId);
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _clarificationService.CreateSubmissionClarificationAsync(packageId, request, userId, isAdmin);
             if (!result.Success) return BadRequest(result);
             return Ok(result);
         }

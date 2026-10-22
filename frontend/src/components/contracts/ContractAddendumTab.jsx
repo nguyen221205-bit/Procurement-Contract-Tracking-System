@@ -12,7 +12,11 @@ import {
   Clock,
   Upload,
   TrendingUp,
+  Check,
+  X,
+  XCircle,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { contractApi } from '../../api/contractApi';
 import { downloadSecureFile, previewSecureFile } from '../../utils/fileDownload';
 import { formatCurrency, formatDate } from '../../utils/formatters';
@@ -30,8 +34,30 @@ export const ContractAddendumTab = ({
   onOpenAddModal,
   onRefresh,
 }) => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'Admin';
   const addenda = contract?.addenda || [];
   const [uploadingId, setUploadingId] = useState(null);
+  const [processingId, setProcessingId] = useState(null);
+
+  const handleReviewAddendum = async (addendumId, isApproved) => {
+    const confirmMsg = isApproved
+      ? 'Bạn có chắc chắn muốn phê duyệt phụ lục này và áp dụng điều chỉnh vào hợp đồng?'
+      : 'Bạn có chắc chắn muốn từ chối phụ lục này?';
+    if (!window.confirm(confirmMsg)) return;
+
+    setProcessingId(addendumId);
+    try {
+      await contractApi.approveAddendum(contract.id, addendumId, isApproved);
+      toast.success(isApproved ? 'Đã phê duyệt phụ lục hợp đồng thành công!' : 'Đã từ chối phụ lục hợp đồng.');
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Lỗi duyệt phụ lục:', err);
+      toast.error(err.response?.data?.message || 'Không thể xử lý yêu cầu phê duyệt phụ lục');
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   // Thống kê
   const totalAdjustedValue = addenda.reduce((sum, a) => sum + (a.additionalValue || 0), 0);
@@ -143,10 +169,22 @@ export const ContractAddendumTab = ({
                       <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${badgeClass}`}>
                         {a.typeName}
                       </span>
-                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />
-                        {a.statusName}
-                      </span>
+                      {a.status === 3 || a.statusName === 'Chờ phê duyệt' ? (
+                        <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Chờ phê duyệt
+                        </span>
+                      ) : a.status === 2 || a.statusName === 'Bị từ chối' ? (
+                        <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200 flex items-center gap-1">
+                          <XCircle className="w-3 h-3" />
+                          Bị từ chối
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" />
+                          {a.statusName || 'Đã phê duyệt'}
+                        </span>
+                      )}
                     </div>
 
                     <h4 className="text-xs font-bold text-slate-900 pt-0.5">{a.title}</h4>
@@ -194,7 +232,31 @@ export const ContractAddendumTab = ({
                   </div>
 
                   {/* Cụm Action Buttons */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {isAdmin && (a.status === 3 || a.statusName === 'Chờ phê duyệt') && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={processingId === a.id}
+                          onClick={() => handleReviewAddendum(a.id, true)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                          title="Phê duyệt phụ lục"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Duyệt</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={processingId === a.id}
+                          onClick={() => handleReviewAddendum(a.id, false)}
+                          className="inline-flex items-center gap-1 px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          title="Từ chối phụ lục"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Từ chối</span>
+                        </button>
+                      </div>
+                    )}
                     {a.scannedDocumentPath ? (
                       <div className="flex items-center gap-1.5">
                         <button

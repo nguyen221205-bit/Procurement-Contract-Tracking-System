@@ -1582,6 +1582,29 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<ContractAddendumDto>.Fail($"Số phụ lục '{request.AddendumNumber}' đã tồn tại trong hợp đồng này.");
             }
 
+            // F5-5: Kiểm tra tính toàn vẹn tài chính (Financial Integrity)
+            var newContractValue = contract.Value + request.AdditionalValue;
+            if (newContractValue <= 0)
+            {
+                return ApiResponse<ContractAddendumDto>.Fail("Giá trị hợp đồng sau điều chỉnh phải lớn hơn 0.");
+            }
+
+            var totalMilestonesAmount = await _unitOfWork.Repository<ContractMilestone>()
+                .Query()
+                .Where(m => m.ContractId == contractId)
+                .SumAsync(m => (decimal?)m.Amount) ?? 0;
+
+            if (newContractValue < totalMilestonesAmount)
+            {
+                return ApiResponse<ContractAddendumDto>.Fail(
+                    $"Giá trị hợp đồng sau điều chỉnh ({newContractValue:N0} VNĐ) không được nhỏ hơn tổng giá trị các mốc thanh toán hiện có ({totalMilestonesAmount:N0} VNĐ). Vui lòng điều chỉnh lại kế hoạch mốc thanh toán trước.");
+            }
+
+            // F5-5: Quy trình Maker-Checker:
+            // - Nếu là Admin: Phê duyệt và cộng tiền ngay
+            // - Nếu là Procurement: Tạo ở trạng thái Pending chờ Admin phê duyệt, CHƯA cộng tiền vào hợp đồng
+            bool autoApprove = isAdmin;
+
             var addendum = new ContractAddendum
             {
                 ContractId = contractId,
@@ -1593,29 +1616,59 @@ namespace ProcurementSystem.Infrastructure.Services
                 ExtensionDays = request.ExtensionDays,
                 Reason = request.Reason?.Trim(),
                 SignedDate = request.SignedDate,
-                Status = AddendumStatus.Approved,
+                Status = autoApprove ? AddendumStatus.Approved : AddendumStatus.Pending,
                 CreatedBy = userId,
-                ApprovedBy = userId,
-                ApprovedAt = DateTime.UtcNow,
+                ApprovedBy = autoApprove ? userId : null,
+                ApprovedAt = autoApprove ? DateTime.UtcNow : null,
                 CreatedAt = DateTime.UtcNow
             };
 
-            if (request.AdditionalValue != 0)
+            if (autoApprove)
             {
-                contract.Value += request.AdditionalValue;
-                if (contract.Value < 0) contract.Value = 0;
-            }
+                if (request.AdditionalValue != 0)
+                {
+                    contract.Value = newContractValue;
+                }
 
-            if (request.AdjustedEndDate.HasValue && request.AdjustedEndDate.Value > contract.EndDate)
-            {
-                contract.EndDate = request.AdjustedEndDate.Value;
-            }
+                if (request.AdjustedEndDate.HasValue && request.AdjustedEndDate.Value > contract.EndDate)
+                {
+                    contract.EndDate = request.AdjustedEndDate.Value;
+                }
 
-            contract.UpdatedAt = DateTime.UtcNow;
+                contract.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.Repository<Contract>().Update(contract);
+            }
 
             await _unitOfWork.Repository<ContractAddendum>().AddAsync(addendum);
-            _unitOfWork.Repository<Contract>().Update(contract);
             await _unitOfWork.SaveChangesAsync();
+
+            // Nếu tạo ở trạng thái Pending, thông báo cho Admin
+            if (!autoApprove)
+            {
+                try
+                {
+                    var adminUserIds = await _unitOfWork.Repository<UserRole>()
+                        .Query()
+                        .Include(ur => ur.Role)
+                        .Where(ur => ur.Role.Name == "Admin")
+                        .Select(ur => ur.UserId)
+                        .ToListAsync();
+
+                    if (adminUserIds.Any())
+                    {
+                        await _notificationService.CreateBulkNotificationsAsync(
+                            adminUserIds,
+                            "Phụ lục hợp đồng mới chờ phê duyệt",
+                            $"Bên mời thầu vừa đề xuất phụ lục #{addendum.AddendumNumber} cho hợp đồng #{contract.ContractNumber} ({addendum.Title}). Vui lòng thẩm định phê duyệt.",
+                            NotificationType.Info,
+                            sendEmail: false
+                        );
+                    }
+                }
+                catch
+                {
+                }
+            }
 
             var user = await _unitOfWork.Repository<User>().Query().AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
 
@@ -1658,22 +1711,43 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<ContractAddendumDto>.Fail("Không tìm thấy phụ lục hợp đồng.");
             }
 
-            if (!isAdmin && addendum.Contract.BidPackage.CreatedBy != userId)
+            // F5-5: Chống Double Counting - Bắt buộc phụ lục phải ở trạng thái Pending hoặc Draft
+            if (addendum.Status != AddendumStatus.Pending && addendum.Status != AddendumStatus.Draft)
             {
-                return ApiResponse<ContractAddendumDto>.Forbidden("Bạn không có quyền phê duyệt phụ lục này.");
+                return ApiResponse<ContractAddendumDto>.Fail("Phụ lục hợp đồng này đã được xử lý trước đó (không ở trạng thái chờ duyệt).");
             }
 
-            addendum.Status = request.IsApproved ? AddendumStatus.Approved : AddendumStatus.Rejected;
-            addendum.ApprovedBy = userId;
-            addendum.ApprovedAt = DateTime.UtcNow;
+            // F5-5: Maker-Checker: Phụ lục do Procurement lập phải do Admin phê duyệt
+            if (!isAdmin)
+            {
+                return ApiResponse<ContractAddendumDto>.Forbidden("Chỉ Quản trị viên (Admin) mới có thẩm quyền phê duyệt phụ lục hợp đồng.");
+            }
 
             if (request.IsApproved)
             {
                 var contract = addendum.Contract;
+
+                // F5-5: Kiểm tra toàn vẹn tài chính trước khi duyệt
+                var newContractValue = contract.Value + addendum.AdditionalValue;
+                if (newContractValue <= 0)
+                {
+                    return ApiResponse<ContractAddendumDto>.Fail("Giá trị hợp đồng sau khi áp dụng phụ lục phải lớn hơn 0.");
+                }
+
+                var totalMilestonesAmount = await _unitOfWork.Repository<ContractMilestone>()
+                    .Query()
+                    .Where(m => m.ContractId == contractId)
+                    .SumAsync(m => (decimal?)m.Amount) ?? 0;
+
+                if (newContractValue < totalMilestonesAmount)
+                {
+                    return ApiResponse<ContractAddendumDto>.Fail(
+                        $"Giá trị hợp đồng sau điều chỉnh ({newContractValue:N0} VNĐ) không được nhỏ hơn tổng giá trị các mốc thanh toán hiện có ({totalMilestonesAmount:N0} VNĐ).");
+                }
+
                 if (addendum.AdditionalValue != 0)
                 {
-                    contract.Value += addendum.AdditionalValue;
-                    if (contract.Value < 0) contract.Value = 0;
+                    contract.Value = newContractValue;
                 }
 
                 if (addendum.AdjustedEndDate.HasValue && addendum.AdjustedEndDate.Value > contract.EndDate)
@@ -1683,6 +1757,10 @@ namespace ProcurementSystem.Infrastructure.Services
                 contract.UpdatedAt = DateTime.UtcNow;
                 _unitOfWork.Repository<Contract>().Update(contract);
             }
+
+            addendum.Status = request.IsApproved ? AddendumStatus.Approved : AddendumStatus.Rejected;
+            addendum.ApprovedBy = userId;
+            addendum.ApprovedAt = DateTime.UtcNow;
 
             _unitOfWork.Repository<ContractAddendum>().Update(addendum);
             await _unitOfWork.SaveChangesAsync();
@@ -1875,25 +1953,8 @@ namespace ProcurementSystem.Infrastructure.Services
 
             await _unitOfWork.SaveChangesAsync();
 
-            // Tự động tính toán lại điểm Contractor.Rating
-            var allContractorEvals = await _unitOfWork.Repository<ContractorEvaluation>()
-                .Query()
-                .Where(e => e.ContractorId == contract.ContractorId)
-                .ToListAsync();
-
-            if (allContractorEvals.Count > 0)
-            {
-                var contractor = await _unitOfWork.Repository<Contractor>()
-                    .Query()
-                    .FirstOrDefaultAsync(c => c.Id == contract.ContractorId);
-
-                if (contractor != null)
-                {
-                    contractor.Rating = Math.Round(allContractorEvals.Average(e => e.TotalScore), 2);
-                    _unitOfWork.Repository<Contractor>().Update(contractor);
-                    await _unitOfWork.SaveChangesAsync();
-                }
-            }
+            // Tự động tính toán lại điểm Contractor.Rating theo nguồn chân lý chuẩn hóa (F5-1)
+            await _contractorService.RecalculateContractorRatingAsync(contract.ContractorId);
 
             // Gửi thông báo cho nhà thầu
             try

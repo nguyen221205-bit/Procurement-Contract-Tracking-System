@@ -36,7 +36,8 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<BidClarificationDto>> CreateSubmissionClarificationAsync(
             int packageId,
             CreateSubmissionClarificationRequest request,
-            int evaluatorOrProcurementUserId);
+            int evaluatorOrProcurementUserId,
+            bool isAdmin);
 
         /// <summary>
         /// Phản hồi câu hỏi HSMT (Procurement/Admin) hoặc nộp văn bản giải trình HSDT (Nhà thầu)

@@ -28,6 +28,7 @@ namespace ProcurementSystem.Core.DTOs.Contract
         public string StatusName => Status switch
         {
             AddendumStatus.Draft => "Dự thảo",
+            AddendumStatus.Pending => "Chờ phê duyệt",
             AddendumStatus.Approved => "Đã phê duyệt / Có hiệu lực",
             AddendumStatus.Rejected => "Bị từ chối",
             _ => "Không xác định"

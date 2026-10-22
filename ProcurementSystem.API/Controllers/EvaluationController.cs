@@ -269,8 +269,9 @@ namespace ProcurementSystem.API.Controllers
                 return Unauthorized(ApiResponse<BidEvaluationReportDto>.Fail("Không xác định được danh tính người dùng."));
             }
 
-            bool isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
-            var result = await _evaluationService.GetEvaluationReportAsync(packageId, userId, isInternalStaff);
+            bool isAdmin = User.IsInRole("Admin");
+            bool isInternalStaff = isAdmin || User.IsInRole("Procurement");
+            var result = await _evaluationService.GetEvaluationReportAsync(packageId, userId, isInternalStaff, isAdmin);
             if (!result.Success)
             {
                 return NotFound(result);

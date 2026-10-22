@@ -234,9 +234,9 @@ namespace ProcurementSystem.Infrastructure.Services
 
         public async Task<ApiResponse<ContractorDto>> UpdateContractorRatingAsync(int contractorId, UpdateContractorRatingRequest request)
         {
-            if (request.Rating < 0 || request.Rating > 5)
+            if (request.Rating < 0 || request.Rating > 100)
             {
-                return ApiResponse<ContractorDto>.Fail("Điểm đánh giá phải nằm trong khoảng từ 0.0 đến 5.0 sao.");
+                return ApiResponse<ContractorDto>.Fail("Điểm đánh giá phải nằm trong khoảng từ 0.0 đến 100.0 điểm.");
             }
 
             var contractor = await _unitOfWork.Repository<Contractor>()
@@ -325,12 +325,20 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Where(c => c.ContractorId == contractorId)
                 .ToListAsync();
 
-            decimal baseScore = 5.0m;
+            var evaluations = await _unitOfWork.Repository<ContractorEvaluation>()
+                .Query()
+                .Where(e => e.ContractorId == contractorId)
+                .ToListAsync();
+
+            decimal baseScore = evaluations.Any()
+                ? (decimal)evaluations.Average(e => e.TotalScore)
+                : 80.0m;
+
             int terminatedCount = contracts.Count(c => c.Status == ContractStatus.Terminated);
             int rejectedAcceptanceCount = contracts.SelectMany(c => c.Acceptances).Count(a => a.Status == AcceptanceStatus.Rejected);
 
-            decimal calculatedScore = baseScore - (terminatedCount * 1.5m) - (rejectedAcceptanceCount * 0.2m);
-            calculatedScore = Math.Clamp(calculatedScore, 1.0m, 5.0m);
+            decimal calculatedScore = baseScore - (terminatedCount * 15.0m) - (rejectedAcceptanceCount * 2.0m);
+            calculatedScore = Math.Clamp(calculatedScore, 0.0m, 100.0m);
 
             contractor.Rating = Math.Round(calculatedScore, 2);
             _unitOfWork.Repository<Contractor>().Update(contractor);

@@ -44,12 +44,40 @@ namespace ProcurementSystem.Infrastructure.Services
                 query = query.Where(c => c.Type == type.Value);
             }
 
-            // Quy tắc bảo mật phân quyền:
-            // - HSMT (PackageClarification): Công khai cho toàn bộ người dùng
-            // - HSDT (SubmissionClarification): Nếu là Nhà thầu (Contractor), CHỈ xem được các yêu cầu làm rõ hồ sơ của chính mình
-            if (isContractor && !isAdmin && !isProcurement && !isEvaluator)
+            var package = await _unitOfWork.Repository<BidPackage>().GetByIdAsync(packageId);
+            if (package == null)
             {
-                // Tìm ContractorId của User hiện tại
+                return ApiResponse<List<BidClarificationDto>>.Fail("Không tìm thấy gói thầu.");
+            }
+
+            // F5-3: Chống IDOR xem Làm rõ HSDT mật
+            // - HSMT (PackageClarification): Công khai cho toàn bộ người dùng
+            // - HSDT (SubmissionClarification): 
+            //   + Admin: xem toàn bộ
+            //   + Procurement: chỉ xem nếu chính là chủ sở hữu gói thầu (package.CreatedBy == userId)
+            //   + Evaluator: chỉ xem nếu thuộc Tổ chuyên gia (BidPackageEvaluator) của gói thầu
+            //   + Contractor: chỉ xem hồ sơ của chính doanh nghiệp mình
+            //   + Các đối tượng khác: bị ẩn toàn bộ SubmissionClarification, chỉ xem PackageClarification
+            bool canViewPrivateSubmissionClarifications = isAdmin;
+            if (!canViewPrivateSubmissionClarifications)
+            {
+                if (isProcurement && package.CreatedBy == userId)
+                {
+                    canViewPrivateSubmissionClarifications = true;
+                }
+                else if (isEvaluator)
+                {
+                    var isPackageEvaluator = await _unitOfWork.Repository<BidPackageEvaluator>()
+                        .ExistsAsync(pe => pe.BidPackageId == packageId && pe.EvaluatorId == userId);
+                    if (isPackageEvaluator)
+                    {
+                        canViewPrivateSubmissionClarifications = true;
+                    }
+                }
+            }
+
+            if (isContractor)
+            {
                 var contractor = await _unitOfWork.Repository<Contractor>()
                     .Query()
                     .AsNoTracking()
@@ -60,6 +88,11 @@ namespace ProcurementSystem.Infrastructure.Services
                 query = query.Where(c =>
                     c.Type == ClarificationType.PackageClarification ||
                     (c.Type == ClarificationType.SubmissionClarification && c.BidSubmission != null && c.BidSubmission.ContractorId == contractorId));
+            }
+            else if (!canViewPrivateSubmissionClarifications)
+            {
+                // Giám khảo ngoài tổ hoặc Bên mời thầu khác: Chặn IDOR xem giải trình HSDT
+                query = query.Where(c => c.Type == ClarificationType.PackageClarification);
             }
 
             var list = await query
@@ -103,6 +136,17 @@ namespace ProcurementSystem.Infrastructure.Services
             if (package == null)
             {
                 return ApiResponse<BidClarificationDto>.Fail("Không tìm thấy gói thầu.");
+            }
+
+            // F5-3: Kiểm tra trạng thái gói thầu & hạn nộp thầu
+            if (package.Status != BidPackageStatus.Open)
+            {
+                return ApiResponse<BidClarificationDto>.Fail("Chỉ được gửi yêu cầu làm rõ HSMT khi gói thầu đang trong thời gian mời thầu (Open).");
+            }
+
+            if (package.Deadline <= DateTime.UtcNow)
+            {
+                return ApiResponse<BidClarificationDto>.Fail("Gói thầu đã kết thúc thời hạn nộp thầu, không thể gửi yêu cầu làm rõ HSMT.");
             }
 
             var clarification = new BidClarification
@@ -165,12 +209,32 @@ namespace ProcurementSystem.Infrastructure.Services
         public async Task<ApiResponse<BidClarificationDto>> CreateSubmissionClarificationAsync(
             int packageId,
             CreateSubmissionClarificationRequest request,
-            int evaluatorOrProcurementUserId)
+            int evaluatorOrProcurementUserId,
+            bool isAdmin)
         {
             var package = await _unitOfWork.Repository<BidPackage>().GetByIdAsync(packageId);
             if (package == null)
             {
                 return ApiResponse<BidClarificationDto>.Fail("Không tìm thấy gói thầu.");
+            }
+
+            // F5-3: Kiểm tra trạng thái gói thầu phải là Evaluating hoặc Closed
+            if (package.Status != BidPackageStatus.Evaluating && package.Status != BidPackageStatus.Closed)
+            {
+                return ApiResponse<BidClarificationDto>.Fail("Chỉ được yêu cầu giải trình HSDT khi gói thầu đang ở trạng thái Đã đóng thầu (Closed) hoặc Đang chấm điểm (Evaluating).");
+            }
+
+            // F5-3: Kiểm tra thẩm quyền người gửi
+            if (!isAdmin)
+            {
+                bool isOwner = package.CreatedBy == evaluatorOrProcurementUserId;
+                bool isPackageEvaluator = await _unitOfWork.Repository<BidPackageEvaluator>()
+                    .ExistsAsync(pe => pe.BidPackageId == packageId && pe.EvaluatorId == evaluatorOrProcurementUserId);
+
+                if (!isOwner && !isPackageEvaluator)
+                {
+                    return ApiResponse<BidClarificationDto>.Forbidden("Bạn không có thẩm quyền yêu cầu giải trình HSDT cho gói thầu này.");
+                }
             }
 
             var submission = await _unitOfWork.Repository<BidSubmission>()
@@ -182,6 +246,12 @@ namespace ProcurementSystem.Infrastructure.Services
             if (submission == null)
             {
                 return ApiResponse<BidClarificationDto>.Fail("Không tìm thấy hồ sơ dự thầu cần làm rõ trong gói thầu này.");
+            }
+
+            // F5-3: Chặn yêu cầu làm rõ hồ sơ đã rút hoặc bị loại
+            if (submission.Status == BidSubmissionStatus.Withdrawn || submission.Status == BidSubmissionStatus.Disqualified)
+            {
+                return ApiResponse<BidClarificationDto>.Fail("Không thể yêu cầu làm rõ đối với hồ sơ dự thầu đã rút (Withdrawn) hoặc đã bị loại (Disqualified).");
             }
 
             if (request.Deadline <= DateTime.UtcNow)
@@ -263,22 +333,38 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidClarificationDto>.Fail("Không tìm thấy bản ghi làm rõ.");
             }
 
-            // Kiểm tra phân quyền trả lời:
+            // F5-3: Chặn ghi đè câu trả lời đã gửi
+            if (clarification.Status == ClarificationStatus.Answered)
+            {
+                return ApiResponse<BidClarificationDto>.Fail("Yêu cầu làm rõ này đã được phản hồi trước đó, không thể nộp lại hoặc ghi đè.");
+            }
+
+            // Kiểm tra phân quyền và hạn chót:
             if (clarification.Type == ClarificationType.PackageClarification)
             {
-                // Làm rõ HSMT -> Chỉ Admin hoặc Procurement mới được trả lời
                 if (!isAdmin && !isProcurement)
                 {
                     return ApiResponse<BidClarificationDto>.Fail("Chỉ Bên mời thầu hoặc Admin mới có thẩm quyền phản hồi làm rõ HSMT.");
                 }
+
+                // F5-3: Bên mời thầu phải là chủ sở hữu gói thầu
+                if (!isAdmin && clarification.BidPackage.CreatedBy != currentUserId)
+                {
+                    return ApiResponse<BidClarificationDto>.Forbidden("Bạn chỉ có thẩm quyền phản hồi làm rõ HSMT cho gói thầu do chính mình phụ trách.");
+                }
             }
             else if (clarification.Type == ClarificationType.SubmissionClarification)
             {
-                // Làm rõ HSDT -> Chỉ chính Nhà thầu sở hữu HSDT mới được nộp văn bản giải trình
                 var contractorUserId = clarification.BidSubmission?.Contractor?.UserId;
                 if (!isAdmin && contractorUserId != currentUserId)
                 {
                     return ApiResponse<BidClarificationDto>.Fail("Chỉ Nhà thầu sở hữu hồ sơ dự thầu này mới được quyền gửi văn bản giải trình.");
+                }
+
+                // F5-3: Kiểm tra hạn chót giải trình HSDT
+                if (clarification.Deadline.HasValue && DateTime.UtcNow > clarification.Deadline.Value)
+                {
+                    return ApiResponse<BidClarificationDto>.Fail($"Đã quá thời hạn nộp văn bản giải trình HSDT ({clarification.Deadline.Value:dd/MM/yyyy HH:mm} UTC). Hệ thống đã ngừng tiếp nhận.");
                 }
             }
 
@@ -291,24 +377,54 @@ namespace ProcurementSystem.Infrastructure.Services
             _unitOfWork.Repository<BidClarification>().Update(clarification);
             await _unitOfWork.SaveChangesAsync();
 
-            // Gửi thông báo & SignalR phản hồi cho người hỏi ban đầu
+            // Gửi thông báo & SignalR phản hồi
             var responder = await _unitOfWork.Repository<User>().GetByIdAsync(currentUserId);
 
             var notifTitle = clarification.Type == ClarificationType.PackageClarification
-                ? "Phản hồi làm rõ HSMT"
+                ? "Phản hồi làm rõ HSMT công khai"
                 : "Văn bản giải trình HSDT từ Nhà thầu";
 
             var notifMessage = clarification.Type == ClarificationType.PackageClarification
                 ? $"Bên mời thầu đã phản hồi câu hỏi làm rõ HSMT gói thầu [{clarification.BidPackage.Code}]: '{clarification.Title}'"
                 : $"Nhà thầu ({clarification.BidSubmission?.Contractor?.CompanyName}) đã nộp văn bản giải trình HSDT gói thầu [{clarification.BidPackage.Code}]: '{clarification.Title}'";
 
-            await _notificationService.CreateNotificationAsync(
-                clarification.AskedByUserId,
-                notifTitle,
-                notifMessage,
-                NotificationType.Success,
-                sendEmail: false
-            );
+            // F5-3: Với làm rõ HSMT công khai, thông báo cho người hỏi và toàn bộ nhà thầu đã nộp HSDT
+            if (clarification.Type == ClarificationType.PackageClarification)
+            {
+                var submittedContractorUserIds = await _unitOfWork.Repository<BidSubmission>()
+                    .Query()
+                    .Include(s => s.Contractor)
+                    .Where(s => s.BidPackageId == clarification.BidPackageId && s.Contractor != null && s.Contractor.UserId > 0)
+                    .Select(s => s.Contractor!.UserId)
+                    .ToListAsync();
+
+                var recipients = submittedContractorUserIds
+                    .Append(clarification.AskedByUserId)
+                    .Distinct()
+                    .Where(uid => uid != currentUserId)
+                    .ToList();
+
+                if (recipients.Any())
+                {
+                    await _notificationService.CreateBulkNotificationsAsync(
+                        recipients,
+                        notifTitle,
+                        notifMessage,
+                        NotificationType.Info,
+                        sendEmail: false
+                    );
+                }
+            }
+            else
+            {
+                await _notificationService.CreateNotificationAsync(
+                    clarification.AskedByUserId,
+                    notifTitle,
+                    notifMessage,
+                    NotificationType.Success,
+                    sendEmail: false
+                );
+            }
 
             return ApiResponse<BidClarificationDto>.Ok(new BidClarificationDto
             {

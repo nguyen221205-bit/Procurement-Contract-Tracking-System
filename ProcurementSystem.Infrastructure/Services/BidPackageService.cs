@@ -333,6 +333,11 @@ namespace ProcurementSystem.Infrastructure.Services
                 // Từ Evaluating chỉ được quay lại Closed nếu chưa có bất kỳ điểm chấm nào
                 (BidPackageStatus.Evaluating, BidPackageStatus.Closed) => true,
 
+                // F5-4: Mở khóa chuyển sang Cancelled (Hủy thầu) từ Draft, Open, Closed, Evaluating
+                                (BidPackageStatus.Open, BidPackageStatus.Cancelled) => true,
+                (BidPackageStatus.Closed, BidPackageStatus.Cancelled) => true,
+                (BidPackageStatus.Evaluating, BidPackageStatus.Cancelled) => true,
+
                 _ => false
             };
 
@@ -386,6 +391,24 @@ namespace ProcurementSystem.Infrastructure.Services
                 {
                     return ApiResponse<BidPackageDto>.Fail(
                         "Gói thầu chưa hết thời hạn nộp thầu. Nếu muốn đóng thầu trước thời hạn, bắt buộc phải cung cấp lý do/căn cứ pháp lý.");
+                }
+            }
+
+            // F5-4: Hủy thầu bắt buộc phải có lý do theo quy định Luật Đấu thầu 2023
+            if (request.NewStatus == BidPackageStatus.Cancelled)
+            {
+                if (string.IsNullOrWhiteSpace(request.Reason))
+                {
+                    return ApiResponse<BidPackageDto>.Fail("Hủy gói thầu bắt buộc phải có lý do / căn cứ pháp lý hủy thầu theo quy định của Luật Đấu thầu.");
+                }
+
+                var hasActiveContract = await _unitOfWork.Repository<Contract>()
+                    .Query()
+                    .AnyAsync(c => c.BidPackageId == id && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Completed));
+
+                if (hasActiveContract)
+                {
+                    return ApiResponse<BidPackageDto>.Fail("Không thể hủy gói thầu vì đã có hợp đồng kinh tế đang thực hiện hoặc đã hoàn thành.");
                 }
             }
 
@@ -1148,6 +1171,47 @@ namespace ProcurementSystem.Infrastructure.Services
 
             if (request.IsApproved)
             {
+                // F5-4: Kiểm tra trạng thái gói thầu có bị thay đổi trong thời gian chờ duyệt không
+                if (package.Status != approvalReq.CurrentStatus)
+                {
+                    return ApiResponse<PackageStatusApprovalRequestDto>.Fail(
+                        $"Không thể phê duyệt do trạng thái hiện tại của gói thầu ('{package.Status}') đã thay đổi so với thời điểm gửi yêu cầu ('{approvalReq.CurrentStatus}').");
+                }
+
+                // F5-4: Re-validation khi duyệt mở lại/gia hạn thầu
+                if (approvalReq.TargetStatus == BidPackageStatus.Open)
+                {
+                    if (!approvalReq.NewDeadline.HasValue || approvalReq.NewDeadline.Value <= DateTime.UtcNow)
+                    {
+                        return ApiResponse<PackageStatusApprovalRequestDto>.Fail(
+                            "Không thể phê duyệt gia hạn/mở lại thầu do thời hạn nộp thầu gia hạn mới (NewDeadline) đã trôi qua hoặc không hợp lệ.");
+                    }
+
+                    var hasScores = await _unitOfWork.Repository<EvaluationScore>()
+                        .Query()
+                        .AnyAsync(es => es.Criteria.BidPackageId == package.Id || es.BidSubmission.BidPackageId == package.Id);
+
+                    if (hasScores)
+                    {
+                        return ApiResponse<PackageStatusApprovalRequestDto>.Fail(
+                            "Không thể phê duyệt mở lại thầu do Tổ chuyên gia đã bắt đầu chấm điểm đánh giá HSDT.");
+                    }
+                }
+
+                // F5-4: Re-validation khi duyệt hủy thầu
+                if (approvalReq.TargetStatus == BidPackageStatus.Cancelled)
+                {
+                    var hasActiveContract = await _unitOfWork.Repository<Contract>()
+                        .Query()
+                        .AnyAsync(c => c.BidPackageId == package.Id && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Completed));
+
+                    if (hasActiveContract)
+                    {
+                        return ApiResponse<PackageStatusApprovalRequestDto>.Fail(
+                            "Không thể phê duyệt hủy thầu do gói thầu đã có hợp đồng đang thực hiện hoặc đã hoàn thành.");
+                    }
+                }
+
                 approvalReq.Status = ApprovalStatus.Approved;
 
                 var oldStatus = package.Status;
