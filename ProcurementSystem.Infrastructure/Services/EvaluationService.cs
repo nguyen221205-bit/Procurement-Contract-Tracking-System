@@ -1477,14 +1477,38 @@ namespace ProcurementSystem.Infrastructure.Services
 
             var committeeMembers = new List<EvaluationCommitteeMemberDto>();
             int memberIndex = 0;
+            int totalCriteriaCountToScore = validSubmissions.Count * nonPriceCriteriaList.Count;
+
             foreach (var pe in packageEvaluators)
             {
                 var evaluatorName = pe.Evaluator?.FullName ?? "Chuyên gia xét thầu";
-                var hasScoredAll = validSubmissions.Any() && validSubmissions.All(s =>
-                    nonPriceCriteriaList.All(crit =>
+                
+                // Đếm số lượt tiêu chí giám khảo này đã chấm điểm trên toàn bộ hồ sơ hợp lệ
+                int scoredCriteriaCount = validSubmissions.Sum(s =>
+                    nonPriceCriteriaList.Count(crit =>
                         s.EvaluationScores.Any(es => es.EvaluatorId == pe.EvaluatorId && es.CriteriaId == crit.Id)
                     )
                 );
+
+                bool hasScoredAll = totalCriteriaCountToScore > 0 && scoredCriteriaCount >= totalCriteriaCountToScore;
+
+                string scoringStatusText;
+                if (totalCriteriaCountToScore == 0)
+                {
+                    scoringStatusText = "Chưa có HSDT cần chấm";
+                }
+                else if (hasScoredAll)
+                {
+                    scoringStatusText = "Hoàn tất";
+                }
+                else if (scoredCriteriaCount > 0)
+                {
+                    scoringStatusText = $"Đang chấm ({scoredCriteriaCount}/{totalCriteriaCountToScore})";
+                }
+                else
+                {
+                    scoringStatusText = "Chưa chấm điểm";
+                }
 
                 string role = memberIndex == 0 ? "Tổ trưởng Tổ chuyên gia" : 
                               (memberIndex % 2 == 1 ? "Thành viên - Chuyên gia Đánh giá Kỹ thuật" : "Thành viên - Chuyên gia Thẩm định Tài chính");
@@ -1496,10 +1520,42 @@ namespace ProcurementSystem.Infrastructure.Services
                     Email = pe.Evaluator?.Email ?? string.Empty,
                     Phone = pe.Evaluator?.Phone,
                     CommitteeRole = role,
-                    HasCompletedScoring = hasScoredAll
+                    HasCompletedScoring = hasScoredAll,
+                    ScoredCriteriaCount = scoredCriteriaCount,
+                    TotalCriteriaCount = totalCriteriaCountToScore,
+                    ScoringStatusText = scoringStatusText
                 });
                 memberIndex++;
             }
+
+            int totalEvaluatorsCount = committeeMembers.Count;
+            int completedEvaluatorsCount = committeeMembers.Count(m => m.HasCompletedScoring);
+            bool allEvaluatorsCompleted = totalEvaluatorsCount > 0 && completedEvaluatorsCount == totalEvaluatorsCount;
+            bool isAwarded = package.Status == BidPackageStatus.Awarded;
+            bool isFinalized = isAwarded || submissions.Any(s => s.Status == BidSubmissionStatus.Selected);
+            bool canFinalizeExport = isAwarded || (allEvaluatorsCompleted && validSubmissions.Any());
+
+            string evaluationStage;
+            if (isAwarded)
+            {
+                evaluationStage = "Đã phê duyệt trao thầu & hoàn tất thẩm định";
+            }
+            else if (allEvaluatorsCompleted)
+            {
+                evaluationStage = "Đã hoàn thành chấm điểm (Chờ phê duyệt kết quả)";
+            }
+            else if (completedEvaluatorsCount > 0)
+            {
+                evaluationStage = $"Đang chấm điểm (Đã có {completedEvaluatorsCount}/{totalEvaluatorsCount} giám khảo hoàn tất)";
+            }
+            else
+            {
+                evaluationStage = "Chưa bắt đầu chấm điểm (Chờ Tổ chuyên gia đánh giá)";
+            }
+
+            string reportStatusLabel = canFinalizeExport
+                ? "BÁO CÁO ĐÁNH GIÁ E-HSDT VÀ KẾT QUẢ LỰA CHỌN NHÀ THẦU"
+                : "BÁO CÁO TIẾN ĐỘ ĐÁNH GIÁ E-HSDT (DỰ THẢO / NỘI BỘ)";
 
             var rankingItems = new List<EvaluationReportRankingItemDto>();
             var sortedSubmissions = submissions
@@ -1574,24 +1630,23 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             var winningSub = sortedSubmissions.FirstOrDefault(s => s.Status == BidSubmissionStatus.Selected || (s.Rank == 1 && s.TotalScore.HasValue));
-            bool isFinalized = package.Status == BidPackageStatus.Awarded || submissions.Any(s => s.Status == BidSubmissionStatus.Selected);
 
             string conclusion;
             if (restrictEvaluator)
             {
                 conclusion = "Gói thầu đang trong giai đoạn chấm điểm (Evaluating). Các thành viên Tổ chuyên gia đang tiến hành đánh giá độc lập theo quy định của Luật Đấu thầu.";
             }
-            else if (isFinalized && winningSub != null)
+            else if (isAwarded && winningSub != null)
             {
                 conclusion = $"Căn cứ kết quả đánh giá toàn diện về năng lực, kinh nghiệm, giải pháp kỹ thuật và giá dự thầu, Tổ chuyên gia thống nhất kiến nghị Bên mời thầu / Người có thẩm quyền phê duyệt trúng thầu cho đơn vị: {winningSub.Contractor?.CompanyName} với giá trúng thầu {winningSub.BidPrice:N0} VND.";
             }
-            else if (winningSub != null)
+            else if (canFinalizeExport && winningSub != null)
             {
                 conclusion = $"Căn cứ tổng hợp kết quả chấm điểm của các thành viên Tổ chuyên gia, Nhà thầu {winningSub.Contractor?.CompanyName} có tổng điểm đánh giá cao nhất ({winningSub.TotalScore:N2}/100 điểm) và xếp hạng thứ nhất (#1), đủ điều kiện kiến nghị trúng thầu sau khi hoàn tất thương thảo hợp đồng.";
             }
             else
             {
-                conclusion = "Hội đồng chuyên gia đang trong quá trình đánh giá và tổng hợp kết quả thẩm định E-HSDT.";
+                conclusion = $"Hội đồng chuyên gia đang trong quá trình đánh giá và tổng hợp kết quả thẩm định E-HSDT (Hiện tại có {completedEvaluatorsCount}/{totalEvaluatorsCount} giám khảo đã hoàn thành). Chưa có kết quả xếp hạng và quyết định lựa chọn nhà thầu trúng thầu chính thức.";
             }
 
             var reportDto = new BidEvaluationReportDto
@@ -1622,14 +1677,20 @@ namespace ProcurementSystem.Infrastructure.Services
                 TotalSubmissions = submissions.Count,
                 EvaluatedSubmissions = submissions.Count(s => s.Status == BidSubmissionStatus.Evaluated || s.Status == BidSubmissionStatus.Selected),
                 Rankings = rankingItems,
-                IsFinalized = restrictEvaluator ? false : isFinalized,
-                WinningContractorName = restrictEvaluator ? null : winningSub?.Contractor?.CompanyName,
-                WinningContractorTaxCode = restrictEvaluator ? null : winningSub?.Contractor?.TaxCode,
-                WinningBidPrice = restrictEvaluator ? null : winningSub?.BidPrice,
-                WinningTotalScore = restrictEvaluator ? null : winningSub?.TotalScore,
-                DecisionReason = restrictEvaluator
-                    ? "Gói thầu đang trong giai đoạn chấm điểm (Evaluating). Điểm tổng hợp và xếp hạng được bảo mật cho đến khi hoàn tất đánh giá."
-                    : (winningSub?.SelectionReason ?? "Đạt điểm đánh giá cao nhất và đáp ứng toàn diện hồ sơ mời thầu."),
+                IsFinalized = canFinalizeExport && !restrictEvaluator && isFinalized,
+                AllEvaluatorsCompleted = allEvaluatorsCompleted,
+                TotalEvaluatorsCount = totalEvaluatorsCount,
+                CompletedEvaluatorsCount = completedEvaluatorsCount,
+                EvaluationStage = evaluationStage,
+                CanFinalizeExport = canFinalizeExport && !restrictEvaluator,
+                ReportStatusLabel = reportStatusLabel,
+                WinningContractorName = (canFinalizeExport && !restrictEvaluator) ? winningSub?.Contractor?.CompanyName : null,
+                WinningContractorTaxCode = (canFinalizeExport && !restrictEvaluator) ? winningSub?.Contractor?.TaxCode : null,
+                WinningBidPrice = (canFinalizeExport && !restrictEvaluator) ? winningSub?.BidPrice : null,
+                WinningTotalScore = (canFinalizeExport && !restrictEvaluator) ? winningSub?.TotalScore : null,
+                DecisionReason = (canFinalizeExport && !restrictEvaluator)
+                    ? (winningSub?.SelectionReason ?? "Đạt điểm đánh giá cao nhất và đáp ứng toàn diện hồ sơ mời thầu.")
+                    : "Gói thầu đang trong giai đoạn chấm điểm E-HSDT. Kết quả lựa chọn nhà thầu sẽ được công bố chính thức sau khi toàn bộ Tổ chuyên gia hoàn thành đánh giá và cấp có thẩm quyền phê duyệt.",
                 ConclusionSummary = conclusion
             };
 

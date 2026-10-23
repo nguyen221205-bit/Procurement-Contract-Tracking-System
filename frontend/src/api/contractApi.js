@@ -32,8 +32,11 @@ export const contractApi = {
   },
 
   // Chuyển trạng thái hợp đồng (Draft -> Active -> Completed / Terminated)
-  changeStatus: async (id, newStatus, note = null) => {
-    return await axiosClient.put(`/contracts/${id}/status`, { newStatus, note });
+  changeStatus: async (id, newStatus, note = null, terminationReasonCategory = null, decisionNumber = null) => {
+    const payload = typeof newStatus === 'object'
+      ? newStatus
+      : { newStatus, note, terminationReasonCategory, decisionNumber };
+    return await axiosClient.put(`/contracts/${id}/status`, payload);
   },
 
   // Tải lên file PDF hợp đồng scan có chữ ký

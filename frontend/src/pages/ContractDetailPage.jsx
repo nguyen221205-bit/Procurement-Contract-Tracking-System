@@ -53,6 +53,7 @@ export const ContractDetailPage = () => {
   const navigate = useNavigate();
   const { hasRole, user } = useAuth();
   const isAdminOrProcurement = hasRole(['Admin', 'Procurement']);
+  const isAdmin = hasRole('Admin');
 
   const [contract, setContract] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -313,8 +314,8 @@ export const ContractDetailPage = () => {
                   </button>
                 )}
 
-                {/* Đổi trạng thái: Chấm dứt hợp đồng */}
-                {contract.status !== 'Terminated' && contract.status !== 3 && (
+                {/* Đổi trạng thái: Chấm dứt hợp đồng (Chỉ cho phép khi đang thi công Active) */}
+                {(contract.status === 'Active' || contract.status === 1) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -322,15 +323,15 @@ export const ContractDetailPage = () => {
                       setIsChangeStatusModalOpen(true);
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-                    title="Chấm dứt hợp đồng do vi phạm hoặc điều kiện bất khả kháng"
+                    title="Chấm dứt hợp đồng do vi phạm hoặc điều kiện bất khả kháng (Yêu cầu căn cứ pháp lý)"
                   >
                     <Ban className="w-3.5 h-3.5" />
                     <span>Chấm dứt HĐ</span>
                   </button>
                 )}
 
-                {/* Mở lại Active nếu lỡ Terminated hoặc Completed */}
-                {(contract.status === 'Terminated' || contract.status === 3) && (
+                {/* Khôi phục Active nếu lỡ Terminated - Chỉ dành riêng cho Admin */}
+                {(contract.status === 'Terminated' || contract.status === 3) && isAdmin && (
                   <button
                     type="button"
                     onClick={() => {
@@ -338,10 +339,10 @@ export const ContractDetailPage = () => {
                       setIsChangeStatusModalOpen(true);
                     }}
                     className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-                    title="Mở lại hợp đồng về trạng thái Active"
+                    title="Khôi phục hợp đồng về trạng thái Active (Yêu cầu giải trình căn cứ pháp lý)"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Kích hoạt lại HĐ (Active)</span>
+                    <span>Khôi phục hiệu lực HĐ (Admin)</span>
                   </button>
                 )}
               </>
@@ -908,6 +909,7 @@ export const ContractDetailPage = () => {
         contractId={Number(id)}
         contractNumber={contract.contractNumber}
         targetStatus={targetStatus}
+        currentStatus={contract.status}
         onSuccess={() => fetchData(true)}
       />
 
