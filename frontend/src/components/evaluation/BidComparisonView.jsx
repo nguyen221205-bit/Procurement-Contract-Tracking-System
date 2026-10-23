@@ -119,17 +119,31 @@ export const BidComparisonView = ({
     return (avgScore / maxScore) * weight;
   };
 
-  // Xác định nhà thầu có điểm cao nhất ở từng tiêu chí để highlight
+  // Xác định nhà thầu có điểm cao nhất ở từng tiêu chí để highlight (nếu hòa điểm cao nhất thì không để Top 1 cho bên nào)
   const getBestCriteriaPerformerId = (criteriaId) => {
     let maxVal = -1;
     let bestId = null;
+    let isTied = false;
+
     selectedSubmissions.forEach((sub) => {
       const avg = getCriteriaAvgScore(sub, criteriaId);
-      if (avg !== null && avg > maxVal) {
-        maxVal = avg;
-        bestId = sub.submissionId;
+      if (avg !== null && avg > 0) {
+        // Làm tròn 2 chữ số thập phân để đồng bộ với số hiển thị trên giao diện
+        const roundedAvg = Math.round(avg * 100) / 100;
+
+        if (roundedAvg > maxVal) {
+          maxVal = roundedAvg;
+          bestId = sub.submissionId;
+          isTied = false;
+        } else if (Math.abs(roundedAvg - maxVal) < 0.001) {
+          // Bằng điểm ở mức cao nhất -> hòa điểm
+          isTied = true;
+        }
       }
     });
+
+    // Nếu có từ 2 nhà thầu trở lên cùng bằng điểm cao nhất, không hiển thị Top 1 cho bất kỳ bên nào
+    if (isTied) return null;
     return bestId;
   };
 
