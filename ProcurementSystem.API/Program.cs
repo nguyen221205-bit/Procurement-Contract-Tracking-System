@@ -178,6 +178,8 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        options.JsonSerializerOptions.Converters.Add(new ProcurementSystem.API.Middlewares.UtcDateTimeJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new ProcurementSystem.API.Middlewares.NullableUtcDateTimeJsonConverter());
     });
 
 // ==========================================
