@@ -455,18 +455,18 @@ export const PackageDetailPage = () => {
         const pendingApproval = approvalRequests.find((r) => r.status === 'Pending' || r.status === 0);
         if (!pendingApproval) return null;
         return (
-          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in shadow-sm">
+          <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in shadow-xs">
             <div className="flex items-start sm:items-center gap-3">
-              <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl shrink-0 mt-0.5 sm:mt-0">
+              <div className="p-2.5 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5 sm:mt-0">
                 <AlertCircle className="w-5 h-5 animate-pulse" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-amber-300">
+                <h4 className="text-xs sm:text-sm font-bold text-amber-950">
                   Gói thầu đang có yêu cầu thay đổi trạng thái chờ Chủ đầu tư / Admin phê duyệt
                 </h4>
-                <p className="text-xs text-amber-400/90 mt-0.5">
-                  Bên mời thầu (<strong className="text-slate-200">{pendingApproval.requestedByUserName}</strong>) đề xuất:{' '}
-                  <span className="font-bold text-amber-200">{pendingApproval.targetStatusName || pendingApproval.targetStatus}</span>. Căn cứ: "{pendingApproval.reason}"
+                <p className="text-xs text-amber-900/90 mt-0.5">
+                  Bên mời thầu (<strong className="text-slate-900 font-bold">{pendingApproval.requestedByUserName}</strong>) đề xuất:{' '}
+                  <span className="font-bold text-amber-950 px-1.5 py-0.5 bg-amber-100/80 border border-amber-300/60 rounded">{pendingApproval.targetStatusName || pendingApproval.targetStatus}</span>. Căn cứ: "{pendingApproval.reason}"
                 </p>
               </div>
             </div>
@@ -475,7 +475,7 @@ export const PackageDetailPage = () => {
                 setSelectedApprovalRequest(pendingApproval);
                 setIsApprovalModalOpen(true);
               }}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 transition-all shrink-0 shadow-md shadow-amber-500/20"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 transition-all shrink-0 shadow-xs cursor-pointer"
             >
               {isAdmin ? 'Xem xét & Phê duyệt ngay' : 'Xem chi tiết yêu cầu'}
             </button>

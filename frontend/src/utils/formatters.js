@@ -20,18 +20,17 @@ export const formatDate = (dateString) => {
   }).format(d);
 };
 
-// Định dạng ngày giờ VN (dd/mm/yyyy HH:mm)
+// Định dạng ngày giờ VN (HH:mm - dd/MM/yyyy)
 export const formatDateTime = (dateString) => {
   if (!dateString) return '-';
   const d = new Date(dateString);
   if (isNaN(d.getTime())) return '-';
-  return new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(d);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes} - ${day}/${month}/${year}`;
 };
 
 // Định dạng tỷ lệ phần trăm
@@ -65,4 +64,3 @@ export const formatNumber = (num, decimals = 2) => {
   if (num === undefined || num === null || isNaN(num)) return '0';
   return Number(num).toLocaleString('vi-VN', { maximumFractionDigits: decimals });
 };
-
