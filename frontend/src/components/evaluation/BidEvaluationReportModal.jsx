@@ -220,43 +220,270 @@ export default function BidEvaluationReportModal({ isOpen, onClose, packageId, f
       : `${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày ${d.toLocaleDateString('vi-VN')}`;
   };
 
-  // Kích hoạt In ấn / Xuất PDF của trình duyệt
+  // Kích hoạt In ấn / Xuất PDF qua Iframe độc lập (không bị cắt cụt trang, không dính thanh menu web)
   const handlePrint = () => {
-    window.print();
-  };
-
-  // Tải tài liệu về dạng HTML/DOC
-  const handleDownloadDoc = () => {
     if (!reportRef.current) return;
+
+    // Tạo hidden iframe chuyên dụng cho in ấn
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(iframe);
+
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      window.print();
+      return;
+    }
+
+    // Lấy toàn bộ stylesheet từ trang web chính (bao gồm Tailwind CSS)
+    const styleTags = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((tag) => tag.outerHTML)
+      .join('\n');
+
     const content = reportRef.current.innerHTML;
-    const html = `
+    const isOfficial = report?.canFinalizeExport;
+
+    iframeDoc.open();
+    iframeDoc.write(`
       <!DOCTYPE html>
-      <html>
+      <html lang="vi">
       <head>
         <meta charset="utf-8">
-        <title>Báo cáo Đánh giá HSDT - ${report?.packageCode || ''}</title>
+        <title>${isOfficial ? 'BaoCao_DanhGia_HSDT_ChinhThuc' : 'BaoCao_TienDo_DanhGia_DuThao'}_${report?.packageCode || 'GoiThau'}</title>
+        ${styleTags}
         <style>
-          body { font-family: 'Times New Roman', Times, serif; font-size: 13pt; line-height: 1.4; color: #000; margin: 20mm; }
-          table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-          th, td { border: 1px solid #000; padding: 6px 8px; font-size: 11pt; }
-          th { background-color: #f2f2f2; text-align: center; }
-          .text-center { text-align: center; }
-          .text-right { text-align: right; }
-          .bold { font-weight: bold; }
-          .uppercase { text-transform: uppercase; }
+          @page {
+            size: A4 portrait;
+            margin: 20mm 15mm 20mm 20mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-family: 'Times New Roman', Times, serif !important;
+            font-size: 13pt !important;
+            line-height: 1.45 !important;
+          }
+          .print\\:hidden, .no-print {
+            display: none !important;
+          }
+          /* Tháo bỏ toàn bộ ràng buộc kích thước cố định để trang in tự do ngắt trang A4 */
+          .report-paper {
+            width: 100% !important;
+            min-height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            transform: none !important;
+            overflow: visible !important;
+          }
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            margin: 10pt 0 !important;
+            page-break-inside: auto;
+          }
+          tr {
+            page-break-inside: avoid !important;
+            page-break-after: auto;
+          }
+          thead {
+            display: table-header-group;
+          }
+          tfoot {
+            display: table-footer-group;
+          }
+          th, td {
+            border: 1pt solid #000000 !important;
+            padding: 6pt 8pt !important;
+            font-size: 11pt !important;
+          }
+          th {
+            background-color: #f1f5f9 !important;
+            font-weight: bold !important;
+            text-align: center !important;
+          }
+          .grid-cols-2 {
+            display: flex !important;
+            justify-content: space-between !important;
+            gap: 20pt !important;
+          }
+          .grid-cols-2 > div {
+            flex: 1 !important;
+          }
+          .grid-cols-3 {
+            display: flex !important;
+            justify-content: space-between !important;
+            gap: 15pt !important;
+          }
+          .grid-cols-3 > div {
+            flex: 1 !important;
+          }
+          .break-inside-avoid {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+          .text-center { text-align: center !important; }
+          .text-left { text-align: left !important; }
+          .text-right { text-align: right !important; }
+          .text-justify { text-align: justify !important; }
+          .font-bold { font-weight: bold !important; }
+          .font-semibold { font-weight: 600 !important; }
+          .italic { font-style: italic !important; }
+          .uppercase { text-transform: uppercase !important; }
+          .indent-6 { text-indent: 1.5em !important; }
+          
+          /* Watermark khi in qua iframe: cố định ở giữa mỗi trang in */
+          .watermark-container {
+            position: fixed !important;
+            top: 36% !important;
+            left: 5% !important;
+            right: 5% !important;
+            transform: rotate(-30deg) !important;
+            opacity: 0.08 !important;
+            text-align: center !important;
+            pointer-events: none !important;
+            z-index: 0 !important;
+          }
         </style>
       </head>
       <body>
-        ${content}
+        <div class="report-paper">
+          ${content}
+        </div>
+      </body>
+      </html>
+    `);
+    iframeDoc.close();
+
+    // Chờ iframe phân tích tài liệu và font rồi mở hộp thoại in
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.error('Lỗi khi kích hoạt in qua iframe:', err);
+        window.print();
+      } finally {
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 1200);
+      }
+    }, 400);
+  };
+
+  // Tải tài liệu về dạng file Microsoft Word (.doc) với định dạng chuẩn Office HTML / WordML
+  const handleDownloadDoc = () => {
+    if (!reportRef.current) return;
+    const content = reportRef.current.innerHTML;
+    const isOfficial = report?.canFinalizeExport;
+    const fileName = `${
+      isOfficial ? 'BaoCao_DanhGia_HSDT_ChinhThuc' : 'BaoCao_TienDo_DanhGia_DuThao'
+    }_${report?.packageCode || 'GoiThau'}.doc`;
+
+    const wordHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office'
+            xmlns:w='urn:schemas-microsoft-com:office:word'
+            xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>${isOfficial ? 'Báo cáo Đánh giá HSDT' : 'Báo cáo Tiến độ Đánh giá HSDT'}</title>
+        <!--[if gte mso 9]>
+        <xml>
+          <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+          </w:WordDocument>
+        </xml>
+        <![endif]-->
+        <style>
+          @page Section1 {
+            size: 595.3pt 841.9pt; /* Chuẩn A4 */
+            margin: 70.85pt 56.7pt 70.85pt 85.05pt; /* Trên 2.5cm, Phải 2.0cm, Dưới 2.5cm, Trái 3.0cm */
+            mso-header-margin: 35.4pt;
+            mso-footer-margin: 35.4pt;
+            mso-paper-source: 0;
+          }
+          div.Section1 { page: Section1; }
+          body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 13pt;
+            line-height: 1.4;
+            color: #000000;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10pt 0;
+            mso-table-lspace: 0pt;
+            mso-table-rspace: 0pt;
+          }
+          th, td {
+            border: 1pt solid #000000;
+            padding: 5pt 7pt;
+            font-size: 11pt;
+            vertical-align: middle;
+          }
+          th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            text-align: center;
+          }
+          .text-center { text-align: center; }
+          .text-left { text-align: left; }
+          .text-right { text-align: right; }
+          .text-justify { text-align: justify; }
+          .font-bold { font-weight: bold; }
+          .font-semibold { font-weight: 600; }
+          .italic { font-style: italic; }
+          .uppercase { text-transform: uppercase; }
+          .indent-6 { text-indent: 24pt; }
+          .grid-cols-2 {
+            display: flex;
+            justify-content: space-between;
+          }
+          .grid-cols-2 > div {
+            width: 48%;
+          }
+          .grid-cols-3 {
+            display: flex;
+            justify-content: space-between;
+          }
+          .grid-cols-3 > div {
+            width: 31%;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="Section1">
+          ${content}
+        </div>
       </body>
       </html>
     `;
-    const blob = new Blob([html], { type: 'application/msword;charset=utf-8' });
+
+    // Khởi tạo thẻ a để tải file với UTF-8 BOM chống lỗi font tiếng Việt trong MS Word
+    const blob = new Blob(['\ufeff' + wordHtml], { type: 'application/msword;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const isOfficial = report?.canFinalizeExport;
-    link.download = `${
-      isOfficial ? 'BaoCao_DanhGia_HSDT_ChinhThuc' : 'BaoCao_TienDo_DanhGia_DuThao'
-    }_${report?.packageCode || 'GoiThau'}.doc`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -404,13 +631,13 @@ export default function BidEvaluationReportModal({ isOpen, onClose, packageId, f
                 fontFamily: "'Times New Roman', Times, serif",
                 letterSpacing: 'normal',
               }}
-              className="relative bg-white w-[210mm] min-h-[297mm] p-[25mm_20mm_25mm_30mm] shadow-xl border border-slate-300 text-slate-900 leading-relaxed transition-transform duration-150 print:m-0 print:p-0 print:border-none print:shadow-none print:w-full print:scale-100 text-[13pt] overflow-hidden"
+              className="report-paper relative bg-white w-[210mm] min-h-[297mm] p-[25mm_20mm_25mm_30mm] shadow-xl border border-slate-300 text-slate-900 leading-relaxed transition-transform duration-150 print:m-0 print:p-0 print:border-none print:shadow-none print:w-full print:scale-100 text-[13pt] overflow-visible print:overflow-visible"
             >
               {/* WATERMARK DỰ THẢO - HIỂN THỊ KHI CHƯA HOÀN TẤT ĐÁNH GIÁ (CẢ TRÊN WEB VÀ KHI IN) */}
               {!report?.canFinalizeExport && (
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none select-none absolute inset-0 flex items-center justify-center overflow-hidden z-0"
+                  className="watermark-container pointer-events-none select-none absolute inset-0 flex items-center justify-center overflow-hidden z-0"
                 >
                   <div className="rotate-[-32deg] text-center opacity-[0.06] print:opacity-[0.10] space-y-4">
                     <p className="text-5xl sm:text-6xl font-black uppercase tracking-widest text-slate-900 border-y-4 border-slate-900 py-3">
@@ -790,7 +1017,7 @@ export default function BidEvaluationReportModal({ isOpen, onClose, packageId, f
               </div>
 
               {/* PHẦN VI: CHỮ KÝ XÁC NHẬN CỦA CÁC BÊN */}
-              <div className="relative z-10 grid grid-cols-2 gap-8 pt-8 text-center text-[12pt] page-break-inside-avoid">
+              <div className="relative z-10 grid grid-cols-2 gap-8 pt-8 text-center text-[12pt] break-inside-avoid">
                 {/* Chữ ký Đại diện Bên mời thầu */}
                 <div className="space-y-20">
                   <div>
