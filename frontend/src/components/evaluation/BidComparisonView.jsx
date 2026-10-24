@@ -224,8 +224,25 @@ export const BidComparisonView = ({
 
   return (
     <div className="space-y-6">
+      {/* TIÊU ĐỀ IN ẤN CHUẨN HÀNH CHÍNH (CHỈ HIỂN THỊ KHI IN ẤN) */}
+      <div className="hidden print:block text-center pb-4 border-b border-slate-300 mb-4">
+        <h1 className="text-base font-bold uppercase">
+          {isAwarded || summary?.isFinalized
+            ? 'BẢNG SO SÁNH ĐỐI CHIẾU HỒ SƠ DỰ THẦU (CHÍNH THỨC)'
+            : 'BẢNG SO SÁNH ĐỐI CHIẾU TIẾN ĐỘ HỒ SƠ DỰ THẦU (BẢN DỰ THẢO NỘI BỘ)'}
+        </h1>
+        <p className="text-xs text-slate-600 mt-0.5">
+          Ngày kết xuất: {new Date().toLocaleDateString('vi-VN')} • Hệ thống Đấu thầu & Quản lý Hợp đồng
+        </p>
+        {!(isAwarded || summary?.isFinalized) && (
+          <p className="text-[10px] text-amber-800 font-semibold italic mt-0.5">
+            (*) Dữ liệu đối chiếu tiến độ phục vụ rà soát nội bộ của Tổ chuyên gia, chưa phải kết quả phê duyệt chính thức.
+          </p>
+        )}
+      </div>
+
       {/* THANH ĐIỀU KHIỂN & BỘ CHỌN NHÀ THẦU */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4 print:border-none print:shadow-none print:p-0">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">

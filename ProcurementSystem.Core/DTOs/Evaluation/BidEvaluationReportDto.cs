@@ -41,6 +41,14 @@ namespace ProcurementSystem.Core.DTOs.Evaluation
         public decimal? WinningTotalScore { get; set; }
         public string? DecisionReason { get; set; }
         public string ConclusionSummary { get; set; } = string.Empty;
+
+        // 7. Trạng thái tiến độ & Phân loại báo cáo (Chính thức vs Dự thảo)
+        public bool AllEvaluatorsCompleted { get; set; }
+        public int TotalEvaluatorsCount { get; set; }
+        public int CompletedEvaluatorsCount { get; set; }
+        public string EvaluationStage { get; set; } = string.Empty;
+        public bool CanFinalizeExport { get; set; }
+        public string ReportStatusLabel { get; set; } = "BÁO CÁO TIẾN ĐỘ ĐÁNH GIÁ (DỰ THẢO)";
     }
 
     public class EvaluationCommitteeMemberDto
@@ -51,6 +59,9 @@ namespace ProcurementSystem.Core.DTOs.Evaluation
         public string? Phone { get; set; }
         public string CommitteeRole { get; set; } = "Thành viên Tổ chuyên gia";
         public bool HasCompletedScoring { get; set; }
+        public int ScoredCriteriaCount { get; set; }
+        public int TotalCriteriaCount { get; set; }
+        public string ScoringStatusText { get; set; } = "Chưa chấm điểm";
     }
 
     public class EvaluationReportRankingItemDto

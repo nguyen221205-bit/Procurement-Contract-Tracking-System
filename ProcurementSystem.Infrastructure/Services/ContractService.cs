@@ -433,6 +433,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Include(c => c.BidPackage)
                 .Include(c => c.Contractor)
                 .Include(c => c.Milestones)
+                    .ThenInclude(m => m.Acceptances)
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (contract == null)
@@ -452,7 +453,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 { ContractStatus.Draft, new List<ContractStatus> { ContractStatus.Active } },
                 { ContractStatus.Active, new List<ContractStatus> { ContractStatus.Completed, ContractStatus.Terminated } },
                 { ContractStatus.Completed, new List<ContractStatus>() }, // Cấm Completed -> Active (P1-4)
-                { ContractStatus.Terminated, new List<ContractStatus>() }
+                { ContractStatus.Terminated, new List<ContractStatus> { ContractStatus.Active } } // Cho phép Admin khôi phục khi có giải trình hợp lệ
             };
 
             if (!validTransitions[contract.Status].Contains(request.NewStatus))
@@ -485,6 +486,67 @@ namespace ProcurementSystem.Infrastructure.Services
                     return ApiResponse<ContractDto>.Fail(
                         $"Tổng giá trị các mốc thanh toán ({totalMilestoneAmount:N0} VNĐ) phải đúng bằng 100% giá trị hợp đồng ({contract.Value:N0} VNĐ).");
                 }
+            }
+
+            // Nghiệp vụ: Chấm dứt hợp đồng (Active -> Terminated) bắt buộc có đầy đủ căn cứ pháp lý và không được dở dang mốc nghiệm thu
+            if (request.NewStatus == ContractStatus.Terminated)
+            {
+                // 1. Kiểm tra mốc nghiệm thu dở dang đang có biên bản chờ duyệt
+                var pendingAcceptanceMilestone = contract.Milestones?
+                    .FirstOrDefault(m => m.Acceptances != null && m.Acceptances.Any(a => a.Status == AcceptanceStatus.Pending));
+                if (pendingAcceptanceMilestone != null)
+                {
+                    return ApiResponse<ContractDto>.Fail(
+                        $"Không thể chấm dứt hợp đồng khi mốc nghiệm thu '{pendingAcceptanceMilestone.Title}' đang có biên bản nghiệm thu chờ thẩm định duyệt. " +
+                        "Vui lòng xử lý dứt điểm duyệt hoặc từ chối biên bản nghiệm thu này trước khi thực hiện chấm dứt hợp đồng.");
+                }
+
+                // 2. Bắt buộc chọn loại căn cứ pháp lý
+                if (string.IsNullOrWhiteSpace(request.TerminationReasonCategory))
+                {
+                    return ApiResponse<ContractDto>.Fail(
+                        "Căn cứ Luật Đấu thầu: Vui lòng chọn phân loại căn cứ pháp lý chấm dứt hợp đồng (Vi phạm nghĩa vụ hợp đồng, Bất khả kháng, Thỏa thuận hai bên hoặc Quyết định của cấp có thẩm quyền).");
+                }
+
+                // 3. Bắt buộc có Số hiệu Quyết định / Văn bản pháp lý
+                if (string.IsNullOrWhiteSpace(request.DecisionNumber))
+                {
+                    return ApiResponse<ContractDto>.Fail(
+                        "Vui lòng cung cấp Số hiệu Quyết định / Văn bản / Biên bản chấm dứt hợp đồng làm căn cứ pháp lý lưu trữ hồ sơ.");
+                }
+
+                // 4. Bắt buộc nội dung giải trình tối thiểu 20 ký tự
+                if (string.IsNullOrWhiteSpace(request.Note) || request.Note.Trim().Length < 20)
+                {
+                    return ApiResponse<ContractDto>.Fail(
+                        "Lý do và nội dung giải trình chấm dứt hợp đồng phải có tối thiểu 20 ký tự, nêu rõ nguyên nhân và căn cứ pháp lý theo quy định.");
+                }
+
+                // Ghi nhận lịch sử vào Terms
+                var terminationLog = $"[CHẤM DỨT HĐ {DateTime.UtcNow:dd/MM/yyyy HH:mm} UTC] Căn cứ: {request.TerminationReasonCategory} | Số hiệu QĐ: {request.DecisionNumber.Trim()} | Lý do: {request.Note.Trim()}";
+                contract.Terms = string.IsNullOrWhiteSpace(contract.Terms)
+                    ? terminationLog
+                    : $"{contract.Terms}\n\n{terminationLog}";
+            }
+
+            // Nghiệp vụ: Khôi phục hợp đồng (Terminated -> Active) chỉ cho phép Admin thực hiện và phải có giải trình tối thiểu 20 ký tự
+            if (contract.Status == ContractStatus.Terminated && request.NewStatus == ContractStatus.Active)
+            {
+                if (!isAdmin)
+                {
+                    return ApiResponse<ContractDto>.Forbidden("Chỉ Quản trị viên hệ thống (Admin) mới có thẩm quyền khôi phục hợp đồng đã chấm dứt.");
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Note) || request.Note.Trim().Length < 20)
+                {
+                    return ApiResponse<ContractDto>.Fail(
+                        "Vui lòng nêu rõ lý do và căn cứ pháp lý khôi phục hiệu lực hợp đồng (tối thiểu 20 ký tự giải trình).");
+                }
+
+                var reactivateLog = $"[KHÔI PHỤC HĐ {DateTime.UtcNow:dd/MM/yyyy HH:mm} UTC] Bởi Admin (ID: {userId}) | Lý do: {request.Note.Trim()}";
+                contract.Terms = string.IsNullOrWhiteSpace(contract.Terms)
+                    ? reactivateLog
+                    : $"{contract.Terms}\n\n{reactivateLog}";
             }
 
             // Nghiệp vụ: Chỉ cho phép chuyển sang Completed khi đã nghiệm thu và giải ngân đủ 100% giá trị hợp đồng
@@ -549,8 +611,29 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
-            // R3-9: Tự động tính toán lại điểm đánh giá uy tín (Rating) nhà thầu khi hợp đồng kết thúc hoặc chấm dứt
-            if (request.NewStatus == ContractStatus.Terminated || request.NewStatus == ContractStatus.Completed)
+            // Gửi thông báo cho Nhà thầu khi hợp đồng bị chấm dứt
+            if (request.NewStatus == ContractStatus.Terminated && contract.Contractor?.UserId > 0)
+            {
+                try
+                {
+                    var contractTitle = contract.BidPackage?.Name ?? contract.ContractNumber;
+                    await _notificationService.CreateNotificationAsync(
+                        contract.Contractor.UserId,
+                        "Thông báo chấm dứt hợp đồng kinh tế",
+                        $"Hợp đồng số {contract.ContractNumber} ({contractTitle}) đã bị chấm dứt theo văn bản/QĐ số {request.DecisionNumber}. Căn cứ: {request.TerminationReasonCategory}. Lý do: {request.Note}",
+                        NotificationType.Warning,
+                        sendEmail: true);
+                }
+                catch
+                {
+                    // Bọc try-catch riêng biệt để không ảnh hưởng đến kết quả đổi trạng thái
+                }
+            }
+
+            // R3-9: Tự động tính toán lại điểm đánh giá uy tín (Rating) nhà thầu khi hợp đồng kết thúc, chấm dứt hoặc khôi phục
+            if (request.NewStatus == ContractStatus.Terminated || 
+                request.NewStatus == ContractStatus.Completed || 
+                (oldStatus == ContractStatus.Terminated && request.NewStatus == ContractStatus.Active))
             {
                 await _contractorService.RecalculateContractorRatingAsync(contract.ContractorId);
             }

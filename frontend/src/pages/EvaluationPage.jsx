@@ -242,15 +242,27 @@ export const EvaluationPage = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsReportModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:text-blue-700 hover:border-blue-300 rounded-xl shadow-2xs transition-all cursor-pointer"
-            title="Xem và xuất Báo cáo Đánh giá Hồ sơ Dự thầu (Biên bản hành chính chuẩn PDF/In ấn)"
-          >
-            <FileText className="w-3.5 h-3.5 text-blue-600" />
-            <span>Xuất Biên bản Đánh giá</span>
-          </button>
+          {isAwarded || summary?.isFinalized ? (
+            <button
+              type="button"
+              onClick={() => setIsReportModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 hover:text-emerald-700 hover:border-emerald-300 rounded-xl shadow-2xs transition-all cursor-pointer"
+              title="Xem và xuất Báo cáo Đánh giá E-HSDT chính thức (Đã hoàn tất thẩm định & phê duyệt)"
+            >
+              <FileText className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Xuất Biên bản Đánh giá (Chính thức)</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsReportModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-800 bg-amber-50/80 border border-amber-300 hover:bg-amber-100 rounded-xl shadow-2xs transition-all cursor-pointer"
+              title="Xem Báo cáo Tiến độ Đánh giá E-HSDT (Bản dự thảo theo dõi nội bộ, chưa chốt kết quả)"
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Xem tiến độ đánh giá (Dự thảo)</span>
+            </button>
+          )}
 
           <button
             type="button"
