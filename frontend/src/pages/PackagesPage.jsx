@@ -33,6 +33,7 @@ const FILTER_TABS = [
   { label: 'Đã trao thầu', value: PACKAGE_STATUS.AWARDED },
   { label: 'Đã ký hợp đồng', value: PACKAGE_STATUS.CONTRACTED },
   { label: 'Đã đóng thầu', value: PACKAGE_STATUS.CLOSED },
+  { label: 'Đã hủy thầu', value: PACKAGE_STATUS.CANCELLED },
 ];
 
 export const PackagesPage = () => {
@@ -82,9 +83,9 @@ export const PackagesPage = () => {
         pageSize,
       };
 
-      if (activeTab) params.status = activeTab;
+      if (activeTab !== '' && activeTab != null) params.status = activeTab;
       if (searchTerm.trim()) params.search = searchTerm.trim();
-      if (selectedType) params.type = selectedType;
+      if (selectedType !== '' && selectedType != null) params.type = selectedType;
 
       const response = await bidPackageApi.getPackages(params);
 

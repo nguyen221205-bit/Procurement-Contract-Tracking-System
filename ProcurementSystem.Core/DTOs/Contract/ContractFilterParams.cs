@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using ProcurementSystem.Core.Enums;
 
 namespace ProcurementSystem.Core.DTOs.Contract
@@ -16,6 +17,7 @@ namespace ProcurementSystem.Core.DTOs.Contract
         }
         public string? Search { get; set; }
         public string? ContractNumber { get; set; }
+        [EnumDataType(typeof(ContractStatus))]
         public ContractStatus? Status { get; set; }
         public DateTime? StartDateFrom { get; set; }
         public DateTime? EndDateTo { get; set; }

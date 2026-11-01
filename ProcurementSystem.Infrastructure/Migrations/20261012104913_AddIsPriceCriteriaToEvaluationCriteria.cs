@@ -69,7 +69,7 @@ namespace ProcurementSystem.Infrastructure.Migrations
                         CONSTRAINT [PK_BidPackageEvaluators] PRIMARY KEY CLUSTERED ([BidPackageId], [EvaluatorId]),
                         CONSTRAINT [FK_BidPackageEvaluators_BidPackages_BidPackageId] FOREIGN KEY ([BidPackageId]) REFERENCES [BidPackages]([Id]) ON DELETE CASCADE,
                         CONSTRAINT [FK_BidPackageEvaluators_Users_AssignedBy] FOREIGN KEY ([AssignedBy]) REFERENCES [Users]([Id]) ON DELETE SET NULL,
-                        CONSTRAINT [FK_BidPackageEvaluators_Users_EvaluatorId] FOREIGN KEY ([EvaluatorId]) REFERENCES [Users]([Id]) ON DELETE CASCADE
+                        CONSTRAINT [FK_BidPackageEvaluators_Users_EvaluatorId] FOREIGN KEY ([EvaluatorId]) REFERENCES [Users]([Id]) ON DELETE NO ACTION
                     );
                     CREATE NONCLUSTERED INDEX [IX_BidPackageEvaluators_AssignedBy] ON [BidPackageEvaluators] ([AssignedBy]);
                     CREATE NONCLUSTERED INDEX [IX_BidPackageEvaluators_EvaluatorId] ON [BidPackageEvaluators] ([EvaluatorId]);

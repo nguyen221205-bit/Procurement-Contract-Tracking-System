@@ -491,10 +491,7 @@ export const EvaluationPage = () => {
             summary={summary}
             onFinalizeClick={handleOpenFinalizeModal}
             isAdminOrProcurement={isAdminOrProcurement}
-            isReadyToAward={
-              rankings.filter((s) => s.status !== 'Withdrawn' && s.status !== 'Disqualified').length > 0 &&
-              rankings.filter((s) => s.status !== 'Withdrawn' && s.status !== 'Disqualified').every((s) => s.status === 'Evaluated')
-            }
+            isReadyToAward={summary?.canFinalize === true}
             onDisqualifySuccess={() => fetchData(true)}
           />
         </div>
@@ -606,7 +603,6 @@ export const EvaluationPage = () => {
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
         packageId={packageId}
-        fallbackData={{ packageData, criteriaList, summary, rankings, evaluators }}
       />
     </div>
   );

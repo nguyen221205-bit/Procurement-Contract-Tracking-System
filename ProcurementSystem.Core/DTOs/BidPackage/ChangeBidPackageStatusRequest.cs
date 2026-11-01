@@ -6,6 +6,8 @@ namespace ProcurementSystem.Core.DTOs.BidPackage
     public class ChangeBidPackageStatusRequest
     {
         [Required(ErrorMessage = "Trạng thái mới là bắt buộc.")]
+        [EnumDataType(typeof(BidPackageStatus))]
+        [System.Text.Json.Serialization.JsonRequired]
         public BidPackageStatus NewStatus { get; set; }
 
         /// <summary>

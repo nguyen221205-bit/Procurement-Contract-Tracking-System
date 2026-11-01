@@ -39,7 +39,7 @@ export const ContractGuaranteeTab = ({
 
   // Tính toán thống kê
   const activeGuarantees = guarantees.filter((g) => g.status === 1 || g.status === 'Valid');
-  const totalActiveAmount = activeGuarantees.reduce((sum, g) => sum + (g.amount || 0), 0);
+  const totalActiveAmount = contract?.totalActiveGuaranteeAmount;
   const activePct =
     contract?.value > 0 ? ((totalActiveAmount / contract.value) * 100).toFixed(1) : 0;
   const nearExpiryGuarantees = guarantees.filter((g) => g.isNearExpiry);

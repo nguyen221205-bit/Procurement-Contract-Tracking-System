@@ -42,20 +42,8 @@ namespace ProcurementSystem.Core.DTOs.Contract
         public string CompanyName { get; set; } = string.Empty;
         public string? TaxCode { get; set; }
         public decimal Rating { get; set; }
-        public string RatingGrade => Rating switch
-        {
-            >= 85 => "A",
-            >= 70 => "B",
-            >= 50 => "C",
-            _ => "D"
-        };
-        public string RatingGradeName => Rating switch
-        {
-            >= 85 => "Hạng A - Xuất sắc",
-            >= 70 => "Hạng B - Đạt yêu cầu",
-            >= 50 => "Hạng C - Cần cải thiện",
-            _ => "Hạng D - Cảnh báo rủi ro"
-        };
+        public string RatingGrade => Helpers.ContractorRatingPolicy.Grade(Rating);
+        public string RatingGradeName => Helpers.ContractorRatingPolicy.GradeName(Rating);
         public int TotalContractsCount { get; set; }
         public int CompletedContractsCount { get; set; }
         public int TerminatedContractsCount { get; set; }

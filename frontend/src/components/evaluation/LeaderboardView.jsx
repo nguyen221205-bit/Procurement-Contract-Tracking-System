@@ -41,7 +41,7 @@ export const LeaderboardView = ({
   });
 
   const evaluatedSubmissions = sortedRankings.filter(
-    (s) => s.totalScore !== null && s.totalScore !== undefined
+    (s) => summary?.eligibleSubmissionIds?.includes(s.submissionId)
   );
 
   const highestScore = evaluatedSubmissions.length > 0 ? evaluatedSubmissions[0].totalScore : null;
@@ -62,7 +62,7 @@ export const LeaderboardView = ({
   }, [rank1]);
 
   const currentlyChosenWinner =
-    evaluatedSubmissions.find((s) => s.submissionId === Number(selectedWinnerId)) || rank1;
+    evaluatedSubmissions.find((s) => s.submissionId === Number(selectedWinnerId)) || evaluatedSubmissions[0];
 
   const isPackageAwarded = packageData?.status === 'Awarded' || summary?.isFinalized;
   const isEvaluating = packageData?.status === 'Evaluating';
@@ -430,9 +430,8 @@ export const LeaderboardView = ({
                     {/* Điểm từng tiêu chí (Điểm bình quân các giám khảo) */}
                     {criteriaList.map((crit) => {
                       const critScores = sub.scores?.filter((s) => s.criteriaId === crit.id) || [];
-                      const avgScore = critScores.length > 0
-                        ? critScores.reduce((sum, item) => sum + item.score, 0) / critScores.length
-                        : null;
+                      const breakdown = sub.criteriaBreakdown?.find((entry) => entry.criteriaId === crit.id);
+                      const avgScore = breakdown?.averageScore ?? null;
                       const breakdownTooltip = critScores.length > 0
                         ? critScores.map((s) => `${s.evaluatorName || 'Giám khảo'}: ${formatNumber(s.score)}đ`).join(' | ')
                         : '';
@@ -447,7 +446,7 @@ export const LeaderboardView = ({
                             <div className="cursor-help inline-block">
                               <span className="font-bold text-slate-700">{formatNumber(avgScore)}</span>
                               <span className="text-[10px] text-slate-400 block font-mono">
-                                ({((avgScore * crit.weight) / 100).toFixed(1)})
+                                ({Number(breakdown?.weightedScore ?? 0).toFixed(1)})
                               </span>
                               {critScores.length > 1 && (
                                 <span className="text-[9px] text-sky-600 font-semibold block">
@@ -516,7 +515,7 @@ export const LeaderboardView = ({
                             <button
                               type="button"
                               onClick={() => onFinalizeClick && onFinalizeClick(sub, hasTie)}
-                              disabled={!isReadyToAward}
+                              disabled={!isReadyToAward || !summary?.eligibleSubmissionIds?.includes(sub.submissionId)}
                               title={!isReadyToAward ? 'Cần hoàn tất chấm điểm 100% hồ sơ theo Nghị định 24/2024/NĐ-CP' : 'Trao thầu'}
                               className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl transition-all shadow-2xs ${
                                 !isReadyToAward

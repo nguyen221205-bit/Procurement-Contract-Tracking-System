@@ -5,6 +5,10 @@ export const evaluationApi = {
     return await axiosClient.get(`/evaluations/packages/${packageId}/criteria`);
   },
 
+  replaceCriteria: async (packageId, data) => {
+    return await axiosClient.put(`/evaluations/packages/${packageId}/criteria`, data);
+  },
+
   createCriteria: async (packageId, data) => {
     return await axiosClient.post(`/evaluations/packages/${packageId}/criteria`, data);
   },

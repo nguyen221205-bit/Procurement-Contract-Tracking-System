@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import AcceptInvitationPage from './pages/AcceptInvitationPage';
 import DashboardPage from './pages/DashboardPage';
 import PackagesPage from './pages/PackagesPage';
 import PackageDetailPage from './pages/PackageDetailPage';
@@ -30,6 +31,7 @@ function App() {
           {/* Public Routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/invitation/accept" element={<AcceptInvitationPage />} />
 
           {/* Protected App Routes */}
           <Route element={<ProtectedRoute />}>
@@ -67,7 +69,7 @@ function App() {
               <Route
                 path="/procuring-entities"
                 element={
-                  <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                  <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROCUREMENT]}>
                     <ProcuringEntitiesPage />
                   </ProtectedRoute>
                 }

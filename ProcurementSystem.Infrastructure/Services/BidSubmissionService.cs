@@ -100,10 +100,13 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidSubmissionDto>.Fail("Phải đính kèm ít nhất 1 file hồ sơ dự thầu.");
             }
 
-            if (files.Count != fileTypes.Count)
+            if (fileTypes == null || files.Count != fileTypes.Count)
             {
                 return ApiResponse<BidSubmissionDto>.Fail("Số lượng file và số lượng loại file phải khớp nhau.");
             }
+
+            if (fileTypes.Any(type => !Enum.IsDefined(type)))
+                return ApiResponse<BidSubmissionDto>.Fail("Loại tài liệu đính kèm không hợp lệ.");
 
             // P2-5: Kiểm tra bắt buộc phải có tối thiểu Báo giá (Quotation) và Hồ sơ năng lực (Capability)
             if (!fileTypes.Contains(SubmissionFileType.Quotation) || !fileTypes.Contains(SubmissionFileType.Capability))

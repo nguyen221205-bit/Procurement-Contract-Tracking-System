@@ -68,7 +68,7 @@ const MENU_ITEMS = [
     name: 'Bên mời thầu',
     path: '/procuring-entities',
     icon: Briefcase,
-    roles: [ROLES.ADMIN],
+    roles: [ROLES.ADMIN, ROLES.PROCUREMENT],
   },
   {
     name: 'Người dùng',

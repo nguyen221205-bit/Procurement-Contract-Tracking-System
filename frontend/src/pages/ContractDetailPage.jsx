@@ -11,6 +11,7 @@ import {
   CheckCircle,
   AlertCircle,
   FileCheck,
+  ClipboardCheck,
   Plus,
   Edit3,
   Trash2,
@@ -35,6 +36,7 @@ import StatusBadge from '../components/common/StatusBadge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import MilestoneModal from '../components/contracts/MilestoneModal';
 import ApproveMilestoneModal from '../components/contracts/ApproveMilestoneModal';
+import TechnicalReviewMilestoneModal from '../components/contracts/TechnicalReviewMilestoneModal';
 import UploadScannedModal from '../components/contracts/UploadScannedModal';
 import ChangeStatusModal from '../components/contracts/ChangeStatusModal';
 
@@ -65,6 +67,8 @@ export const ContractDetailPage = () => {
 
   // Modal states hiện có
   const [isMilestoneModalOpen, setIsMilestoneModalOpen] = useState(false);
+  const [isTechnicalReviewModalOpen, setIsTechnicalReviewModalOpen] = useState(false);
+  const [selectedMilestoneForTechReview, setSelectedMilestoneForTechReview] = useState(null);
   const [milestoneToEdit, setMilestoneToEdit] = useState(null);
 
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
@@ -153,9 +157,9 @@ export const ContractDetailPage = () => {
   }
 
   const milestones = contract.milestones || [];
-  const sumMilestones = milestones.reduce((sum, m) => sum + (m.amount || 0), 0);
-  const remainingBudgetToAllocate = contract.value - sumMilestones;
-  const isBudgetFullyAllocated = Math.abs(remainingBudgetToAllocate) < 1;
+  const sumMilestones = contract.allocatedAmount;
+  const remainingBudgetToAllocate = contract.unallocatedAmount;
+  const isBudgetFullyAllocated = contract.isFullyAllocated === true;
 
   const isContractFinished = contract.status === 'Completed' || contract.status === 'Terminated' || contract.status === 2 || contract.status === 3;
   const hasNearExpiryGuarantees = contract.guarantees?.some((g) => g.isNearExpiry);
@@ -659,7 +663,7 @@ export const ContractDetailPage = () => {
                         setMilestoneToEdit(null);
                         setIsMilestoneModalOpen(true);
                       }}
-                      disabled={isBudgetFullyAllocated && milestones.length > 0}
+                      disabled={contract.canAddMilestone !== true}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-xs transition-transform hover:scale-[1.02] cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -679,7 +683,7 @@ export const ContractDetailPage = () => {
                       </span>
                     ) : (
                       <span className="text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full text-[11px] font-black">
-                        Còn lại {formatCurrency(remainingBudgetToAllocate)} chưa chia mốc
+                        Còn lại {formatNumber(remainingBudgetToAllocate, 2)} ₫ chưa chia mốc
                       </span>
                     )}
                   </div>
@@ -765,7 +769,35 @@ export const ContractDetailPage = () => {
                                   <h4 className="text-xs font-bold text-slate-900">
                                     {m.title}
                                   </h4>
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-slate-100 text-slate-700 border border-slate-200">
+                                    v{m.version || 1}
+                                  </span>
                                   <StatusBadge status={m.statusName || m.status} type="milestone" />
+                                  {m.acceptanceStatus === 4 || m.acceptanceStatusName === 'ReviewInvalidated' ? (
+                                    <span
+                                      className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 animate-pulse"
+                                      title="Nội dung mốc đã bị chỉnh sửa sau khi kiểm tra kỹ thuật. Cán bộ kỹ thuật phải kiểm tra lại."
+                                    >
+                                      <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                      <span>Đã vô hiệu do sửa mốc</span>
+                                    </span>
+                                  ) : m.isTechnicalPassed === true ? (
+                                    <span
+                                      className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200"
+                                      title={`Xác nhận kỹ thuật bởi: ${m.technicalReviewerName || m.technicalReviewedBy} (Snapshot v${m.milestoneVersion || m.version})`}
+                                    >
+                                      <ClipboardCheck className="w-3 h-3 text-blue-600" />
+                                      <span>Đạt KT hiện trường (v{m.milestoneVersion || m.version})</span>
+                                    </span>
+                                  ) : m.isTechnicalPassed === false ? (
+                                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                      <span>KT Chưa Đạt</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                      <span>Chưa KT Hiện Trường</span>
+                                    </span>
+                                  )}
                                 </div>
 
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 pt-0.5">
@@ -787,9 +819,25 @@ export const ContractDetailPage = () => {
                               </div>
                             </div>
 
-                            {/* Cụm Action Buttons cho Mốc */}
-                            <div className="flex items-center gap-1.5 self-end sm:self-center">
-                              {/* Nút Nghiệm thu (Admin / Procurement) */}
+                            {/* Cụm Action Buttons cho Mốc (Maker - Checker Workflow) */}
+                            <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-center">
+                              {/* Nút 1: Xác nhận Kỹ thuật Hiện trường (Maker) */}
+                              {isAdminOrProcurement && isMilestonePending && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedMilestoneForTechReview(m);
+                                    setIsTechnicalReviewModalOpen(true);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+                                  title="Kiểm tra & Xác nhận kỹ thuật hiện trường (Maker)"
+                                >
+                                  <ClipboardCheck className="w-3.5 h-3.5" />
+                                  <span>Kiểm tra KT</span>
+                                </button>
+                              )}
+
+                              {/* Nút 2: Phê duyệt Nghiệm thu & Giải ngân (Checker) */}
                               {isAdminOrProcurement && isMilestonePending && (
                                 <button
                                   type="button"
@@ -797,11 +845,21 @@ export const ContractDetailPage = () => {
                                     setSelectedMilestoneToApprove(m);
                                     setIsApproveModalOpen(true);
                                   }}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
-                                  title="Phê duyệt nghiệm thu mốc thanh toán"
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer ${
+                                    m.isTechnicalPassed === true && currentUser?.id !== m.technicalReviewedBy
+                                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                      : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                                  }`}
+                                  title={
+                                    m.isTechnicalPassed !== true
+                                      ? 'Cần xác nhận kỹ thuật đạt trước khi giải ngân'
+                                      : currentUser?.id === m.technicalReviewedBy
+                                      ? 'Bạn là Maker - Cần lãnh đạo khác duyệt giải ngân'
+                                      : 'Phê duyệt nghiệm thu và giải ngân (Checker)'
+                                  }
                                 >
                                   <FileCheck className="w-3.5 h-3.5" />
-                                  <span>Nghiệm thu</span>
+                                  <span>Giải ngân</span>
                                 </button>
                               )}
 
@@ -885,7 +943,15 @@ export const ContractDetailPage = () => {
         onSuccess={() => fetchData(true)}
       />
 
-      {/* 2. Modal Phê duyệt Nghiệm thu */}
+      {/* 1.1 Modal Xác nhận Kỹ thuật Hiện trường (Maker) */}
+      <TechnicalReviewMilestoneModal
+        isOpen={isTechnicalReviewModalOpen}
+        onClose={() => setIsTechnicalReviewModalOpen(false)}
+        milestone={selectedMilestoneForTechReview}
+        onSuccess={() => fetchData(true)}
+      />
+
+      {/* 2. Modal Phê duyệt Nghiệm thu & Giải ngân (Checker) */}
       <ApproveMilestoneModal
         isOpen={isApproveModalOpen}
         onClose={() => setIsApproveModalOpen(false)}

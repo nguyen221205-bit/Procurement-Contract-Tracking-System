@@ -15,5 +15,7 @@ namespace ProcurementSystem.Core.DTOs.Evaluation
         public string? DisqualificationReason { get; set; }
         public DateTime SubmittedAt { get; set; }
         public List<EvaluationScoreDto> Scores { get; set; } = new();
+        public List<CriteriaBreakdownDto> CriteriaBreakdown { get; set; } = new();
+        public List<EvaluatorScoreSummaryDto> EvaluatorSummaries { get; set; } = new();
     }
 }

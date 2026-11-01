@@ -4,7 +4,7 @@ namespace ProcurementSystem.Core.Interfaces
     {
         IGenericRepository<T> Repository<T>() where T : class;
         Task<int> SaveChangesAsync();
-        Task BeginTransactionAsync();
+        Task BeginTransactionAsync(System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted);
         Task CommitTransactionAsync();
         Task RollbackTransactionAsync();
     }

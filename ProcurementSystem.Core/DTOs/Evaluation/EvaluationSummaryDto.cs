@@ -24,6 +24,8 @@ namespace ProcurementSystem.Core.DTOs.Evaluation
 
         // Thông tin hồ sơ trúng thầu (nếu đã phê duyệt)
         public bool IsFinalized { get; set; }
+        public bool CanFinalize { get; set; }
+        public List<int> EligibleSubmissionIds { get; set; } = new();
         public int? WinningSubmissionId { get; set; }
         public int? WinningContractorId { get; set; }
         public string? WinningContractorName { get; set; }

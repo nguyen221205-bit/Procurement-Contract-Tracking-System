@@ -14,10 +14,18 @@ namespace ProcurementSystem.Core.DTOs.BidPackage
         public string? Description { get; set; }
         public int CreatedBy { get; set; }
         public string? CreatedByName { get; set; }
+        public int? ProcuringEntityId { get; set; }
+        public bool OwnershipNeedsReview { get; set; }
+        public string? ProcuringEntityName { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public List<BidDocumentDto> BidDocuments { get; set; } = new();
         public int SubmissionsCount { get; set; }
         public bool IsAwarded { get; set; }
+        public bool IsCommitteeValid { get; set; }
+        public bool CanStartEvaluation { get; set; }
+        public bool CanEditCommittee { get; set; }
+        public bool RequiresEarlyCloseReason { get; set; }
+        public List<string> EvaluationBlockingReasons { get; set; } = new();
     }
 }

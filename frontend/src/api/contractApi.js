@@ -59,12 +59,42 @@ export const contractApi = {
     return await axiosClient.delete(`/contracts/${contractId}/milestones/${milestoneId}`);
   },
 
-  // Phê duyệt biên bản nghiệm thu mốc thanh toán
-  approveMilestoneAcceptance: async (milestoneId, isApproved = true, note = '') => {
-    return await axiosClient.put(`/contracts/milestones/${milestoneId}/acceptance`, {
-      isApproved,
+  // Xác nhận kỹ thuật mốc thanh toán nghiệm thu (Maker - Field/Technical Officer)
+  technicalReviewMilestone: async (milestoneId, isPassed = true, note = '') => {
+    return await axiosClient.put(`/contracts/milestones/${milestoneId}/technical-review`, {
+      isPassed,
       note,
     });
+  },
+
+  // Phê duyệt biên bản nghiệm thu mốc thanh toán (Checker - Authorized Signer)
+  // F02: Gắn chặt AcceptanceId, ExpectedRevision và ExpectedVersion, loại bỏ default version 1
+  approveMilestoneAcceptance: async (milestoneId, dataOrApproved, note = '', expectedVersion, acceptanceId, expectedRevision) => {
+    let payload = {};
+    if (typeof dataOrApproved === 'object' && dataOrApproved !== null) {
+      payload = dataOrApproved;
+    } else {
+      payload = {
+        isApproved: Boolean(dataOrApproved),
+        note,
+        expectedVersion,
+        acceptanceId,
+        expectedRevision,
+      };
+    }
+    return await axiosClient.put(`/contracts/milestones/${milestoneId}/acceptance`, payload);
+  },
+
+  // T04: Tải tệp tài liệu scan snapshot nghiệm thu kỹ thuật qua axiosClient có xác thực Bearer token và blob response
+  downloadAcceptanceSnapshotDocument: async (milestoneId, acceptanceId) => {
+    return await axiosClient.get(`/contracts/milestones/${milestoneId}/acceptances/${acceptanceId}/document/download`, {
+      responseType: 'blob',
+    });
+  },
+
+  // F04: Tải tệp tài liệu scan hợp đồng tại thời điểm snapshot nghiệm thu kỹ thuật
+  downloadAcceptanceSnapshotDocumentUrl: (milestoneId, acceptanceId) => {
+    return `/api/contracts/milestones/${milestoneId}/acceptances/${acceptanceId}/document/download`;
   },
 
   // Báo cáo tiến độ (Nhà thầu)

@@ -10,6 +10,7 @@ namespace ProcurementSystem.Core.Interfaces
         IQueryable<T> Query();
         Task AddAsync(T entity);
         void Update(T entity);
+        void UpdateScalar(T entity);
         void Delete(T entity);
         Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate);
         Task<int> CountAsync(Expression<Func<T, bool>>? predicate = null);

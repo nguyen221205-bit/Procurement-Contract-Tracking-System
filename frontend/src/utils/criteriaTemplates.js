@@ -5,7 +5,7 @@ export const SINGLE_CRITERIA_SUGGESTIONS = [
   'Nhân sự & chuyên gia',
   'Tiến độ cam kết',
   'Bảo mật & chất lượng',
-  'Chi phí & Giá dự thầu',
+  { name: 'Chi phí & Giá dự thầu', isPriceCriteria: true },
   'Bảo hành & Hỗ trợ kỹ thuật',
 ];
 

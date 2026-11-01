@@ -104,20 +104,8 @@ export const BidComparisonView = ({
     }
   };
 
-  // Tính điểm trung bình của một tiêu chí cho một nhà thầu
-  const getCriteriaAvgScore = (submission, criteriaId) => {
-    if (!submission?.scores || submission.scores.length === 0) return null;
-    const matching = submission.scores.filter((s) => s.criteriaId === criteriaId);
-    if (matching.length === 0) return null;
-    const total = matching.reduce((sum, s) => sum + (Number(s.score) || 0), 0);
-    return total / matching.length;
-  };
-
-  // Tính điểm đóng góp theo trọng số: (Điểm / MaxScore) * Weight
-  const getWeightedScore = (avgScore, maxScore, weight) => {
-    if (avgScore === null || !maxScore || !weight) return 0;
-    return (avgScore / maxScore) * weight;
-  };
+  const getCriteriaAvgScore = (submission, criteriaId) =>
+    submission?.criteriaBreakdown?.find((entry) => entry.criteriaId === criteriaId)?.averageScore ?? null;
 
   // Xác định nhà thầu có điểm cao nhất ở từng tiêu chí để highlight (nếu hòa điểm cao nhất thì không để Top 1 cho bên nào)
   const getBestCriteriaPerformerId = (criteriaId) => {
@@ -504,6 +492,7 @@ export const BidComparisonView = ({
                 <div className="mt-4 pt-3 border-t border-slate-100">
                   <button
                     type="button"
+                    disabled={summary?.canFinalize !== true || !summary?.eligibleSubmissionIds?.includes(sub.submissionId)}
                     onClick={() => onFinalizeClick && onFinalizeClick(sub, false)}
                     className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                   >
@@ -637,7 +626,7 @@ export const BidComparisonView = ({
                       {selectedSubmissions.map((sub) => {
                         const avg = getCriteriaAvgScore(sub, crit.id);
                         const isBest = bestPerformerId === sub.submissionId && avg !== null && avg > 0;
-                        const weighted = getWeightedScore(avg, crit.maxScore, crit.weight);
+                        const weighted = sub.criteriaBreakdown?.find((entry) => entry.criteriaId === crit.id)?.weightedScore ?? null;
                         const percentage = avg !== null && crit.maxScore ? (avg / crit.maxScore) * 100 : 0;
 
                         return (

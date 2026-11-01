@@ -55,6 +55,8 @@ builder.Services.AddScoped<IContractorAuthService, ContractorAuthService>();
 builder.Services.AddScoped<IContractorService, ContractorService>();
 builder.Services.AddScoped<IProcuringEntityAuthService, ProcuringEntityAuthService>();
 builder.Services.AddScoped<IProcuringEntityService, ProcuringEntityService>();
+builder.Services.AddScoped<IProcuringEntityMemberService, ProcuringEntityMemberService>();
+builder.Services.AddScoped<ISigningAuthorityService, SigningAuthorityService>();
 
 // User Management Services
 builder.Services.AddScoped<IUserService, UserService>();
@@ -85,7 +87,8 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddHostedService<ContractExpiryNotificationWorker>();
 
 // SignalR Real-time Hub & User ID Provider
-builder.Services.AddSignalR();
+builder.Services.AddSignalR().AddJsonProtocol(options =>
+    options.PayloadSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddSingleton<IUserIdProvider, CustomUserIdProvider>();
 
 // ==========================================

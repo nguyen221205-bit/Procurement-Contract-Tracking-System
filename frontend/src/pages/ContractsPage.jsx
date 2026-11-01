@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
@@ -48,6 +48,8 @@ export const ContractsPage = () => {
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const requestId = useRef(0);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -82,6 +84,8 @@ export const ContractsPage = () => {
 
   // Fetch contracts
   const fetchContracts = async (isBackground = false) => {
+    const currentRequest = ++requestId.current;
+    setContractsData((previous) => ({ ...previous, summary: null }));
     if (!isBackground) setLoading(true);
     else setRefreshing(true);
 
@@ -91,8 +95,8 @@ export const ContractsPage = () => {
         pageSize,
       };
 
-      if (searchTerm.trim()) {
-        params.search = searchTerm.trim();
+      if (appliedSearch) {
+        params.search = appliedSearch;
       }
 
       if (selectedStatus) {
@@ -100,45 +104,49 @@ export const ContractsPage = () => {
       }
 
       const res = await contractApi.getContracts(params);
-      if (res?.data) {
-        setContractsData(res.data);
-      }
+      if (!res?.success || !res.data) throw new Error(res?.message || 'Không thể tải hợp đồng.');
+      if (currentRequest === requestId.current) setContractsData(res.data);
     } catch (err) {
       console.error('Lỗi khi tải danh sách hợp đồng:', err);
-      toast.error('Không thể tải danh sách hợp đồng.');
+      if (currentRequest === requestId.current) toast.error('Không thể tải danh sách hợp đồng.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (currentRequest === requestId.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
     fetchContracts();
-  }, [page, pageSize, selectedStatus]);
+    return () => { requestId.current += 1; };
+  }, [page, pageSize, selectedStatus, appliedSearch]);
 
   // Handle Search submit
   const handleSearchSubmit = (e) => {
     e.preventDefault();
+    if (page === 1 && appliedSearch === searchTerm.trim()) fetchContracts();
+    setAppliedSearch(searchTerm.trim());
     setPage(1);
-    fetchContracts();
   };
 
   // Reset filters
   const handleResetFilters = () => {
     setSearchTerm('');
+    setAppliedSearch('');
     setSelectedStatus('');
     setPage(1);
   };
 
-  // Calculate high-level summary KPIs from items
+  // Aggregates cover the same filtered/authorized query, before pagination.
   const items = contractsData.items || [];
-  const totalValue = items.reduce((sum, c) => sum + (c.value || 0), 0);
-  const totalDisbursed = items.reduce((sum, c) => sum + (c.totalDisbursedAmount || 0), 0);
-  const overallRate = totalValue > 0 ? Math.round((totalDisbursed / totalValue) * 100) : 0;
-
-  const activeCount = items.filter((c) => c.status === 'Active' || c.status === 1).length;
-  const draftCount = items.filter((c) => c.status === 'Draft' || c.status === 0).length;
-  const completedCount = items.filter((c) => c.status === 'Completed' || c.status === 2).length;
+  const summary = contractsData.summary;
+  const totalValue = summary?.totalValue;
+  const totalDisbursed = summary?.totalDisbursedAmount;
+  const overallRate = summary?.disbursementRate ?? '—';
+  const activeCount = summary?.activeContracts ?? '—';
+  const draftCount = summary?.draftContracts ?? '—';
+  const completedCount = summary?.completedContracts ?? '—';
 
   return (
     <div className="space-y-6 pb-12">
@@ -266,8 +274,8 @@ export const ContractsPage = () => {
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-lg font-black text-slate-900 truncate mt-0.5" title={formatCurrency(totalValue)}>
-            {formatCurrency(totalValue)}
+          <p className="text-lg font-black text-slate-900 truncate mt-0.5" title={(summary ? formatCurrency(totalValue) : '—')}>
+            {(summary ? formatCurrency(totalValue) : '—')}
           </p>
         </div>
 
@@ -279,8 +287,8 @@ export const ContractsPage = () => {
               {overallRate}%
             </span>
           </div>
-          <p className="text-lg font-black text-emerald-600 truncate mt-0.5" title={formatCurrency(totalDisbursed)}>
-            {formatCurrency(totalDisbursed)}
+          <p className="text-lg font-black text-emerald-600 truncate mt-0.5" title={(summary ? formatCurrency(totalDisbursed) : '—')}>
+            {(summary ? formatCurrency(totalDisbursed) : '—')}
           </p>
         </div>
       </div>

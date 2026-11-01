@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
     "build": "node ./node_modules/vite/bin/vite.js build",
-    "lint": "oxlint",
-    "preview": "node ./node_modules/vite/bin/vite.js preview"
+    "lint": "node ./node_modules/oxlint/bin/oxlint",
+    "preview": "node ./node_modules/vite/bin/vite.js preview",
+    "generate:enums": "node scripts/generate-enums.mjs",
+    "prebuild": "node scripts/generate-enums.mjs --check",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.11",

@@ -58,6 +58,8 @@ namespace ProcurementSystem.Core.DTOs.Contract
     public class UpdateGuaranteeStatusRequest
     {
         [Required]
+        [EnumDataType(typeof(GuaranteeStatus))]
+        [System.Text.Json.Serialization.JsonRequired]
         public GuaranteeStatus Status { get; set; }
 
         [MaxLength(1000)]

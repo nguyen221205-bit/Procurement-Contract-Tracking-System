@@ -53,6 +53,19 @@ namespace ProcurementSystem.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(relativePath))
                 throw new ArgumentException("Đường dẫn tệp không hợp lệ.", nameof(relativePath));
 
+            if (Path.IsPathRooted(relativePath))
+            {
+                var fullRooted = Path.GetFullPath(relativePath);
+                var basePathRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
+                var tempPathRoot = Path.GetFullPath(Path.GetTempPath());
+
+                if (fullRooted.StartsWith(basePathRoot, StringComparison.OrdinalIgnoreCase) ||
+                    fullRooted.StartsWith(tempPathRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    return fullRooted;
+                }
+            }
+
             var cleaned = relativePath.TrimStart('/', '\\');
             var fullPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), cleaned));
             var basePath = Path.GetFullPath(Directory.GetCurrentDirectory());

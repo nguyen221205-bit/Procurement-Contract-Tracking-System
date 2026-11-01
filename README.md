@@ -19,7 +19,7 @@ Hệ thống số hóa toàn diện quy trình khép kín qua 6 phân hệ cốt
 2. **Quản lý Kế hoạch Mời thầu (Bid Packages)**: Tạo lập hồ sơ mời thầu, đăng tải tài liệu HSMT, tự động sinh mã định danh và quản lý cỗ máy trạng thái vòng đời gói thầu (`Open` $\rightarrow$ `Closed` $\rightarrow$ `Evaluating` $\rightarrow$ `Contracted`).
 3. **Nộp Hồ sơ & Phòng vệ IDOR (Bid Submissions)**: Tiếp nhận hồ sơ đề xuất kỹ thuật, lưu trữ an toàn tệp tin và thiết lập cơ chế kiểm soát quyền sở hữu chống lỗ hổng IDOR khi tải tệp.
 4. **Hội đồng Thẩm định & Chấm điểm (Evaluation & Ranking)**: Thiết lập tiêu chí chấm thầu có trọng số ($\sum Weight = 100\%$), chấm điểm độc lập đa giám khảo và tự động xuất bảng xếp hạng nhà thầu trúng thầu.
-5. **Quản lý Hợp đồng & Nghiệm thu (Contracts & Milestones)**: Thiết lập hợp đồng kinh tế, quản lý tiến độ các mốc thanh toán, nghiệm thu bàn giao và cập nhật tiến độ giải ngân ngân sách thực tế. Hệ thống áp dụng cơ chế kiểm soát quyền sở hữu nghiêm ngặt (chống IDOR): chỉ tài khoản `Admin` hoặc `Procurement` tạo gói thầu mới có quyền tạo hợp đồng, sửa đổi điều khoản, thêm/sửa/xóa mốc, tải lên bản scan và phê duyệt nghiệm thu mốc thanh toán.
+5. **Quản lý Hợp đồng & Nghiệm thu (Contracts & Milestones)**: Thiết lập hợp đồng, theo dõi milestone và giải ngân. Quyền ghi được giới hạn theo membership đang hoạt động của đúng Bên mời thầu; nghiệm thu tách người lập (Maker) khỏi Checker có signing authority hợp lệ.
 6. **Báo cáo Điều hành Thời gian Thực (Executive Dashboard)**: Tổng hợp các chỉ số KPI tài chính, tỷ lệ tiết kiệm ngân sách qua đấu thầu và tiến độ giải ngân hợp đồng.
 
 ---
@@ -127,104 +127,146 @@ Mở trình duyệt web và truy cập địa chỉ tương tác API:
 
 ---
 
-## 👥 Danh Bạ Tài Khoản Thử Nghiệm Mẫu (Pre-Seeded Accounts)
+## 🔎 Minh bạch và kiểm soát Procurement
 
-Hệ thống được cấu hình sẵn 5 tài khoản mẫu phục vụ công tác kiểm thử và bảo vệ đồ án:
+Hệ thống gắn mọi thao tác với một người dùng đăng nhập riêng và một Bên mời thầu cụ thể. Vai trò toàn hệ thống như **Procurement** không tự cấp quyền trên mọi đơn vị.
 
-| Vai Trò | Email Đăng Nhập | Mật Khẩu Mặc Định | Mô Tả Quyền Hạn |
-|---|---|---|---|
-| **Admin** | `admin@procurement.com` | `Admin@123` | Toàn quyền quản trị hệ thống, quản lý người dùng, xem Dashboard tổng hợp |
-| **Procurement** | `procurement@procurement.com` | `Admin@123` | Chuyên viên bên mời thầu: Tạo gói thầu, cấu hình tiêu chí, đóng thầu |
-| **Evaluator** | `evaluator@procurement.com` | `Admin@123` | Thành viên hội đồng chấm thầu: Chấm điểm kỹ thuật, xem bảng xếp hạng |
-| **Contractor 1** | `contractor1@test.com` | `Admin@123` | Nhà thầu Cloud: Nộp hồ sơ thầu, ký hợp đồng `CTR-2026-CLOUD-01`, báo cáo tiến độ |
-| **Contractor 2** | `contractor2@test.com` | `Admin@123` | Nhà thầu Viễn thông: Nộp hồ sơ dự thầu cạnh tranh, cập nhật hồ sơ năng lực |
+- **Tài khoản cá nhân và lời mời thành viên:** Mỗi lãnh đạo, cán bộ, kế toán và người ký dùng tài khoản/email riêng. Manager mời thành viên vào đơn vị; người được mời đăng nhập hoặc đăng ký bằng đúng email rồi chấp nhận lời mời. Không chia sẻ mật khẩu, OTP hoặc token ký.
+- **Vai trò trong đơn vị:** Manager quản lý thành viên; Officer thực hiện công việc nghiệp vụ (Maker); Finance tham gia kiểm soát tài chính; người ký cần có signing authority được xác minh. Quyền trong đơn vị chỉ có hiệu lực khi membership còn Active.
+- **Tách người lập và người duyệt:** Người thực hiện bước kỹ thuật không được tự phê duyệt nghiệm thu/giải ngân của chính mình. Người kiểm tra cần là thành viên hợp lệ, có thẩm quyền ký đã được xác minh và có danh tính khác người lập. Admin quản trị nền tảng, không thay thế người có thẩm quyền của đơn vị để phê duyệt chi.
+- **Quyền sở hữu gói thầu ổn định:** Gói thầu lưu ProcuringEntityId tại thời điểm tạo. Quyền không chuyển sang đơn vị khác chỉ vì người tạo thay đổi membership. Tạo gói yêu cầu chọn đơn vị mà người dùng có membership hợp lệ; máy chủ kiểm tra lại lựa chọn, kể cả khi FE gửi ID giả.
+- **Dữ liệu lịch sử thiếu chứng cứ:** Migration đánh dấu các gói chưa xác định được đơn vị bằng OwnershipNeedsReview, giữ giá trị ứng viên để đối soát và ghi audit. Admin có thể ghi nhận quyết định cùng mã tham chiếu chứng cứ; API không tự kết luận tính pháp lý của tài liệu tham chiếu. Gói bị đánh dấu cần được đối soát trước khi dùng các thao tác nhạy cảm.
+- **Nghiệm thu gắn với đúng phiên bản:** Quyết định Checker tham chiếu AcceptanceId, ExpectedRevision và ExpectedVersion. Thay đổi nội dung sau thẩm tra làm kết quả cũ mất hiệu lực; request dùng phiên bản cũ bị từ chối. Bản chụp tài liệu được băm SHA-256 từ bytes thực tế và chỉ tải qua endpoint có xác thực/phân quyền.
 
----
+Các endpoint hỗ trợ kiểm tra phạm vi đơn vị:
 
-## 🧪 Bộ Kịch Bản Kiểm Thử Tự Động (Automated Test Suites)
-
-Các kịch bản kiểm thử tự động chuyên sâu được đóng gói sẵn trong thư mục `scripts/testing/`:
-
-```
-scripts/testing/
-├── test_e2e_full_flow.ps1      # Kiểm thử tích hợp toàn trình 9 bước (End-to-End Workflow)
-├── test_security_rbac.ps1      # Kiểm toán an ninh phân quyền RBAC & chống lỗ hổng IDOR (15 ca kiểm thử)
-└── test_load_concurrency.py     # Đo lường hiệu năng chịu tải đồng thời (50 luồng đồng thời per API)
-```
-
-### 1. Chạy Kiểm Thử Tích Hợp Toàn Trình (E2E Integration Test)
-Kịch bản tự động thực thi chuỗi nghiệp vụ từ Mời thầu $\rightarrow$ Nộp thầu $\rightarrow$ Chấm điểm $\rightarrow$ Trao thầu $\rightarrow$ Nghiệm thu:
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/testing/test_e2e_full_flow.ps1
-```
-
-### 2. Chạy Kiểm Toán An Ninh RBAC & Khắc Chế Lỗ Hổng IDOR
-Kiểm tra khả năng phòng thủ trước các hành vi leo thang đặc quyền dọc và leo thang đặc quyền ngang:
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/testing/test_security_rbac.ps1
-```
-*(Kết quả thẩm định: Đạt 15/15 ca kiểm thử, phản hồi đúng các mã chuẩn HTTP 401 Unauthorized và HTTP 403 Forbidden).*
-
-### 3. Chạy Đo Lường Hiệu Năng Tải Đa Luồng (Concurrency Benchmark)
-Bắn đồng thời 50 requests vào các endpoints trọng yếu để đo lường độ trễ P50/P95 và thông lượng:
-```powershell
-python scripts/testing/test_load_concurrency.py
-```
-*(Kết quả thẩm định: Tỷ lệ thành công 100%, độ trễ trung bình đạt 8.14 ms nhờ hiệu quả của Composite Indexes và AsNoTracking).*
+- GET /api/bid-packages/creatable-entities: trả các đơn vị hiện tại người dùng được phép chọn.
+- GET /api/bid-packages/ownership-review: Admin xem danh sách gói cần đối soát.
+- POST /api/bid-packages/{id}/ownership-review: Admin ghi nhận đơn vị đã xác minh, mã chứng cứ, ghi chú và audit.
 
 ---
 
-## 📋 Kịch Bản Demo Trực Tiếp 9 Bước Trên Swagger UI
+## 👥 Tài khoản và dữ liệu kiểm thử
 
-1. **Bước 1 (Đăng nhập Quản trị viên)**:
-   - Gọi `POST /api/auth/login` với tài khoản `admin@procurement.com` / `Admin@123`.
-   - Sao chép chuỗi JWT Token và dán vào nút **Authorize** ở góc trên (`Bearer <token>`).
-2. **Bước 2 (Tạo Gói Thầu Mới)**:
-   - Gọi `POST /api/bid-packages` tạo gói thầu mới với ngân sách dự toán và thời hạn nộp thầu. Hệ thống tự động sinh mã `PKG-yyyyMMdd-XXXX` ở trạng thái `Open`.
-3. **Bước 3 (Thiết lập Tiêu chí Đánh giá - R2-3)**:
-   - Gọi `POST /api/evaluations/packages/{id}/criteria` thiết lập bộ tiêu chí (Kỹ thuật: trọng số 60%, `isPriceCriteria: false`; Tài chính: trọng số 40%, `isPriceCriteria: true`).
-   - *Quy tắc (R2-3)*: Mỗi gói thầu chỉ được phép thiết lập tối đa 1 tiêu chí Giá (`isPriceCriteria: true`). Tiêu chí này được tính điểm tự động theo công thức Luật Đấu thầu (`(minBidPrice / bidPrice) * MaxScore`), loại trừ việc nhận diện mong manh bằng chuỗi tên.
-4. **Bước 4 (Nhà thầu Nộp Hồ sơ Dự thầu)**:
-   - Đăng nhập tài khoản nhà thầu `contractor1@test.com` lấy token vai trò `Contractor`.
-   - Gọi `POST /api/bid-packages/{id}/submissions` đính kèm tệp đề xuất kỹ thuật (`multipart/form-data`).
-5. **Bước 5 (Đóng thầu, Gia hạn thầu & Chuyển sang Chấm điểm)**:
-   - Sử dụng token Admin/Procurement gọi `PUT /api/bid-packages/{id}/status` chuyển trạng thái sang `Closed` (1).
-   - *Gia hạn thầu (R2-1)*: Nếu cần mở lại gói thầu sang `Open` (0) khi đã quá hạn đóng thầu, truyền kèm tham số `newDeadline` ở tương lai. Hệ thống cập nhật thời hạn mới và lưu vết `AuditLog` (`EXTEND_BID_PACKAGE_DEADLINE`).
-   - Sau đó chuyển sang `Evaluating` (2) khi đã phân công đủ Tổ chuyên gia và hoàn thiện bộ tiêu chí.
-6. **Bước 6 (Hội đồng Giám khảo Chấm điểm - R2-2 & R2-3)**:
-   - Đăng nhập tài khoản `evaluator@procurement.com` lấy token vai trò `Evaluator`.
-   - Gọi `POST /api/evaluations/submissions/{id}/scores` chấm điểm chi tiết theo từng tiêu chí chuyên môn (`isPriceCriteria == false`).
-   - *Ràng buộc R2-3*: Hệ thống tự động từ chối điểm chấm tay cho tiêu chí có `isPriceCriteria == true`.
-   - *Điều kiện hoàn tất R2-2*: Hồ sơ chỉ chuyển sang `Evaluated` khi toàn bộ giám khảo được phân công trong Tổ chuyên gia đều đã cho đủ điểm tất cả tiêu chí chấm tay.
-7. **Bước 7 (Xem Bảng Xếp hạng Điểm Trọng số)**:
-   - Gọi `GET /api/evaluations/packages/{id}/summary` xem kết quả tính toán tự động điểm tổng hợp có trọng số và thứ hạng của các nhà thầu.
-8. **Bước 8 (Phê duyệt Kết quả Trúng thầu & Thu hồi Trao thầu - Điều 61, 64 Luật Đấu thầu 2023)**:
-   - Sử dụng token Admin/Procurement gọi `POST /api/evaluations/packages/{id}/finalize` với payload `selectedSubmissionId` (và `decisionReason` nếu chọn hạng != 1) để trao thầu cho nhà thầu trúng thầu. Hồ sơ chuyển sang `Selected`, gói thầu tự động chuyển sang `Awarded` (Đã trao thầu).
-   - *Thu hồi kết quả trúng thầu (R2-4)*: Trong trường hợp phát hiện sai sót pháp lý hoặc nhà thầu từ chối hoàn thiện hợp đồng trước khi hợp đồng có hiệu lực, gọi `POST /api/evaluations/packages/{id}/revoke-award` với `reason` bắt buộc ($\ge$ 5 ký tự). Điều kiện: Gói thầu chưa có hợp đồng ở trạng thái `Active` hoặc `Completed`. Hệ thống tự động:
-     - Chuyển gói thầu từ `Awarded` quay về `Evaluating`.
-     - Khôi phục toàn bộ hồ sơ dự thầu hợp lệ về trạng thái `Evaluated` và xóa lý do trao thầu.
-     - Hủy bỏ (xóa) toàn bộ hợp đồng `Draft` liên quan.
-     - Phát thông báo `Notification` và lưu vết `AuditLog` (`REVOKE_AWARD`).
-     - Khi hợp đồng bị `Terminated`, cho phép dùng luồng thu hồi này để trao thầu cho nhà thầu xếp hạng kế tiếp.
-9. **Bước 9 (Ký kết Hợp đồng & Giám sát Vòng đời)**:
-   - Gọi `GET /api/evaluations/packages/{id}/awarded-bid` xác nhận thông tin nhà thầu trúng thầu (`isReadyForContract: true`).
-   - Gọi `POST /api/contracts` tạo hợp đồng kinh tế (hệ thống tự động sinh số hiệu chuẩn `HD-{Năm}-{MãGói}-{STT}` nếu để trống, và kiểm soát giá trị hợp đồng $\le$ giá trúng thầu).
-   - Kích hoạt hợp đồng `Draft -> Active` (yêu cầu đính kèm file scan hợp đồng PDF và tổng tỷ lệ thanh toán các mốc đạt 100%). Khi hợp đồng chính thức có hiệu lực (`Active`), hệ thống tự động cập nhật gói thầu sang `Contracted`.
-   - Gọi `GET /api/reports/dashboard` để quan sát số liệu KPI tài chính, tỷ lệ tiết kiệm và tiến độ giải ngân được cập nhật theo thời gian thực.
-10. **Bước 10 (Các tính năng & API Quản trị Nâng cao - Vòng 3)**:
-    - **Thay thế giám khảo Tổ chuyên gia (`POST /api/bid-packages/{id}/evaluators/replace`)**: Thay thế nguyên tử thành viên trong 1 transaction, đảm bảo bảo toàn số lẻ $\ge 3$, kiểm tra xung đột lợi ích, bảo lưu điểm cũ trong AuditLog nhưng loại trừ khỏi bảng xếp hạng, tự động tính lại thứ hạng.
-    - **Bảo mật Sealed-Bid & Độc lập chấm điểm (N14)**: Trong giai đoạn `Evaluating`, giám khảo chỉ được xem điểm do chính mình chấm; ẩn `TotalScore` và `Rank` ở các endpoint `/rankings` và `/summary` cho đến khi có quyết định trao thầu.
-    - **Truất quyền dự thầu (`POST /api/evaluations/submissions/{id}/disqualify`)**: Truất quyền nhà thầu vi phạm kèm lý do pháp lý lưu vào trường `DisqualificationReason` riêng biệt.
-    - **Thu hồi trao thầu & Bảo vệ Hợp đồng Terminated (N16, R3-4, R3-5)**: Khi hợp đồng bị `Terminated`, hồ sơ của nhà thầu đó tự động bị `Disqualified` không thể tự động chọn lại; đồng thời xóa vật lý các file scan hợp đồng mồ côi sau khi xóa bản ghi Draft.
-    - **Nhập nhà thầu từ Excel an toàn (`POST /api/contractors/import-excel`)**: Tạo mật khẩu ngẫu nhiên bảo mật cao bằng `RandomNumberGenerator`, trạng thái ban đầu `Pending`, `Rating = 0`, gửi email thông báo và kích hoạt cờ `MustChangePassword = true`.
-    - **Bắt buộc đổi mật khẩu lần đầu (`POST /api/auth/change-password`)**: `MustChangePasswordMiddleware` tự động phong tỏa mọi API nghiệp vụ (403 Forbidden) cho đến khi người dùng đổi mật khẩu mới thành công.
-    - **Tự động cập nhật điểm uy tín (`Rating`)**: Tự động gọi `RecalculateContractorRatingAsync` tính lại điểm tín nhiệm nhà thầu khi hợp đồng chuyển sang `Terminated`, `Completed` hoặc mốc nghiệm thu bị từ chối.
-    - **Báo cáo chuyên sâu cấp quản trị (R3-10)**:
-      - `GET /api/reports/procurement-summary`: Báo cáo thống kê mua sắm theo năm & phân loại gói thầu (Hàng hóa, Xây dựng, Dịch vụ).
-      - `GET /api/reports/contractor-performance`: Báo cáo tỷ lệ trúng/trượt thầu và năng lực các nhà thầu.
-      - `GET /api/reports/contracts-progress`: Báo cáo tỷ lệ mốc hoàn thành đúng hạn và danh sách hợp đồng sắp đến hạn / quá hạn.
-      - `GET /api/reports/contractors/export-excel` & `GET /api/reports/contracts/export-excel`: Xuất dữ liệu báo cáo sang Excel chuẩn ClosedXML.
-    - **Kiểm toán an toàn (R3-6, R3-7)**: Cấu hình `UseForwardedHeaders` chống giả mạo IP qua `X-Forwarded-For`; thống nhất Interceptor tự động ghi nhận dữ liệu CUD và Service chỉ ghi nhận các sự kiện nghiệp vụ chuyên biệt (`IMPORT_CONTRACTORS`, `REVOKE_AWARD`, `DISQUALIFY_SUBMISSION`, `REPLACE_EVALUATOR`, `EXTEND_BID_PACKAGE_DEADLINE`).
+DataSeeder có thể tạo tài khoản mẫu cho môi trường phát triển. Kiểm tra tài khoản thực tế trong mã seed và database đang dùng; không dựa vào tài khoản mẫu để chứng minh tách biệt Maker–Checker. Không dùng thông tin đăng nhập mẫu ở môi trường thật.
+
+Để kiểm tra minh bạch, chuẩn bị các danh tính độc lập: Manager, Officer/Maker, người có signing authority/Checker, ít nhất hai nhà thầu và các thành viên Tổ chuyên gia. Tạo hoặc mời từng người bằng email riêng. Không dùng chung một tài khoản Procurement cho nhiều người.
+
+---
+
+## 🧪 Kiểm thử tự động
+
+### Backend
+
+Từ thư mục gốc:
+
+~~~powershell
+dotnet test tests/ProcurementSystem.Tests/ProcurementSystem.Tests.csproj
+~~~
+
+Bộ kiểm thử gồm kiểm tra nghiệp vụ, membership/Maker–Checker, xử lý revision và các kiểm thử SQL Server LocalDB. Một số ca tạo database thử nghiệm riêng, chạy migration thật, kiểm tra cạnh tranh ghi và dựng Kestrel/JWT/HttpClient. LocalDB không khả dụng thì nhóm test SQL Server sẽ **Fail rõ ràng**, không tự chuyển thành Skip hoặc PASS.
+
+### Frontend
+
+~~~powershell
+npm install --prefix frontend
+npm test --prefix frontend
+npm run build --prefix frontend
+~~~
+
+Các bài test frontend hiện dùng Node test runner cho enum contract và tính điểm xem trước. Chúng không phải kiểm thử giao diện trình duyệt.
+
+### Script tích hợp đời cũ
+
+Đường dẫn scripts/testing/test_e2e_full_flow.ps1 được viết cho dữ liệu mẫu và luồng Admin tạo gói cũ. Script không chọn ProcuringEntityId, không tạo membership/invitation và không kiểm tra Maker–Checker; nó cũng chỉ tạo milestone chứ không hoàn tất nghiệm thu. Không dùng script này làm bằng chứng E2E cho transparency hiện tại hoặc chạy trên database thật. Hãy dùng quy trình thực hành bên dưới trên database cô lập.
+
+---
+
+## 🔁 Hướng dẫn E2E mở thầu → trao thầu → nghiệm thu
+
+Đây là quy trình thực hành qua giao diện web và Swagger. Nó tạo dữ liệu nghiệp vụ; chạy trên database dùng riêng cho kiểm thử, không trỏ vào database gốc.
+
+### 1. Khởi chạy trên database cô lập
+
+Dùng SQL Server LocalDB hoặc SQL Server thử nghiệm và đặt chuỗi kết nối vào database mới, ví dụ:
+
+~~~powershell
+$env:DB_CONNECTION_STRING = 'Server=(localdb)\MSSQLLocalDB;Database=Procurement_E2E;Trusted_Connection=True;TrustServerCertificate=True'
+dotnet run --project ProcurementSystem.API
+~~~
+
+API tự áp dụng migration khi khởi động theo cấu hình ứng dụng. Vì vậy cần xác nhận connection string trước khi chạy. Mở Swagger tại http://localhost:5225/swagger. Mở terminal khác để chạy frontend:
+
+~~~powershell
+npm install --prefix frontend
+npm run dev --prefix frontend
+~~~
+
+### 2. Chuẩn bị đơn vị và danh tính
+
+1. Tạo/duyệt một Bên mời thầu thử nghiệm.
+2. Đăng nhập bằng tài khoản Manager riêng; mời một tài khoản Officer và chấp nhận lời mời bằng đúng email được mời.
+3. Hoàn tất quy trình xác minh signing authority cho một tài khoản Checker khác. Không gán vai trò người ký bằng cách sửa trực tiếp dữ liệu hoặc dùng chung tài khoản Maker.
+4. Tạo ít nhất hai tài khoản nhà thầu độc lập và đủ tài khoản Evaluator theo yêu cầu cấu hình Tổ chuyên gia.
+
+### 3. Mở thầu, nhận hồ sơ, đánh giá và trao thầu
+
+1. Manager/Officer gọi GET /api/bid-packages/creatable-entities; chọn đúng đơn vị được trả về khi tạo gói qua UI/API. Không gửi ProcuringEntityId phải bị từ chối; gửi ID của đơn vị mà tài khoản không là thành viên phải bị từ chối.
+2. Tạo tiêu chí, đăng tải gói thầu và cho từng nhà thầu nộp hồ sơ bằng tài khoản riêng.
+3. Đóng thầu, chuyển sang đánh giá, phân công chuyên gia và chấm hồ sơ theo tiêu chí.
+4. Hoàn tất xếp hạng và trao thầu. Xác nhận gói được gắn với đơn vị đã chọn từ đầu, người ngoài đơn vị không thể sửa hồ sơ.
+
+### 4. Tạo hợp đồng và nghiệm thu theo Maker–Checker
+
+1. Tạo hợp đồng từ kết quả trúng thầu; tạo các milestone, đính kèm bản scan và hoàn tất điều kiện để hợp đồng có hiệu lực.
+2. Officer/Maker thực hiện kiểm tra kỹ thuật:
+
+~~~http
+PUT /api/contracts/milestones/{milestoneId}/technical-review
+Content-Type: application/json
+
+{"isPassed": true, "note": "Kết quả kiểm tra tại hiện trường"}
+~~~
+
+3. Checker đăng nhập bằng tài khoản khác, có membership đang hoạt động và signing authority hợp lệ. Dùng AcceptanceId, ExpectedRevision, ExpectedVersion trả về từ bản ghi kiểm tra kỹ thuật để phê duyệt:
+
+~~~http
+PUT /api/contracts/milestones/{milestoneId}/acceptance
+Content-Type: application/json
+
+{
+  "isApproved": true,
+  "note": "Đã đối chiếu hồ sơ nghiệm thu",
+  "acceptanceId": 12,
+  "expectedRevision": 1,
+  "expectedVersion": 3
+}
+~~~
+
+Thay 12, 1, 3 bằng giá trị thực của lần chạy; không cố định các ID ví dụ. Lặp lại cho các milestone còn lại và xác nhận hợp đồng chuyển trạng thái hoàn tất theo quy tắc của dự án.
+
+### 5. Kiểm tra âm và dấu vết
+
+- Maker tự duyệt bản nghiệm thu của mình: phải bị chặn.
+- Người không thuộc đơn vị hoặc membership đã bị thu hồi: không được tiếp tục thao tác ghi/duyệt.
+- Gửi ExpectedRevision hoặc ExpectedVersion cũ sau khi nội dung thay đổi: phải bị từ chối do xung đột phiên bản.
+- Tải bản chụp nghiệm thu khi chưa đăng nhập hoặc không thuộc phạm vi: phải bị chặn; người đủ quyền tải được đúng tài liệu đã lưu.
+- Đối chiếu audit log của các hành động mời thành viên, đổi quyền/thu hồi, nghiệm thu và xử lý ownership review.
+
+Kết quả chạy manual cần ghi lại SHA/nhánh, database kiểm thử, actor từng bước, request/response và kết quả mong đợi/thực tế. Không ghi “browser E2E PASS” nếu chưa thực sự chạy toàn bộ quy trình trên giao diện trình duyệt.
+
+---
+
+## 🧰 Kỹ thuật được dùng cho phần minh bạch
+
+- **ASP.NET Core Authorization + JWT:** kiểm tra danh tính người gọi ở API; dịch vụ kiểm tra lại membership, vai trò, trạng thái đơn vị và signing authority ở phía server.
+- **Entity-scoped authorization:** ProcuringEntityId là chủ sở hữu ổn định của gói thầu; lựa chọn đơn vị được xác nhận từ membership hiện hành, không suy ra từ CreatedBy.
+- **Maker–Checker và least privilege:** vai trò đơn vị, signing authority, trạng thái membership và danh tính Maker/Checker là các điều kiện riêng; Admin nền tảng không thay thế Checker.
+- **EF Core transaction và optimistic concurrency:** các thao tác nhạy cảm cập nhật có transaction; RowVersion/concurrency token giúp phát hiện thu hồi membership hoặc chỉnh sửa xảy ra đồng thời.
+- **Revision-bound acceptance:** quyết định duyệt tham chiếu đúng acceptance/revision/version; bản thẩm tra cũ không còn dùng được sau khi milestone hoặc tài liệu thay đổi.
+- **SHA-256 trên bytes và authenticated file download:** checksum phản ánh chính nội dung tệp được lưu; endpoint tải tài liệu kiểm tra xác thực và phạm vi truy cập.
+- **Migrations có kiểm soát và audit trail:** dữ liệu ownership lịch sử thiếu bằng chứng được quarantine để đối soát; quyết định khắc phục được lưu actor, giá trị trước/sau và mã chứng cứ.
+- **Kiểm thử nhiều tầng:** unit/service tests; SQL Server LocalDB cho migration và interleaving thực; HTTP integration qua Kestrel/JWT/HttpClient; Node tests cho một số logic frontend.
 
 ---
 

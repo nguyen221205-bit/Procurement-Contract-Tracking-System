@@ -33,6 +33,34 @@ namespace ProcurementSystem.API.Controllers
             _fileStorageService = fileStorageService;
         }
 
+        [HttpGet("creatable-entities")]
+        [Authorize(Roles = "Procurement")]
+        public async Task<IActionResult> GetCreatableEntities()
+        {
+            var userId = GetCurrentUserId();
+            if (userId <= 0) return Unauthorized();
+            var result = await _bidPackageService.GetCreatableEntitiesAsync(userId);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        [HttpGet("ownership-review")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetOwnershipReviews()
+        {
+            var result = await _bidPackageService.GetOwnershipReviewsAsync();
+            return StatusCode(result.StatusCode, result);
+        }
+
+        [HttpPost("{id:int}/ownership-review")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ReviewOwnership(int id, ReviewPackageOwnershipRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (userId <= 0) return Unauthorized();
+            var result = await _bidPackageService.ReviewOwnershipAsync(id, request, userId);
+            return StatusCode(result.StatusCode, result);
+        }
+
         /// <summary>
         /// Lấy danh sách gói thầu có phân trang và bộ lọc nâng cao
         /// </summary>
@@ -96,7 +124,7 @@ namespace ProcurementSystem.API.Controllers
 
             var userId = GetCurrentUserId();
             var result = await _bidPackageService.CreateBidPackageAsync(request, userId);
-            if (!result.Success) return BadRequest(result);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
             return Ok(result);
         }
 
@@ -133,7 +161,7 @@ namespace ProcurementSystem.API.Controllers
             var isAdmin = User.IsInRole("Admin");
 
             var result = await _bidPackageService.UpdateBidPackageAsync(id, request, userId, isAdmin);
-            if (!result.Success) return BadRequest(result);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
             return Ok(result);
         }
 
@@ -172,7 +200,7 @@ namespace ProcurementSystem.API.Controllers
             var isAdmin = User.IsInRole("Admin");
 
             var result = await _bidPackageService.ChangeStatusAsync(id, request, userId, isAdmin);
-            if (!result.Success) return BadRequest(result);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
             return Ok(result);
         }
 
@@ -203,7 +231,7 @@ namespace ProcurementSystem.API.Controllers
             var isAdmin = User.IsInRole("Admin");
 
             var result = await _bidPackageService.UploadDocumentsAsync(id, files, userId, isAdmin);
-            if (!result.Success) return BadRequest(result);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
             return Ok(result);
         }
 
@@ -228,7 +256,7 @@ namespace ProcurementSystem.API.Controllers
             var isAdmin = User.IsInRole("Admin");
 
             var result = await _bidPackageService.DeleteDocumentAsync(id, documentId, userId, isAdmin);
-            if (!result.Success) return BadRequest(result);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
             return Ok(result);
         }
 
@@ -241,7 +269,7 @@ namespace ProcurementSystem.API.Controllers
         public async Task<ActionResult<ApiResponse<List<PackageEvaluatorDto>>>> GetPackageEvaluators(int id)
         {
             var result = await _bidPackageService.GetPackageEvaluatorsAsync(id);
-            if (!result.Success) return BadRequest(result);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
             return Ok(result);
         }
 
@@ -257,7 +285,7 @@ namespace ProcurementSystem.API.Controllers
             var currentUserId = GetCurrentUserId();
             var isAdmin = User.IsInRole("Admin");
             var result = await _bidPackageService.AssignEvaluatorAsync(id, request, currentUserId, isAdmin);
-            if (!result.Success) return BadRequest(result);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
             return Ok(result);
         }
 
@@ -273,7 +301,7 @@ namespace ProcurementSystem.API.Controllers
             var currentUserId = GetCurrentUserId();
             var isAdmin = User.IsInRole("Admin");
             var result = await _bidPackageService.RemoveEvaluatorAsync(id, evaluatorId, currentUserId, isAdmin);
-            if (!result.Success) return BadRequest(result);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
             return Ok(result);
         }
 
@@ -304,7 +332,7 @@ namespace ProcurementSystem.API.Controllers
             var currentUserId = GetCurrentUserId();
             var isAdmin = User.IsInRole("Admin");
             var result = await _bidPackageService.ReplaceEvaluatorAsync(id, request, currentUserId, isAdmin);
-            if (!result.Success) return BadRequest(result);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
             return Ok(result);
         }
 
@@ -389,7 +417,7 @@ namespace ProcurementSystem.API.Controllers
 
             var adminUserId = GetCurrentUserId();
             var result = await _bidPackageService.ReviewStatusApprovalRequestAsync(requestId, request, adminUserId);
-            if (!result.Success) return BadRequest(result);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
             return Ok(result);
         }
 

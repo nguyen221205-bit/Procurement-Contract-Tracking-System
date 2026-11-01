@@ -37,9 +37,12 @@ export const PACKAGE_STATUS = {
   EVALUATING: 'Evaluating',
   AWARDED: 'Awarded',
   CONTRACTED: 'Contracted',
+  CANCELLED: 'Cancelled',
 };
 
 export const PACKAGE_STATUS_CONFIG = {
+  Cancelled: { label: 'Đã hủy thầu', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
+  5: { label: 'Đã hủy thầu', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
   Open: { label: 'Đang mở thầu', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   0: { label: 'Đang mở thầu', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   Closed: { label: 'Đã đóng thầu', badgeColor: 'bg-slate-100 text-slate-700 border-slate-200' },

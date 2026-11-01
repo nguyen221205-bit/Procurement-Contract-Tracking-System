@@ -5,6 +5,7 @@ import { formatDate } from '../utils/formatters';
 import StatusBadge from '../components/common/StatusBadge';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import VerifyProcuringEntityModal from '../components/procuringEntities/VerifyProcuringEntityModal';
+import ProcuringEntityMembersModal from '../components/procuringEntities/ProcuringEntityMembersModal';
 import toast from 'react-hot-toast';
 import {
   Briefcase,
@@ -42,6 +43,7 @@ export const ProcuringEntitiesPage = () => {
 
   // Modal thẩm định
   const [selectedEntity, setSelectedEntity] = useState(null);
+  const [memberModalEntity, setMemberModalEntity] = useState(null);
 
   // Tải danh sách Bên mời thầu
   const fetchEntities = useCallback(async () => {
@@ -343,11 +345,21 @@ export const ProcuringEntitiesPage = () => {
                       {formatDate(ent.createdAt)}
                     </td>
 
-                    {/* Nút Thao tác Thẩm định */}
+                    {/* Nút Thao tác Thẩm định & Thành viên */}
                     <td className="py-3.5 px-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedEntity(ent)}
+                      <div className="flex items-center justify-end space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setMemberModalEntity(ent)}
+                          className="px-2.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center space-x-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 cursor-pointer shadow-2xs"
+                          title="Quản lý thành viên & phân quyền Maker - Checker"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          <span>Thành viên</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEntity(ent)}
                         className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center space-x-1 ml-auto shadow-2xs ${
                           ent.verificationStatus === 'Pending'
                             ? 'bg-amber-500 hover:bg-amber-600 text-white'
@@ -356,7 +368,8 @@ export const ProcuringEntitiesPage = () => {
                       >
                         <ShieldCheck className="w-3.5 h-3.5" />
                         <span>{ent.verificationStatus === 'Pending' ? 'Thẩm định ngay' : 'Xem / Đổi trạng thái'}</span>
-                      </button>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -406,6 +419,14 @@ export const ProcuringEntitiesPage = () => {
           fetchEntities();
           fetchPendingCount();
         }}
+      />
+
+      {/* MODAL QUẢN LÝ THÀNH VIÊN VÀ LỜI MỜI (MAKER - CHECKER) */}
+      <ProcuringEntityMembersModal
+        isOpen={Boolean(memberModalEntity)}
+        onClose={() => setMemberModalEntity(null)}
+        entity={memberModalEntity}
+        canManage={currentUser?.role === 'Admin' || memberModalEntity?.userId === currentUser?.id}
       />
     </div>
   );

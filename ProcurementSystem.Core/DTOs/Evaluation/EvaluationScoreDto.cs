@@ -11,6 +11,8 @@ namespace ProcurementSystem.Core.DTOs.Evaluation
         public int EvaluatorId { get; set; }
         public string? EvaluatorName { get; set; }
         public decimal Score { get; set; }
+        public decimal NormalizedScore => Math.Round(Helpers.EvaluationMath.Normalize(Score, MaxScore), 2);
+        public decimal WeightedScore => Math.Round(Helpers.EvaluationMath.Weighted(Score, MaxScore, Weight), 2);
         public string? Comment { get; set; }
         public DateTime ScoredAt { get; set; }
     }

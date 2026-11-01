@@ -28,6 +28,75 @@ namespace ProcurementSystem.Infrastructure.Services
             _notificationService = notificationService;
         }
 
+        public async Task<ApiResponse<List<PackageEntityOptionDto>>> GetCreatableEntitiesAsync(int userId)
+        {
+            var options = await _unitOfWork.Repository<ProcuringEntityMember>().Query().AsNoTracking()
+                .Where(m => m.UserId == userId && m.Status == MemberStatus.Active &&
+                    (m.RoleInEntity == ProcuringEntityMemberRole.Manager || m.RoleInEntity == ProcuringEntityMemberRole.Officer) &&
+                    m.ProcuringEntity.VerificationStatus == "Approved")
+                .OrderBy(m => m.ProcuringEntity.OrganizationName)
+                .Select(m => new PackageEntityOptionDto { Id = m.ProcuringEntityId, Name = m.ProcuringEntity.OrganizationName }).ToListAsync();
+            return ApiResponse<List<PackageEntityOptionDto>>.Ok(options);
+        }
+
+        public async Task<ApiResponse<List<BidPackageDto>>> GetOwnershipReviewsAsync()
+        {
+            var packages = await _unitOfWork.Repository<BidPackage>().Query().AsNoTracking()
+                .Include(p => p.Creator).Include(p => p.ProcuringEntity)
+                .Where(p => p.OwnershipNeedsReview || p.ProcuringEntityId == null).OrderBy(p => p.Id).ToListAsync();
+            return ApiResponse<List<BidPackageDto>>.Ok(packages.Select(MapToBidPackageDto).ToList());
+        }
+
+        public async Task<ApiResponse<BidPackageDto>> ReviewOwnershipAsync(int id, ReviewPackageOwnershipRequest request, int userId)
+        {
+            if (!await _unitOfWork.Repository<UserRole>().Query().AnyAsync(r => r.UserId == userId && r.Role.Name == "Admin"))
+                return ApiResponse<BidPackageDto>.Forbidden("Chỉ quản trị viên được xác nhận đối soát đơn vị sở hữu.");
+            if (string.IsNullOrWhiteSpace(request.EvidenceReference) || string.IsNullOrWhiteSpace(request.Note))
+                return ApiResponse<BidPackageDto>.Fail("Cần tài liệu đối soát và nội dung xác nhận đơn vị sở hữu.");
+            await _unitOfWork.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                var package = await _unitOfWork.Repository<BidPackage>().Query().Include(p => p.Creator)
+                    .Include(p => p.ProcuringEntity).FirstOrDefaultAsync(p => p.Id == id);
+                if (package == null || (!package.OwnershipNeedsReview && package.ProcuringEntityId != null) ||
+                    package.ProcuringEntityId != request.ExpectedProcuringEntityId)
+                {
+                    await _unitOfWork.RollbackTransactionAsync();
+                    return ApiResponse<BidPackageDto>.Fail("Dữ liệu đối soát đã thay đổi hoặc không còn cần xác nhận.", statusCode: 409);
+                }
+                var entity = await _unitOfWork.Repository<ProcuringEntity>().Query()
+                    .FirstOrDefaultAsync(p => p.Id == request.ProcuringEntityId && p.VerificationStatus == "Approved");
+                if (entity == null)
+                {
+                    await _unitOfWork.RollbackTransactionAsync();
+                    return ApiResponse<BidPackageDto>.Fail("Đơn vị sở hữu chưa được thẩm định hợp lệ.");
+                }
+                var contradictoryDecision = await _unitOfWork.Repository<Acceptance>().Query().AnyAsync(a =>
+                    a.Contract.BidPackageId == id && a.Status == AcceptanceStatus.Approved &&
+                    a.AppliedSigningAuthority != null && a.AppliedSigningAuthority.ProcuringEntityId != entity.Id);
+                if (contradictoryDecision)
+                {
+                    await _unitOfWork.RollbackTransactionAsync();
+                    return ApiResponse<BidPackageDto>.Fail("Đơn vị đề xuất mâu thuẫn với quyết định đã ký. Cần kiểm toán riêng.", statusCode: 409);
+                }
+                var previousEntityId = package.ProcuringEntityId;
+                package.ProcuringEntityId = entity.Id;
+                package.ProcuringEntity = entity;
+                package.OwnershipNeedsReview = false;
+                package.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.Repository<BidPackage>().UpdateScalar(package);
+                await _unitOfWork.Repository<AuditLog>().AddAsync(new AuditLog {
+                    UserId = userId, Action = "RESOLVE_PACKAGE_OWNERSHIP", EntityType = "BidPackage", EntityId = id,
+                    OldValues = JsonSerializer.Serialize(new { ProcuringEntityId = previousEntityId }),
+                    NewValues = JsonSerializer.Serialize(new { request.ProcuringEntityId, request.EvidenceReference, request.Note })
+                });
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
+                return ApiResponse<BidPackageDto>.Ok(MapToBidPackageDto(package));
+            }
+            catch { await _unitOfWork.RollbackTransactionAsync(); throw; }
+        }
+
         public async Task<ApiResponse<PaginatedList<BidPackageSummaryDto>>> GetBidPackagesAsync(BidPackageFilterParams filter)
         {
             var query = _unitOfWork.Repository<BidPackage>()
@@ -119,6 +188,7 @@ namespace ProcurementSystem.Infrastructure.Services
             var package = await _unitOfWork.Repository<BidPackage>()
                 .Query()
                 .Include(bp => bp.Creator)
+                .Include(bp => bp.ProcuringEntity)
                 .Include(bp => bp.BidDocuments)
                 .Include(bp => bp.BidSubmissions)
                 .AsNoTracking()
@@ -130,17 +200,74 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             var dto = MapToBidPackageDto(package);
+            var evaluatorCount = await _unitOfWork.Repository<BidPackageEvaluator>().CountAsync(e => e.BidPackageId == id);
+            var criteriaWeights = await _unitOfWork.Repository<EvaluationCriteria>().Query().AsNoTracking()
+                .Where(c => c.BidPackageId == id).Select(c => c.Weight).ToListAsync();
+            dto.IsCommitteeValid = evaluatorCount >= 3 && evaluatorCount % 2 == 1;
+            dto.CanEditCommittee = package.Status != BidPackageStatus.Awarded && package.Status != BidPackageStatus.Contracted
+                && package.Status != BidPackageStatus.Cancelled;
+            dto.RequiresEarlyCloseReason = package.Status == BidPackageStatus.Open && package.Deadline > DateTime.UtcNow;
+            if (!dto.IsCommitteeValid) dto.EvaluationBlockingReasons.Add("Tổ chuyên gia phải có số thành viên lẻ và tối thiểu 3 người.");
+            if (criteriaWeights.Count == 0 || criteriaWeights.Sum() != 100m)
+                dto.EvaluationBlockingReasons.Add("Bộ tiêu chí phải có tổng trọng số bằng 100%.");
+            dto.CanStartEvaluation = package.Status == BidPackageStatus.Closed && dto.EvaluationBlockingReasons.Count == 0;
             return ApiResponse<BidPackageDto>.Ok(dto);
         }
 
         public async Task<ApiResponse<BidPackageDto>> CreateBidPackageAsync(CreateBidPackageRequest request, int userId)
         {
-            // 0. Kiểm tra thẩm định hồ sơ Bên mời thầu (Luồng 2)
-            var procuringEntity = await _unitOfWork.Repository<ProcuringEntity>()
+            // R4-01: Xác định rõ Bên mời thầu (ProcuringEntity) sở hữu gói thầu ngay tại thời điểm tạo
+            // Người tạo bắt buộc phải là thành viên đang hoạt động (MemberStatus.Active) có quyền tạo gói (Manager hoặc Officer)
+            var activeMemberships = await _unitOfWork.Repository<ProcuringEntityMember>()
                 .Query()
-                .FirstOrDefaultAsync(pe => pe.UserId == userId);
+                .Include(m => m.ProcuringEntity)
+                .AsNoTracking()
+                .Where(m =>
+                    m.UserId == userId &&
+                    m.Status == MemberStatus.Active &&
+                    (m.RoleInEntity == ProcuringEntityMemberRole.Manager ||
+                     m.RoleInEntity == ProcuringEntityMemberRole.Officer))
+                .ToListAsync();
 
-            if (procuringEntity != null && procuringEntity.VerificationStatus != "Approved")
+            ProcuringEntity? procuringEntity = null;
+            if (request.ProcuringEntityId.HasValue)
+            {
+                var selectedMembership = activeMemberships
+                    .FirstOrDefault(m => m.ProcuringEntityId == request.ProcuringEntityId.Value);
+                if (selectedMembership == null || selectedMembership.ProcuringEntity == null)
+                {
+                    return ApiResponse<BidPackageDto>.Forbidden(
+                        "Bạn không phải là thành viên đang hoạt động có thẩm quyền tạo gói thầu tại Bên mời thầu đã chọn.");
+                }
+                procuringEntity = selectedMembership.ProcuringEntity;
+            }
+            else
+            {
+                if (activeMemberships.Count > 1)
+                {
+                    return ApiResponse<BidPackageDto>.Fail(
+                        "Tài khoản của bạn đang là thành viên hoạt động tại nhiều Bên mời thầu. Vui lòng chọn rõ Đơn vị mời thầu (ProcuringEntityId) khi tạo gói thầu.",
+                        statusCode: 400);
+                }
+
+                if (activeMemberships.Count == 1)
+                {
+                    procuringEntity = activeMemberships[0].ProcuringEntity;
+                }
+                else
+                {
+                    return ApiResponse<BidPackageDto>.Forbidden(
+                        "Bạn cần tư cách thành viên đang hoạt động với quyền tạo gói thầu tại đơn vị này.");
+                }
+            }
+
+            if (procuringEntity == null)
+            {
+                return ApiResponse<BidPackageDto>.Forbidden(
+                    "Không xác định được hồ sơ pháp nhân Bên mời thầu đang hoạt động cho tài khoản của bạn. Không thể tạo gói thầu.");
+            }
+
+            if (procuringEntity.VerificationStatus != "Approved")
             {
                 var msg = procuringEntity.VerificationStatus == "Pending"
                     ? "Hồ sơ pháp nhân Bên mời thầu của bạn đang ở trạng thái chờ thẩm định (Pending). Vui lòng chờ Quản trị viên (Admin) phê duyệt trước khi tạo gói thầu mới."
@@ -190,16 +317,20 @@ namespace ProcurementSystem.Infrastructure.Services
                 Status = BidPackageStatus.Open,
                 Description = request.Description?.Trim(),
                 CreatedBy = userId,
+                ProcuringEntityId = procuringEntity.Id,
                 CreatedAt = DateTime.UtcNow
             };
 
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, entity, userId, false))
+                return ApiResponse<BidPackageDto>.Forbidden("Tư cách thành viên hoặc quyền tạo gói đã thay đổi.");
             await _unitOfWork.Repository<BidPackage>().AddAsync(entity);
             await _unitOfWork.SaveChangesAsync();
 
-            // Load lại creator để hiển thị DTO
+            // Load lại creator và procuringEntity để hiển thị DTO
             var createdPackage = await _unitOfWork.Repository<BidPackage>()
                 .Query()
                 .Include(bp => bp.Creator)
+                .Include(bp => bp.ProcuringEntity)
                 .Include(bp => bp.BidDocuments)
                 .Include(bp => bp.BidSubmissions)
                 .AsNoTracking()
@@ -223,9 +354,9 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Phân quyền: Chỉ người tạo hoặc Admin mới được sửa
-            if (!isAdmin && package.CreatedBy != userId)
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, userId, isAdmin))
             {
-                return ApiResponse<BidPackageDto>.Fail("Bạn không có quyền chỉnh sửa gói thầu này.");
+                return ApiResponse<BidPackageDto>.Forbidden("Bạn không có quyền chỉnh sửa gói thầu này.");
             }
 
             // R2-1 & N2: Cho phép chỉnh sửa thông tin khi gói thầu đang mở thầu (Open) hoặc đã đóng (Closed) khi chưa có điểm chấm
@@ -294,9 +425,9 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Phân quyền: Chỉ người tạo hoặc Admin mới được đổi trạng thái
-            if (!isAdmin && package.CreatedBy != userId)
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, userId, isAdmin))
             {
-                return ApiResponse<BidPackageDto>.Fail("Bạn không có quyền thay đổi trạng thái gói thầu này.");
+                return ApiResponse<BidPackageDto>.Forbidden("Bạn không có quyền thay đổi trạng thái gói thầu này.");
             }
 
             if (package.Status == request.NewStatus)
@@ -578,9 +709,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<List<BidDocumentDto>>.Fail("Không tìm thấy gói thầu.");
             }
 
-            if (!isAdmin && package.CreatedBy != userId)
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, userId, isAdmin))
             {
-                return ApiResponse<List<BidDocumentDto>>.Fail("Bạn không có quyền upload tài liệu cho gói thầu này.");
+                return ApiResponse<List<BidDocumentDto>>.Forbidden("Bạn không có quyền upload tài liệu cho gói thầu này.");
             }
 
             // P2-2: Căn cứ Luật Đấu thầu: Chỉ được phép phát hành hoặc bổ sung tài liệu HSMT khi gói thầu đang trong thời hạn mở thầu (Open)
@@ -647,9 +778,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Không tìm thấy gói thầu liên quan.");
             }
 
-            if (!isAdmin && package.CreatedBy != userId)
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, userId, isAdmin))
             {
-                return ApiResponse<bool>.Fail("Bạn không có quyền xóa tài liệu của gói thầu này.");
+                return ApiResponse<bool>.Forbidden("Bạn không có quyền xóa tài liệu của gói thầu này.");
             }
 
             if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
@@ -1079,6 +1210,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 Description = package.Description,
                 CreatedBy = package.CreatedBy,
                 CreatedByName = package.Creator?.FullName,
+                ProcuringEntityId = package.ProcuringEntityId,
+                OwnershipNeedsReview = package.OwnershipNeedsReview,
+                ProcuringEntityName = package.ProcuringEntity?.OrganizationName,
                 CreatedAt = package.CreatedAt,
                 UpdatedAt = package.UpdatedAt,
                 BidDocuments = package.BidDocuments?.Select(d => new BidDocumentDto

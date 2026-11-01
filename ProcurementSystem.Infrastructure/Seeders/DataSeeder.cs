@@ -336,6 +336,21 @@ namespace ProcurementSystem.Infrastructure.Seeders
                 await context.SaveChangesAsync();
             }
 
+            // 2.2.2 Seed ProcuringEntityMember for procUser as Manager
+            var seededPe = await context.ProcuringEntities.FirstOrDefaultAsync(pe => procUser != null && pe.UserId == procUser.Id);
+            if (seededPe != null && procUser != null && !await context.ProcuringEntityMembers.AnyAsync(m => m.ProcuringEntityId == seededPe.Id && m.UserId == procUser.Id))
+            {
+                await context.ProcuringEntityMembers.AddAsync(new ProcuringEntityMember
+                {
+                    ProcuringEntityId = seededPe.Id,
+                    UserId = procUser.Id,
+                    RoleInEntity = ProcuringEntityMemberRole.Manager,
+                    Status = MemberStatus.Active,
+                    JoinedAt = seededPe.CreatedAt
+                });
+                await context.SaveChangesAsync();
+            }
+
             // 2.3 Evaluator 1 (Trưởng ban thẩm định)
             var evalUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "evaluator@procurement.com");
             if (evalUser == null)
@@ -597,6 +612,7 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     Status = BidPackageStatus.Open,
                     Description = "Cung cấp máy chủ rack và hệ thống SAN Storage phục vụ mở rộng dung lượng xử lý cơ sở dữ liệu doanh nghiệp.",
                     CreatedBy = procUserId,
+                    ProcuringEntityId = seededPe?.Id,
                     CreatedAt = DateTime.UtcNow.AddDays(-3)
                 };
                 await context.BidPackages.AddAsync(pkg1);
@@ -651,6 +667,7 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     Status = BidPackageStatus.Closed,
                     Description = "Trang bị gói bản quyền Windows Server và Microsoft Office thương mại cho cơ quan hành chính.",
                     CreatedBy = procUserId,
+                    ProcuringEntityId = seededPe?.Id,
                     CreatedAt = DateTime.UtcNow.AddDays(-10)
                 };
                 await context.BidPackages.AddAsync(pkg2);
@@ -725,6 +742,7 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     Status = BidPackageStatus.Evaluating,
                     Description = "Xây dựng giải pháp ERP tích hợp các phân hệ quản lý mua sắm thầu, kho bãi và kế toán tài chính.",
                     CreatedBy = procUserId,
+                    ProcuringEntityId = seededPe?.Id,
                     CreatedAt = DateTime.UtcNow.AddDays(-15)
                 };
                 await context.BidPackages.AddAsync(pkg3);
@@ -858,6 +876,7 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     Status = BidPackageStatus.Awarded,
                     Description = "Cung cấp thiết bị chuyển mạch Core Switch, Firewall thế hệ mới và dịch vụ cấu hình an ninh thông tin.",
                     CreatedBy = procUserId,
+                    ProcuringEntityId = seededPe?.Id,
                     CreatedAt = DateTime.UtcNow.AddDays(-25)
                 };
                 await context.BidPackages.AddAsync(pkg4);
@@ -956,6 +975,7 @@ namespace ProcurementSystem.Infrastructure.Seeders
                     Status = BidPackageStatus.Contracted,
                     Description = "Dịch vụ Cloud IaaS chuẩn Tier III phục vụ lưu trữ dữ liệu an toàn và dự phòng thảm họa.",
                     CreatedBy = procUserId,
+                    ProcuringEntityId = seededPe?.Id,
                     CreatedAt = DateTime.UtcNow.AddDays(-40)
                 };
                 await context.BidPackages.AddAsync(pkg5);

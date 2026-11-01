@@ -19,10 +19,14 @@ namespace ProcurementSystem.API.Controllers
     public class ProcuringEntitiesController : ControllerBase
     {
         private readonly IProcuringEntityService _procuringEntityService;
+        private readonly IProcuringEntityMemberService _memberService;
 
-        public ProcuringEntitiesController(IProcuringEntityService procuringEntityService)
+        public ProcuringEntitiesController(
+            IProcuringEntityService procuringEntityService,
+            IProcuringEntityMemberService memberService)
         {
             _procuringEntityService = procuringEntityService;
+            _memberService = memberService;
         }
 
         /// <summary>
@@ -222,6 +226,128 @@ namespace ProcurementSystem.API.Controllers
             }
 
             return PhysicalFile(file.Value.PhysicalPath, file.Value.ContentType, file.Value.FileName);
+        }
+
+        // ==========================================
+        // PHÂN HỆ QUẢN LÝ THÀNH VIÊN & LỜI MỜI (MEMBERSHIP & INVITATIONS)
+        // ==========================================
+
+        /// <summary>
+        /// Lấy danh sách thành viên của Bên mời thầu
+        /// </summary>
+        [HttpGet("{id:int}/members")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<List<ProcuringEntityMemberDto>>>> GetMembers(int id)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<List<ProcuringEntityMemberDto>>.Fail("Vui lòng đăng nhập.", statusCode: 401));
+
+            var result = await _memberService.GetMembersAsync(id, userId.Value, User.IsInRole("Admin"));
+            if (!result.Success) return StatusCode(result.StatusCode, result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Lấy danh sách lời mời tham gia của Bên mời thầu
+        /// </summary>
+        [HttpGet("{id:int}/invitations")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<List<ProcuringEntityInvitationDto>>>> GetInvitations(int id)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<List<ProcuringEntityInvitationDto>>.Fail("Vui lòng đăng nhập.", statusCode: 401));
+
+            var result = await _memberService.GetInvitationsAsync(id, userId.Value, User.IsInRole("Admin"));
+            if (!result.Success) return StatusCode(result.StatusCode, result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Gửi lời mời nhân sự tham gia Bên mời thầu (Gửi email kèm token xác thực)
+        /// </summary>
+        [HttpPost("{id:int}/invitations")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<ProcuringEntityInvitationDto>>> SendInvitation(
+            int id, [FromBody] SendInvitationRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<ProcuringEntityInvitationDto>.Fail("Vui lòng đăng nhập.", statusCode: 401));
+
+            var result = await _memberService.SendInvitationAsync(id, request, userId.Value, User.IsInRole("Admin"));
+            if (!result.Success) return StatusCode(result.StatusCode, result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Thu hồi lời mời tham gia Bên mời thầu
+        /// </summary>
+        [HttpDelete("{id:int}/invitations/{invitationId:int}")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<bool>>> RevokeInvitation(int id, int invitationId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<bool>.Fail("Vui lòng đăng nhập.", statusCode: 401));
+
+            var result = await _memberService.RevokeInvitationAsync(id, invitationId, userId.Value, User.IsInRole("Admin"));
+            if (!result.Success) return StatusCode(result.StatusCode, result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Cập nhật vai trò / quyền hạn của thành viên trong đơn vị
+        /// </summary>
+        [HttpPut("{id:int}/members/{memberId:int}/role")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<ProcuringEntityMemberDto>>> UpdateMemberRole(
+            int id, int memberId, [FromBody] UpdateMemberRoleRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<ProcuringEntityMemberDto>.Fail("Vui lòng đăng nhập.", statusCode: 401));
+
+            var result = await _memberService.UpdateMemberRoleAsync(id, memberId, request, userId.Value, User.IsInRole("Admin"));
+            if (!result.Success) return StatusCode(result.StatusCode, result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Thu hồi tư cách thành viên của đơn vị (khi nghỉ việc / chuyển công tác)
+        /// </summary>
+        [HttpDelete("{id:int}/members/{memberId:int}")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<bool>>> RevokeMember(int id, int memberId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue) return Unauthorized(ApiResponse<bool>.Fail("Vui lòng đăng nhập.", statusCode: 401));
+
+            var result = await _memberService.RevokeMemberAsync(id, memberId, userId.Value, User.IsInRole("Admin"));
+            if (!result.Success) return StatusCode(result.StatusCode, result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Xem thông tin chi tiết lời mời tham gia qua Token (Public Endpoint)
+        /// </summary>
+        [HttpGet("invitations/{token}")]
+        [AllowAnonymous]
+        public async Task<ActionResult<ApiResponse<InvitationDetailDto>>> GetInvitationDetails(string token)
+        {
+            var result = await _memberService.GetInvitationByTokenAsync(token);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Xác nhận chấp nhận lời mời tham gia Bên mời thầu (Người mới tự đặt mật khẩu hoặc tài khoản hiện có liên kết)
+        /// </summary>
+        [HttpPost("invitations/accept")]
+        [AllowAnonymous]
+        public async Task<ActionResult<ApiResponse<ProcuringEntityMemberDto>>> AcceptInvitation(
+            [FromBody] AcceptInvitationRequest request)
+        {
+            var currentUserId = GetCurrentUserId();
+            var result = await _memberService.AcceptInvitationAsync(request, currentUserId);
+            if (!result.Success) return StatusCode(result.StatusCode, result);
+            return Ok(result);
         }
 
         private int? GetCurrentUserId()

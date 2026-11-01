@@ -1,6 +1,7 @@
 import axiosClient from './axiosClient';
 
 export const bidPackageApi = {
+  getCreatableEntities: async () => axiosClient.get('/bid-packages/creatable-entities'),
   getPackages: async (params = {}) => {
     return await axiosClient.get('/bid-packages', { params });
   },

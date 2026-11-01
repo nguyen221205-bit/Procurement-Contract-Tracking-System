@@ -34,8 +34,8 @@ export const ContractAddendumTab = ({
   onOpenAddModal,
   onRefresh,
 }) => {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'Admin';
+  const { hasRole } = useAuth();
+  const isAdmin = hasRole('Admin');
   const addenda = contract?.addenda || [];
   const [uploadingId, setUploadingId] = useState(null);
   const [processingId, setProcessingId] = useState(null);
@@ -169,7 +169,7 @@ export const ContractAddendumTab = ({
                       <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${badgeClass}`}>
                         {a.typeName}
                       </span>
-                      {a.status === 3 || a.statusName === 'Chờ phê duyệt' ? (
+                      {a.status === 3 || a.status === 'Pending' ? (
                         <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           Chờ phê duyệt
@@ -233,7 +233,7 @@ export const ContractAddendumTab = ({
 
                   {/* Cụm Action Buttons */}
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    {isAdmin && (a.status === 3 || a.statusName === 'Chờ phê duyệt') && (
+                    {isAdmin && (a.status === 3 || a.status === 'Pending') && (
                       <div className="flex items-center gap-1">
                         <button
                           type="button"

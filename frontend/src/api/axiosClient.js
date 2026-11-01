@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { encodeRequestEnums } from './enumContract';
 
 const API_BASE_URL = 'http://localhost:5225/api';
 
@@ -21,7 +22,7 @@ axiosClient.interceptors.request.use(
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
     }
-    return config;
+    return encodeRequestEnums(config);
   },
   (error) => Promise.reject(error)
 );
@@ -31,10 +32,20 @@ axiosClient.interceptors.response.use(
   (response) => {
     return response.data;
   },
-  (error) => {
+  async (error) => {
     const originalRequest = error.config;
     const status = error.response?.status;
-    const data = error.response?.data;
+    let data = error.response?.data;
+
+    // T04: Nếu responseType là blob nhưng server trả về JSON lỗi (VD: 400, 401, 403, 404), giải mã text và parse JSON
+    if (data instanceof Blob && (data.type?.includes('application/json') || data.type === '')) {
+      try {
+        const text = await data.text();
+        data = JSON.parse(text);
+      } catch {
+        // Giữ nguyên data nếu không parse được
+      }
+    }
 
     // Handle 401 Unauthorized
     if (status === 401 && !originalRequest._retry) {
@@ -61,7 +72,10 @@ axiosClient.interceptors.response.use(
       }
     }
     message = message || error.message || 'Đã xảy ra lỗi kết nối';
-    return Promise.reject(new Error(message));
+    const err = new Error(message);
+    err.status = status;
+    err.response = error.response;
+    return Promise.reject(err);
   }
 );
 

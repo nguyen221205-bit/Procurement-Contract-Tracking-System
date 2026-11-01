@@ -21,17 +21,19 @@ import {
 import evaluationApi from '../../api/evaluationApi';
 import LoadingSpinner from '../common/LoadingSpinner';
 
-export default function BidEvaluationReportModal({ isOpen, onClose, packageId, fallbackData }) {
+export default function BidEvaluationReportModal({ isOpen, onClose, packageId }) {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(100);
   const reportRef = useRef(null);
+  const requestId = useRef(0);
 
   useEffect(() => {
     if (isOpen && packageId) {
       fetchReportData();
     }
+    return () => { requestId.current += 1; };
   }, [isOpen, packageId]);
 
   // Lắng nghe phím Escape
@@ -46,159 +48,19 @@ export default function BidEvaluationReportModal({ isOpen, onClose, packageId, f
   }, [isOpen, onClose]);
 
   const fetchReportData = async () => {
+    const currentRequest = ++requestId.current;
+    setLoading(true);
+    setReport(null);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
       const res = await evaluationApi.getEvaluationReport(packageId);
-      if (res && res.success && res.data) {
-        setReport(res.data);
-      } else {
-        // Fallback sang dữ liệu có sẵn nếu API chưa trả
-        if (fallbackData) {
-          setReport(buildFallbackReport(fallbackData));
-        } else {
-          setError(res?.message || 'Không thể tải dữ liệu báo cáo đánh giá.');
-        }
-      }
+      if (!res?.success || !res.data) throw new Error(res?.message || 'Không thể tải báo cáo đánh giá.');
+      if (currentRequest === requestId.current) setReport(res.data);
     } catch (err) {
-      console.warn('API getEvaluationReport error, falling back to local data if available:', err);
-      if (fallbackData) {
-        setReport(buildFallbackReport(fallbackData));
-      } else {
-        setError(err.message || 'Lỗi kết nối khi tải báo cáo đánh giá.');
-      }
+      if (currentRequest === requestId.current) setError(err.message || 'Lỗi kết nối khi tải báo cáo.');
     } finally {
-      setLoading(false);
+      if (currentRequest === requestId.current) setLoading(false);
     }
-  };
-
-  // Helper chuẩn hóa Unicode NFC chống lỗi dãn dấu Tiếng Việt
-  const nfc = (text) => (typeof text === 'string' ? text.normalize('NFC') : text);
-
-  // Helper chuyển đổi dữ liệu fallback nếu cần
-  const buildFallbackReport = (data) => {
-    const pkg = data.packageData || {};
-    const rankings = data.rankings || [];
-    const criteria = data.criteriaList || [];
-    const evaluators = data.evaluators || [];
-    const summary = data.summary || {};
-
-    const validSubmissions = rankings.filter(
-      (r) => r.status !== 'Withdrawn' && r.status !== 'Disqualified'
-    );
-    const nonPriceCriteria = criteria.filter((c) => !c.isPriceCriteria);
-    const totalCriteriaToScore = validSubmissions.length * nonPriceCriteria.length;
-
-    const committeeMembers = evaluators.map((e, idx) => {
-      const scoredCount = (e.scores || []).length;
-      const hasCompleted = totalCriteriaToScore > 0 && scoredCount >= totalCriteriaToScore;
-      const statusText =
-        totalCriteriaToScore === 0
-          ? 'Chưa có HSDT cần chấm'
-          : hasCompleted
-          ? 'Hoàn tất'
-          : scoredCount > 0
-          ? `Đang chấm (${scoredCount}/${totalCriteriaToScore})`
-          : 'Chưa chấm điểm';
-
-      return {
-        evaluatorId: e.evaluatorId || e.id,
-        fullName: nfc(e.evaluatorName || e.fullName || `Chuyên gia ${idx + 1}`),
-        email: e.email || '',
-        phone: e.phone || '',
-        committeeRole:
-          idx === 0
-            ? 'Tổ trưởng Tổ chuyên gia'
-            : idx % 2 === 1
-            ? 'Thành viên - Chuyên gia Đánh giá Kỹ thuật'
-            : 'Thành viên - Chuyên gia Thẩm định Tài chính',
-        hasCompletedScoring: hasCompleted,
-        scoredCriteriaCount: scoredCount,
-        totalCriteriaCount: totalCriteriaToScore,
-        scoringStatusText: statusText,
-      };
-    });
-
-    const completedEvaluatorsCount = committeeMembers.filter((m) => m.hasCompletedScoring).length;
-    const allEvaluatorsCompleted = committeeMembers.length > 0 && completedEvaluatorsCount === committeeMembers.length;
-    const isAwarded = pkg.status === 'Awarded';
-    const isFinalized = Boolean(summary.isFinalized || isAwarded || rankings.some((r) => r.status === 'Selected'));
-    const canFinalizeExport = isAwarded || (allEvaluatorsCompleted && validSubmissions.length > 0);
-
-    const winningSub = rankings.find(
-      (r) => r.status === 'Selected' || (r.rank === 1 && r.totalScore)
-    );
-
-    return {
-      reportNumber: `BC-ĐGHSDT-${pkg.code || 'SYS'}`,
-      generatedAt: new Date().toISOString(),
-      location: 'Hà Nội',
-      packageId: pkg.id,
-      packageCode: pkg.code,
-      packageName: nfc(pkg.name),
-      budget: pkg.budget || 0,
-      packageStatus: pkg.status,
-      deadline: pkg.deadline,
-      procuringEntityName: nfc(pkg.creator?.fullName || 'Ban Quản lý Dự án & Đấu thầu'),
-      procuringEntityTaxCode: '0101234567',
-      biddingMethod: 'Đấu thầu rộng rãi qua mạng (E-Bidding)',
-      biddingProcedure: 'Một giai đoạn một túi hồ sơ',
-      committeeMembers,
-      criteria: criteria.map((c) => ({
-        id: c.id,
-        name: nfc(c.name),
-        maxScore: c.maxScore,
-        weight: c.weight,
-        isPriceCriteria: c.isPriceCriteria,
-      })),
-      totalSubmissions: rankings.length,
-      evaluatedSubmissions: rankings.filter(
-        (r) => r.status === 'Evaluated' || r.status === 'Selected'
-      ).length,
-      rankings: rankings.map((r) => ({
-        submissionId: r.submissionId || r.id,
-        contractorId: r.contractorId,
-        companyName: nfc(r.companyName),
-        taxCode: r.taxCode,
-        bidPrice: r.bidPrice,
-        priceSavings: pkg.budget && r.bidPrice ? pkg.budget - r.bidPrice : null,
-        priceSavingsPercent:
-          pkg.budget && r.bidPrice
-            ? Math.round(((pkg.budget - r.bidPrice) / pkg.budget) * 100 * 100) / 100
-            : null,
-        totalScore: r.totalScore,
-        rank: r.rank,
-        status: r.status,
-        scores: r.scores || [],
-      })),
-      isFinalized: Boolean(canFinalizeExport && isFinalized),
-      allEvaluatorsCompleted,
-      totalEvaluatorsCount: committeeMembers.length,
-      completedEvaluatorsCount,
-      evaluationStage: isAwarded
-        ? 'Đã phê duyệt trao thầu & hoàn tất thẩm định'
-        : allEvaluatorsCompleted
-        ? 'Đã hoàn thành chấm điểm (Chờ phê duyệt kết quả)'
-        : completedEvaluatorsCount > 0
-        ? `Đang chấm điểm (Đã có ${completedEvaluatorsCount}/${committeeMembers.length} giám khảo hoàn tất)`
-        : 'Chưa bắt đầu chấm điểm (Chờ Tổ chuyên gia đánh giá)',
-      canFinalizeExport,
-      reportStatusLabel: canFinalizeExport
-        ? 'BÁO CÁO ĐÁNH GIÁ E-HSDT VÀ KẾT QUẢ LỰA CHỌN NHÀ THẦU'
-        : 'BÁO CÁO TIẾN ĐỘ ĐÁNH GIÁ E-HSDT (DỰ THẢO / NỘI BỘ)',
-      winningContractorName: canFinalizeExport ? summary.winningContractorName || winningSub?.companyName : null,
-      winningContractorTaxCode: canFinalizeExport ? summary.winningContractorTaxCode || winningSub?.taxCode : null,
-      winningBidPrice: canFinalizeExport ? summary.winningBidPrice || winningSub?.bidPrice : null,
-      winningTotalScore: canFinalizeExport ? summary.winningScore || winningSub?.totalScore : null,
-      decisionReason: canFinalizeExport
-        ? (winningSub?.selectionReason || 'Đạt tổng điểm đánh giá cao nhất, đáp ứng đầy đủ yêu cầu kỹ thuật và có hiệu quả tài chính tối ưu.')
-        : 'Gói thầu đang trong giai đoạn chấm điểm E-HSDT. Kết quả lựa chọn nhà thầu sẽ được công bố chính thức sau khi toàn bộ Tổ chuyên gia hoàn thành đánh giá và cấp có thẩm quyền phê duyệt.',
-      conclusionSummary: canFinalizeExport && winningSub
-        ? `Tổ chuyên gia xét thầu thống nhất kiến nghị Bên mời thầu / Người có thẩm quyền phê duyệt kết quả lựa chọn nhà thầu cho đơn vị: ${
-            winningSub.companyName
-          } với giá trúng thầu ${formatCurrency(winningSub.bidPrice)}.`
-        : `Hội đồng chuyên gia đang trong quá trình đánh giá và tổng hợp kết quả thẩm định E-HSDT (Hiện tại có ${completedEvaluatorsCount}/${committeeMembers.length} giám khảo hoàn tất). Chưa có kết quả xếp hạng và quyết định lựa chọn nhà thầu trúng thầu chính thức.`,
-    };
   };
 
   const formatCurrency = (val) => {

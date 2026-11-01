@@ -108,7 +108,7 @@ export const AddGuaranteeModal = ({ isOpen, onClose, contract, onSuccess }) => {
         guaranteeNumber: formData.guaranteeNumber.trim(),
         bankName: formData.bankName.trim(),
         amount: Number(formData.amount),
-        percentage: Number(formData.percentage),
+        // Amount is authoritative input; BE derives Percentage from the current contract value.
         effectiveDate: new Date(formData.effectiveDate).toISOString(),
         expiryDate: new Date(formData.expiryDate).toISOString(),
         notes: formData.notes?.trim() || null,

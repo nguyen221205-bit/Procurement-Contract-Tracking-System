@@ -69,5 +69,9 @@ namespace ProcurementSystem.Infrastructure.Entities
 
         [ForeignKey("ReviewedByUserId")]
         public virtual User? ReviewedByUser { get; set; }
+
+        public virtual ICollection<ProcuringEntityMember> Members { get; set; } = new List<ProcuringEntityMember>();
+        public virtual ICollection<ProcuringEntityInvitation> Invitations { get; set; } = new List<ProcuringEntityInvitation>();
+        public virtual ICollection<SigningAuthority> SigningAuthorities { get; set; } = new List<SigningAuthority>();
     }
 }

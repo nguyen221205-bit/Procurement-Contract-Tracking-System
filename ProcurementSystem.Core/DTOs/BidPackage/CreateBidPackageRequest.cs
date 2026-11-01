@@ -13,6 +13,8 @@ namespace ProcurementSystem.Core.DTOs.BidPackage
         public string Name { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Loại gói thầu là bắt buộc.")]
+        [EnumDataType(typeof(BidPackageType))]
+        [System.Text.Json.Serialization.JsonRequired]
         public BidPackageType Type { get; set; }
 
         [Required(ErrorMessage = "Dự toán ngân sách là bắt buộc.")]
@@ -24,5 +26,7 @@ namespace ProcurementSystem.Core.DTOs.BidPackage
 
         [MaxLength(2000, ErrorMessage = "Mô tả không được vượt quá 2000 ký tự.")]
         public string? Description { get; set; }
+
+        public int? ProcuringEntityId { get; set; }
     }
 }

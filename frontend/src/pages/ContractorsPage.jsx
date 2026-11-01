@@ -32,13 +32,11 @@ import {
   Award,
 } from 'lucide-react';
 
-const getContractorGrade = (rating) => {
-  const r = Number(rating) || 0;
-  if (r >= 85) return { grade: 'A', bg: 'bg-emerald-50 text-emerald-800 border-emerald-300' };
-  if (r >= 70) return { grade: 'B', bg: 'bg-blue-50 text-blue-800 border-blue-300' };
-  if (r >= 50) return { grade: 'C', bg: 'bg-amber-50 text-amber-800 border-amber-300' };
-  if (r > 0) return { grade: 'D', bg: 'bg-rose-50 text-rose-800 border-rose-300' };
-  return { grade: 'Chưa xếp', bg: 'bg-slate-100 text-slate-500 border-slate-200' };
+const GRADE_STYLES = {
+  A: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+  B: 'bg-blue-50 text-blue-800 border-blue-300',
+  C: 'bg-amber-50 text-amber-800 border-amber-300',
+  D: 'bg-rose-50 text-rose-800 border-rose-300',
 };
 
 export const ContractorsPage = () => {
@@ -352,7 +350,7 @@ export const ContractorsPage = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {contractors.map((c) => {
-                  const gradeObj = getContractorGrade(c.rating);
+                  const gradeObj = { grade: c.ratingGrade || '—', bg: GRADE_STYLES[c.ratingGrade] || 'bg-slate-50 text-slate-700' };
                   const r = Number(c.rating) || 0;
 
                   return (

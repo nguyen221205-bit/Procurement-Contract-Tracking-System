@@ -51,6 +51,8 @@ namespace ProcurementSystem.Core.DTOs.Contract
         [MaxLength(300)]
         public string Title { get; set; } = string.Empty;
 
+        [EnumDataType(typeof(AddendumType))]
+        [System.Text.Json.Serialization.JsonRequired]
         public AddendumType Type { get; set; } = AddendumType.TimelineExtension;
 
         public decimal AdditionalValue { get; set; } = 0;

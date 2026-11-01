@@ -1,3 +1,4 @@
+import { tryEnumValue } from '../../api/enumContract';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -218,7 +219,7 @@ export const NotificationBell = () => {
 
   // Render icon theo loại thông báo
   const getIcon = (type) => {
-    switch (type) {
+    switch (tryEnumValue('NotificationType', type)) {
       case 1: // Warning
         return <AlertTriangle className="w-4 h-4 text-amber-500" />;
       case 2: // ContractExpiring
@@ -226,6 +227,8 @@ export const NotificationBell = () => {
         return <Clock className="w-4 h-4 text-rose-500" />;
       case 4: // ProgressOverdue
         return <AlertCircle className="w-4 h-4 text-rose-600" />;
+      case 5: // Success
+        return <CheckCheck className="w-4 h-4 text-emerald-600" />;
       case 0: // Info
       default:
         return <Info className="w-4 h-4 text-sky-500" />;

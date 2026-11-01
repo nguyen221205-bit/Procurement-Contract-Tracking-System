@@ -7,6 +7,9 @@ namespace ProcurementSystem.Core.Interfaces
 {
     public interface IBidPackageService
     {
+        Task<ApiResponse<List<PackageEntityOptionDto>>> GetCreatableEntitiesAsync(int userId);
+        Task<ApiResponse<List<BidPackageDto>>> GetOwnershipReviewsAsync();
+        Task<ApiResponse<BidPackageDto>> ReviewOwnershipAsync(int id, ReviewPackageOwnershipRequest request, int userId);
         Task<ApiResponse<PaginatedList<BidPackageSummaryDto>>> GetBidPackagesAsync(BidPackageFilterParams filter);
         Task<ApiResponse<BidPackageDto>> GetBidPackageByIdAsync(int id);
         Task<ApiResponse<BidPackageDto>> CreateBidPackageAsync(CreateBidPackageRequest request, int userId);

@@ -44,6 +44,67 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<List<EvaluationCriteriaDto>>.Ok(criteriaList);
         }
 
+        public async Task<ApiResponse<List<EvaluationCriteriaDto>>> ReplaceCriteriaAsync(
+            int packageId, ReplaceCriteriaRequest request, int userId, bool isAdmin)
+        {
+            if (request.Items == null || request.Items.Count is < 1 or > 50 || request.ExpectedCriteria == null
+                || request.ExpectedCriteria.Any(c => c == null))
+                return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Bộ tiêu chí hoặc phiên bản dữ liệu không hợp lệ.");
+
+            foreach (var item in request.Items)
+            {
+                if (item == null || !System.ComponentModel.DataAnnotations.Validator.TryValidateObject(
+                    item, new System.ComponentModel.DataAnnotations.ValidationContext(item), new List<System.ComponentModel.DataAnnotations.ValidationResult>(), true)
+                    || decimal.Round(item.MaxScore, 2) != item.MaxScore || decimal.Round(item.Weight, 2) != item.Weight)
+                    return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Tiêu chí không hợp lệ; điểm và trọng số có tối đa 2 chữ số thập phân.");
+            }
+            if (request.Items.Sum(c => c.Weight) != 100m || request.Items.Count(c => c.IsPriceCriteria) > 1
+                || request.Items.Any(c => string.IsNullOrWhiteSpace(c.Name))
+                || request.Items.Select(c => c.Name.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != request.Items.Count)
+                return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Tổng trọng số phải bằng 100%, tên không trùng và tối đa một tiêu chí giá.");
+
+            await _unitOfWork.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            try
+            {
+                var package = await _unitOfWork.Repository<BidPackage>().GetByIdAsync(packageId);
+                if (package == null)
+                    return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Không tìm thấy gói thầu.");
+                if (!isAdmin && package.CreatedBy != userId)
+                    return ApiResponse<List<EvaluationCriteriaDto>>.Forbidden("Bạn không phụ trách gói thầu này.");
+                if (package.Status != BidPackageStatus.Open && package.Status != BidPackageStatus.Closed)
+                    return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Chỉ được thay tiêu chí trước khi bắt đầu chấm điểm.");
+
+                var current = await _unitOfWork.Repository<EvaluationCriteria>().Query()
+                    .Where(c => c.BidPackageId == packageId).OrderBy(c => c.Id).ToListAsync();
+                var expected = request.ExpectedCriteria.OrderBy(c => c.Id).ToList();
+                if (current.Count != expected.Count || current.Where((c, i) => c.Id != expected[i].Id
+                    || c.Name != expected[i].Name || c.MaxScore != expected[i].MaxScore
+                    || c.Weight != expected[i].Weight || c.IsPriceCriteria != expected[i].IsPriceCriteria).Any())
+                    return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Bộ tiêu chí đã thay đổi. Vui lòng tải lại trước khi áp dụng mẫu.", statusCode: 409);
+                if (await _unitOfWork.Repository<EvaluationScore>().Query()
+                    .AnyAsync(s => s.Criteria.BidPackageId == packageId))
+                    return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Không thể thay bộ tiêu chí đã có điểm chấm.");
+
+                foreach (var criteria in current) _unitOfWork.Repository<EvaluationCriteria>().Delete(criteria);
+                await _unitOfWork.SaveChangesAsync();
+                foreach (var item in request.Items)
+                    await _unitOfWork.Repository<EvaluationCriteria>().AddAsync(new EvaluationCriteria
+                    {
+                        BidPackageId = packageId, Name = item.Name.Trim(), MaxScore = item.MaxScore,
+                        Weight = item.Weight, IsPriceCriteria = item.IsPriceCriteria
+                    });
+                await _unitOfWork.SaveChangesAsync();
+                var result = await GetCriteriaByPackageAsync(packageId);
+                await _unitOfWork.CommitTransactionAsync();
+                return result;
+            }
+            finally
+            {
+                // Also roll back validation failures and failures after deleting the old criteria.
+                await _unitOfWork.RollbackTransactionAsync();
+            }
+        }
+
         public async Task<ApiResponse<EvaluationCriteriaDto>> CreateCriteriaAsync(int packageId, CreateCriteriaRequest request, int userId, bool isAdmin)
         {
             var package = await _unitOfWork.Repository<BidPackage>().GetByIdAsync(packageId);
@@ -58,7 +119,7 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Chỉ cho phép thêm tiêu chí khi gói thầu chưa chuyển sang giai đoạn chấm điểm hoặc ký hợp đồng
-            if (package.Status == BidPackageStatus.Evaluating || package.Status == BidPackageStatus.Contracted)
+            if (package.Status != BidPackageStatus.Open && package.Status != BidPackageStatus.Closed)
             {
                 return ApiResponse<EvaluationCriteriaDto>.Fail("Không thể thêm tiêu chí khi gói thầu đang trong giai đoạn chấm điểm hoặc đã ký hợp đồng.");
             }
@@ -147,7 +208,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<EvaluationCriteriaDto>.Fail("Bạn không có quyền chỉnh sửa tiêu chí này.");
             }
 
-            if (criteria.BidPackage.Status == BidPackageStatus.Evaluating || criteria.BidPackage.Status == BidPackageStatus.Contracted)
+            if (criteria.BidPackage.Status != BidPackageStatus.Open && criteria.BidPackage.Status != BidPackageStatus.Closed)
             {
                 return ApiResponse<EvaluationCriteriaDto>.Fail("Không thể chỉnh sửa tiêu chí khi gói thầu đang trong giai đoạn chấm điểm hoặc đã ký hợp đồng.");
             }
@@ -241,7 +302,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Bạn không có quyền xóa tiêu chí này.");
             }
 
-            if (criteria.BidPackage.Status == BidPackageStatus.Evaluating || criteria.BidPackage.Status == BidPackageStatus.Contracted)
+            if (criteria.BidPackage.Status != BidPackageStatus.Open && criteria.BidPackage.Status != BidPackageStatus.Closed)
             {
                 return ApiResponse<bool>.Fail("Không thể xóa tiêu chí khi gói thầu đang trong giai đoạn chấm điểm hoặc đã ký hợp đồng.");
             }
@@ -539,6 +600,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
+            if (package.Status == BidPackageStatus.Open)
+                return ApiResponse<List<SubmissionRankingDto>>.Fail("Hồ sơ đang được niêm phong, chưa thể xem bảng điểm.");
+
             var isEvaluating = package.Status == BidPackageStatus.Evaluating;
             var restrictEvaluator = isEvaluating && !isInternalStaff;
 
@@ -556,12 +620,22 @@ namespace ProcurementSystem.Infrastructure.Services
                 .ThenByDescending(s => s.TotalScore)
                 .ToListAsync();
 
+            var criteria = await _unitOfWork.Repository<EvaluationCriteria>().Query().AsNoTracking()
+                .Where(c => c.BidPackageId == packageId).ToListAsync();
+            var assignedIds = await _unitOfWork.Repository<BidPackageEvaluator>().Query()
+                .Where(e => e.BidPackageId == packageId).Select(e => e.EvaluatorId).ToListAsync();
+            var totalWeight = criteria.Sum(c => c.Weight);
+            var manualCriteria = criteria.Where(c => !c.IsPriceCriteria).ToList();
+            var activePrices = submissions.Where(s => s.Status != BidSubmissionStatus.Withdrawn
+                && s.Status != BidSubmissionStatus.Disqualified && s.BidPrice > 0).Select(s => s.BidPrice!.Value).ToList();
+            decimal? minPrice = activePrices.Count > 0 ? activePrices.Min() : null;
+
             var result = submissions.Select(s =>
             {
                 // Khi gói đang trong giai đoạn 'Evaluating', Giám khảo chỉ được xem điểm do chính mình chấm;
                 // Ẩn TotalScore và Rank để bảo đảm tính độc lập, khách quan tuyệt đối của từng thành viên Tổ chuyên gia (N14)
                 var scores = s.EvaluationScores
-                    .Where(es => !restrictEvaluator || es.EvaluatorId == currentUserId)
+                    .Where(es => assignedIds.Contains(es.EvaluatorId) && (!restrictEvaluator || es.EvaluatorId == currentUserId))
                     .Select(es => new EvaluationScoreDto
                     {
                         Id = es.Id,
@@ -575,6 +649,32 @@ namespace ProcurementSystem.Infrastructure.Services
                         Score = es.Score,
                         Comment = es.Comment,
                         ScoredAt = es.ScoredAt
+                    }).ToList();
+
+                var breakdown = criteria.Select(c =>
+                {
+                    var criterionScores = scores.Where(es => es.CriteriaId == c.Id).ToList();
+                    decimal? average = c.IsPriceCriteria
+                        ? (!restrictEvaluator && minPrice.HasValue && s.BidPrice > 0
+                            && s.Status != BidSubmissionStatus.Withdrawn && s.Status != BidSubmissionStatus.Disqualified
+                            ? Math.Round(minPrice.Value / s.BidPrice.Value * c.MaxScore, 2) : null)
+                        : (criterionScores.Count > 0 ? criterionScores.Average(es => es.Score) : null);
+                    return new CriteriaBreakdownDto
+                    {
+                        CriteriaId = c.Id, IsPriceCriteria = c.IsPriceCriteria, AverageScore = average,
+                        NormalizedScore = average.HasValue ? Math.Round(Core.Helpers.EvaluationMath.Normalize(average.Value, c.MaxScore), 2) : null,
+                        WeightedScore = average.HasValue ? Math.Round(Core.Helpers.EvaluationMath.Weighted(average.Value, c.MaxScore, c.Weight, totalWeight), 2) : null
+                    };
+                }).ToList();
+                var evaluatorSummaries = assignedIds.Where(id => !restrictEvaluator || id == currentUserId).Select(id =>
+                    new EvaluatorScoreSummaryDto
+                    {
+                        EvaluatorId = id,
+                        ManualMaxWeight = manualCriteria.Sum(c => c.Weight),
+                        ManualWeightedScore = Math.Round(manualCriteria.Sum(c => Core.Helpers.EvaluationMath.Weighted(
+                            scores.FirstOrDefault(es => es.EvaluatorId == id && es.CriteriaId == c.Id)?.Score ?? 0m,
+                            c.MaxScore, c.Weight, totalWeight)), 2),
+                        HasCompletedScoring = manualCriteria.Count > 0 && manualCriteria.All(c => scores.Any(es => es.EvaluatorId == id && es.CriteriaId == c.Id))
                     }).ToList();
 
                 return new SubmissionRankingDto
@@ -591,6 +691,8 @@ namespace ProcurementSystem.Infrastructure.Services
                     SelectionReason = s.SelectionReason,
                     DisqualificationReason = s.DisqualificationReason,
                     SubmittedAt = s.SubmittedAt,
+                    CriteriaBreakdown = breakdown,
+                    EvaluatorSummaries = evaluatorSummaries,
                     Scores = scores
                 };
             }).ToList();
@@ -1043,7 +1145,7 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<bool>.Ok(true, $"Đã loại bỏ hồ sơ dự thầu #{submissionId} khỏi quá trình xét thầu.");
         }
 
-        public async Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId, int currentUserId, bool isInternalStaff)
+        public async Task<ApiResponse<EvaluationSummaryDto>> GetEvaluationSummaryAsync(int packageId, int currentUserId, bool isInternalStaff, bool isAdmin = false)
         {
             var package = await _unitOfWork.Repository<BidPackage>()
                 .Query()
@@ -1055,7 +1157,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     bp.Code,
                     bp.Name,
                     bp.Budget,
-                    bp.Status
+                    bp.Status, bp.CreatedBy
                 })
                 .FirstOrDefaultAsync();
 
@@ -1134,6 +1236,14 @@ namespace ProcurementSystem.Infrastructure.Services
                 })
                 .FirstOrDefaultAsync();
 
+            var validSubmissions = submissionsQuery.Where(s => s.Status != BidSubmissionStatus.Withdrawn && s.Status != BidSubmissionStatus.Disqualified);
+            var canFinalize = isInternalStaff && (isAdmin || package.CreatedBy == currentUserId) && package.Status == BidPackageStatus.Evaluating
+                && await validSubmissions.AnyAsync() && !await validSubmissions.AnyAsync(s => s.Status != BidSubmissionStatus.Evaluated);
+            var terminatedContracts = _unitOfWork.Repository<Contract>().Query().Where(c => c.BidPackageId == packageId && c.Status == ContractStatus.Terminated);
+            var eligibleIds = canFinalize ? await validSubmissions.Where(s => s.TotalScore.HasValue
+                && !terminatedContracts.Any(c => c.ContractorId == s.ContractorId))
+                .Select(s => s.Id).ToListAsync() : new List<int>();
+
             var summary = new EvaluationSummaryDto
             {
                 BidPackageId = package.Id,
@@ -1149,6 +1259,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 HighestScore = highestScore,
                 LowestScore = lowestScore,
                 AverageScore = averageScore,
+                CanFinalize = canFinalize && eligibleIds.Count > 0,
+                EligibleSubmissionIds = eligibleIds,
                 IsFinalized = winningSub != null,
                 WinningSubmissionId = restrictEvaluator ? null : winningSub?.Id,
                 WinningContractorId = restrictEvaluator ? null : winningSub?.ContractorId,
@@ -1418,8 +1530,16 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
-            // Lấy thông tin Bên mời thầu
-            var procuringEntity = await _unitOfWork.Repository<ProcuringEntity>()
+            // Lấy thông tin Bên mời thầu (ưu tiên ProcuringEntityId cố định trên gói thầu - R4-01)
+            ProcuringEntity? procuringEntity = null;
+            if (package.ProcuringEntityId.HasValue)
+            {
+                procuringEntity = await _unitOfWork.Repository<ProcuringEntity>()
+                    .Query()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(pe => pe.Id == package.ProcuringEntityId.Value);
+            }
+            procuringEntity ??= await _unitOfWork.Repository<ProcuringEntity>()
                 .Query()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(pe => pe.UserId == package.CreatedBy);

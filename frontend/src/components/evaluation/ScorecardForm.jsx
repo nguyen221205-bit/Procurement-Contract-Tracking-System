@@ -1,3 +1,4 @@
+import { manualScorePreview } from '../../utils/scorePreview';
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
@@ -31,7 +32,7 @@ import { previewSecureFile, downloadSecureFile } from '../../utils/fileDownload'
  * - 3 hoặc 'Other': Tài liệu khác (slate)
  */
 const getFileTypeBadge = (fileType, fileTypeName) => {
-  const typeStr = String(fileTypeName || fileType || '').toLowerCase();
+  const typeStr = String(fileTypeName ?? fileType ?? '').toLowerCase();
   const typeNum = Number(fileType);
 
   if (
@@ -235,16 +236,7 @@ export const ScorecardForm = ({
 
   const manualCriteria = criteriaList.filter((c) => !c.isPriceCriteria);
 
-  // Calculate projected weighted total score
-  const calculateTotalWeightedScore = () => {
-    let sum = 0;
-    criteriaList.forEach((c) => {
-      const item = scoresMap[c.id];
-      const score = item?.score !== '' && !isNaN(item?.score) ? Number(item.score) : 0;
-      sum += (score * c.weight) / 100;
-    });
-    return Math.round(sum * 100) / 100;
-  };
+  const preview = manualScorePreview(criteriaList, scoresMap);
 
   // Count criteria with scores entered (chỉ tính tiêu chí cần chấm tay)
   const criteriaFilledCount = manualCriteria.filter((c) => {
@@ -355,11 +347,8 @@ export const ScorecardForm = ({
             const requiredCount = manualCriteria.length > 0 ? manualCriteria.length : criteriaList.length;
             const isScoredByMe = requiredCount > 0 && myScores.length >= requiredCount;
             const isPartiallyScored = myScores.length > 0 && myScores.length < requiredCount;
-            const myTotalScore = myScores.reduce((sum, s) => {
-              const crit = criteriaList.find((c) => c.id === s.criteriaId);
-              const w = crit ? crit.weight : 0;
-              return sum + (s.score * w) / 100;
-            }, 0);
+            const mySummary = sub.evaluatorSummaries?.find((entry) => Number(entry.evaluatorId) === Number(user?.id));
+            const myTotalScore = mySummary?.manualWeightedScore;
             const uniqueEvaluatorsCount = new Set(sub.scores?.map((s) => s.evaluatorId)).size;
 
             return (
@@ -569,8 +558,7 @@ export const ScorecardForm = ({
                   <tbody className="divide-y divide-slate-100">
                     {criteriaList.map((crit, idx) => {
                       const item = scoresMap[crit.id] || { score: '', comment: '' };
-                      const scoreVal = item.score !== '' && !isNaN(item.score) ? Number(item.score) : 0;
-                      const weightedScore = (scoreVal * crit.weight) / 100;
+                      const weightedScore = preview.contributions[crit.id];
 
                       return (
                         <React.Fragment key={crit.id}>
@@ -660,7 +648,7 @@ export const ScorecardForm = ({
                       {isViewingOwnScorecard ? 'Tổng điểm quy đổi dự kiến của bạn:' : 'Tổng điểm quy đổi của phiếu này:'}
                     </span>
                     <span className="text-xs text-slate-400">
-                      ({criteriaFilledCount}/{criteriaList.length} tiêu chí đã nhập)
+                      ({criteriaFilledCount}/{manualCriteria.length} tiêu chí chấm tay đã nhập)
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500">
@@ -670,9 +658,9 @@ export const ScorecardForm = ({
 
                 <div className="text-right">
                   <span className="text-2xl font-black text-blue-700">
-                    {formatNumber(calculateTotalWeightedScore())}
+                    {formatNumber(preview.total)}
                   </span>
-                  <span className="text-xs font-medium text-slate-400"> / 100 điểm</span>
+                  <span className="text-xs font-medium text-slate-400"> / {formatNumber(preview.maxWeight)} điểm chấm tay (dự kiến)</span>
                 </div>
               </div>
 

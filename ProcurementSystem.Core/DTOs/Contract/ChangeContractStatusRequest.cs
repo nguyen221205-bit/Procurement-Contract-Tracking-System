@@ -6,6 +6,8 @@ namespace ProcurementSystem.Core.DTOs.Contract
     public class ChangeContractStatusRequest
     {
         [Required(ErrorMessage = "Trạng thái mới là bắt buộc.")]
+        [EnumDataType(typeof(ContractStatus))]
+        [System.Text.Json.Serialization.JsonRequired]
         public ContractStatus NewStatus { get; set; }
 
         [MaxLength(1000)]

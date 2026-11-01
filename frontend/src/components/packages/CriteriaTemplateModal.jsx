@@ -34,26 +34,12 @@ export const CriteriaTemplateModal = ({
     try {
       setLoading(true);
 
-      // 1. Xóa các tiêu chí cũ nếu có
-      if (existingCriteria.length > 0) {
-        for (const crit of existingCriteria) {
-          try {
-            await evaluationApi.deleteCriteria(crit.id);
-          } catch (err) {
-            console.warn(`Lỗi khi xóa tiêu chí cũ #${crit.id}:`, err);
-          }
-        }
-      }
-
-      // 2. Tạo tuần tự các tiêu chí trong bộ mẫu mới
-      for (const item of currentTemplate.items) {
-        await evaluationApi.createCriteria(packageId, {
-          name: item.name,
-          maxScore: item.maxScore,
-          weight: item.weight,
-          isPriceCriteria: Boolean(item.isPriceCriteria),
-        });
-      }
+      const result = await evaluationApi.replaceCriteria(packageId, {
+        items: currentTemplate.items.map((item) => ({ ...item, isPriceCriteria: Boolean(item.isPriceCriteria) })),
+        expectedCriteria: existingCriteria.map(({ id, name, maxScore, weight, isPriceCriteria }) =>
+          ({ id, name, maxScore, weight, isPriceCriteria: Boolean(isPriceCriteria) })),
+      });
+      if (!result?.success) throw new Error(result?.message || 'Không thể áp dụng bộ tiêu chí.');
 
       toast.success(`Đã áp dụng bộ tiêu chí "${currentTemplate.name}"!`);
       onSuccess();

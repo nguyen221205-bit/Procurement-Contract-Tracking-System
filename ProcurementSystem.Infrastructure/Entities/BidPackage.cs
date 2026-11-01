@@ -28,12 +28,16 @@ namespace ProcurementSystem.Infrastructure.Entities
         public string? Description { get; set; }
 
         public int CreatedBy { get; set; }
+        public int? ProcuringEntityId { get; set; }
+        public bool OwnershipNeedsReview { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
 
         // Navigation properties
         [ForeignKey("CreatedBy")]
         public virtual User Creator { get; set; } = null!;
+        [ForeignKey("ProcuringEntityId")]
+        public virtual ProcuringEntity? ProcuringEntity { get; set; }
         public virtual ICollection<BidDocument> BidDocuments { get; set; } = new List<BidDocument>();
         public virtual ICollection<BidSubmission> BidSubmissions { get; set; } = new List<BidSubmission>();
         public virtual ICollection<EvaluationCriteria> EvaluationCriteria { get; set; } = new List<EvaluationCriteria>();

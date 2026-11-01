@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Calendar, DollarSign, FileText, Upload, Plus, Trash2, Box, Hammer, Briefcase, Clock, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { bidPackageApi } from '../../api/bidPackageApi';
+import { useAuth } from '../../context/AuthContext';
 import { formatVND } from '../../utils/formatters';
 
 const PACKAGE_TYPE_OPTIONS = [
@@ -11,7 +12,12 @@ const PACKAGE_TYPE_OPTIONS = [
 ];
 
 export const CreatePackageModal = ({ isOpen, onClose, onSuccess }) => {
+  const { user } = useAuth();
+  const [entities, setEntities] = useState([]);
+  const [entitiesLoading, setEntitiesLoading] = useState(true);
+  const [entitiesError, setEntitiesError] = useState('');
   const [formData, setFormData] = useState({
+    procuringEntityId: '',
     name: '',
     code: '',
     type: 'Goods',
@@ -23,6 +29,25 @@ export const CreatePackageModal = ({ isOpen, onClose, onSuccess }) => {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    setEntities([]);
+    setEntitiesError('');
+    setEntitiesLoading(true);
+    setFormData(prev => ({ ...prev, procuringEntityId: '' }));
+    if (isOpen && user?.id) {
+      bidPackageApi.getCreatableEntities().then(res => {
+        if (cancelled) return;
+        const available = res.data || [];
+        setEntities(available);
+        setFormData(prev => ({ ...prev, procuringEntityId: available.length === 1 ? String(available[0].id) : '' }));
+      }).catch(err => {
+        if (!cancelled) setEntitiesError(err.message || 'Không thể tải danh sách đơn vị. Vui lòng mở lại cửa sổ.');
+      }).finally(() => { if (!cancelled) setEntitiesLoading(false); });
+    }
+    return () => { cancelled = true; };
+  }, [isOpen, user?.id]);
 
   if (!isOpen) return null;
 
@@ -71,6 +96,9 @@ export const CreatePackageModal = ({ isOpen, onClose, onSuccess }) => {
   // Validate form
   const validateForm = () => {
     const newErrors = {};
+    if (entitiesLoading || entitiesError || !entities.some(entity => String(entity.id) === formData.procuringEntityId)) {
+      newErrors.procuringEntityId = 'Vui lòng chọn đơn vị bạn có quyền tạo gói thầu.';
+    }
 
     if (!formData.name.trim()) {
       newErrors.name = 'Vui lòng nhập tên gói thầu.';
@@ -105,6 +133,7 @@ export const CreatePackageModal = ({ isOpen, onClose, onSuccess }) => {
       setLoading(true);
 
       const payload = {
+        procuringEntityId: Number(formData.procuringEntityId),
         name: formData.name.trim(),
         code: formData.code.trim() || undefined,
         type: formData.type,
@@ -183,6 +212,19 @@ export const CreatePackageModal = ({ isOpen, onClose, onSuccess }) => {
 
         {/* Thân Form cuộn được */}
         <form onSubmit={handleSubmit} noValidate className="p-6 overflow-y-auto space-y-5 text-xs flex-1">
+          <div className="space-y-1.5">
+            <label htmlFor="package-entity" className="font-semibold text-slate-800">Đơn vị mời thầu <span className="text-rose-500">*</span></label>
+            <select id="package-entity" value={formData.procuringEntityId}
+              disabled={loading || entitiesLoading}
+              onChange={e => handleInputChange('procuringEntityId', e.target.value)}
+              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl bg-white">
+              <option value="">{entitiesLoading ? 'Đang tải đơn vị…' : 'Chọn đơn vị mời thầu'}</option>
+              {entities.map(entity => <option key={entity.id} value={entity.id}>{entity.name}</option>)}
+            </select>
+            {entitiesError && <p role="alert" className="text-rose-500">{entitiesError}</p>}
+            {!entitiesLoading && !entitiesError && entities.length === 0 && <p role="alert">Bạn chưa có quyền tạo gói thầu tại đơn vị nào.</p>}
+            {errors.procuringEntityId && <p role="alert" className="text-rose-500">{errors.procuringEntityId}</p>}
+          </div>
           {/* Tên gói thầu */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -414,7 +456,7 @@ export const CreatePackageModal = ({ isOpen, onClose, onSuccess }) => {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || entitiesLoading || !entities.length || !!entitiesError}
               className="px-5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-xs transition disabled:opacity-50 flex items-center space-x-2"
             >
               {loading && (

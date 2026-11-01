@@ -38,6 +38,16 @@ namespace ProcurementSystem.API.Controllers
             return Ok(result);
         }
 
+        /// <summary>Thay toàn bộ bộ tiêu chí nguyên tử, có kiểm tra phiên bản dữ liệu.</summary>
+        [HttpPut("packages/{packageId:int}/criteria")]
+        [Authorize(Roles = "Admin,Procurement")]
+        public async Task<ActionResult<ApiResponse<List<EvaluationCriteriaDto>>>> ReplaceCriteria(
+            int packageId, [FromBody] ReplaceCriteriaRequest request)
+        {
+            var result = await _evaluationService.ReplaceCriteriaAsync(packageId, request, GetCurrentUserId(), User.IsInRole("Admin"));
+            return result.Success ? Ok(result) : StatusCode(result.StatusCode, result);
+        }
+
         /// <summary>
         /// Tạo mới tiêu chí đánh giá cho gói thầu (tên, thang điểm, trọng số, cờ IsPriceCriteria)
         /// </summary>
@@ -244,7 +254,7 @@ namespace ProcurementSystem.API.Controllers
             }
 
             bool isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
-            var result = await _evaluationService.GetEvaluationSummaryAsync(packageId, userId, isInternalStaff);
+            var result = await _evaluationService.GetEvaluationSummaryAsync(packageId, userId, isInternalStaff, User.IsInRole("Admin"));
             if (!result.Success) return NotFound(result);
             return Ok(result);
         }

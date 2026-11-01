@@ -30,48 +30,13 @@ export const ContractorEvaluationModal = ({ isOpen, onClose, contract, existingE
 
   const totalScore = Number(qualityScore) + Number(scheduleScore) + Number(complianceScore);
 
-  const getGradeInfo = (score) => {
-    if (score >= 85) {
-      return {
-        grade: 'A',
-        label: 'Hạng A - Xuất sắc',
-        desc: 'Đạt chất lượng cao, hoàn thành đúng hạn và tuân thủ chặt chẽ cam kết.',
-        badgeBg: 'bg-emerald-50 text-emerald-900 border-emerald-200',
-        starColor: 'text-emerald-600',
-        scoreColor: 'text-emerald-700',
-      };
-    }
-    if (score >= 70) {
-      return {
-        grade: 'B',
-        label: 'Hạng B - Đạt yêu cầu',
-        desc: 'Đáp ứng đầy đủ yêu cầu hợp đồng, đủ điều kiện tham gia các gói tiếp theo.',
-        badgeBg: 'bg-blue-50 text-blue-900 border-blue-200',
-        starColor: 'text-blue-600',
-        scoreColor: 'text-blue-700',
-      };
-    }
-    if (score >= 50) {
-      return {
-        grade: 'C',
-        label: 'Hạng C - Cần cải thiện',
-        desc: 'Có phát sinh chậm trễ hoặc khiếm khuyết nhỏ đã được khắc phục.',
-        badgeBg: 'bg-amber-50 text-amber-900 border-amber-200',
-        starColor: 'text-amber-600',
-        scoreColor: 'text-amber-700',
-      };
-    }
-    return {
-      grade: 'D',
-      label: 'Hạng D - Cảnh báo rủi ro',
-      desc: 'Vi phạm tiến độ nghiêm trọng hoặc chất lượng không đạt thỏa thuận.',
-      badgeBg: 'bg-rose-50 text-rose-900 border-rose-200',
-      starColor: 'text-rose-600',
-      scoreColor: 'text-rose-700',
-    };
+  const gradeInfo = {
+    label: 'Điểm nhập dự kiến',
+    desc: 'Xếp hạng chính thức được hệ thống xác định khi lưu đánh giá.',
+    badgeBg: 'bg-blue-50 text-blue-900 border-blue-200',
+    starColor: 'text-blue-600',
+    scoreColor: 'text-blue-700',
   };
-
-  const gradeInfo = getGradeInfo(totalScore);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -101,7 +66,7 @@ export const ContractorEvaluationModal = ({ isOpen, onClose, contract, existingE
       const res = await contractApi.evaluateContractor(contract.id, payload);
 
       if (res?.success) {
-        toast.success(`Đánh giá nhà thầu thành công! Xếp hạng: ${gradeInfo.label}`);
+        toast.success(`Đánh giá nhà thầu thành công! Xếp hạng: ${res.data?.ratingGrade || 'Đã lưu'}`);
         onSuccess?.();
         onClose();
       } else {

@@ -9,7 +9,7 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Danh sách hợp đồng phân trang (Admin/Procurement xem tất cả, Contractor chỉ xem hợp đồng của mình)
         /// </summary>
-        Task<ApiResponse<PaginatedList<ContractSummaryDto>>> GetContractsAsync(ContractFilterParams filter, int userId, bool isInternalStaff);
+        Task<ApiResponse<ContractListDto>> GetContractsAsync(ContractFilterParams filter, int userId, bool isInternalStaff);
 
         /// <summary>
         /// Xem chi tiết hợp đồng kèm mốc thanh toán
@@ -72,7 +72,12 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<ProgressUpdateDto>> AddMilestoneProgressUpdateAsync(int milestoneId, CreateProgressUpdateRequest request, int userId);
 
         /// <summary>
-        /// Phê duyệt hoặc từ chối biên bản nghiệm thu mốc thanh toán (chỉ Admin/Procurement phụ trách gói thầu)
+        /// Xác nhận kỹ thuật hiện trường mốc thanh toán (Maker - Bước 1 trước khi Lãnh đạo duyệt giải ngân)
+        /// </summary>
+        Task<ApiResponse<MilestoneAcceptanceDto>> TechnicalReviewMilestoneAsync(int milestoneId, TechnicalReviewMilestoneRequest request, int userId, bool isAdmin);
+
+        /// <summary>
+        /// Phê duyệt hoặc từ chối biên bản nghiệm thu giải ngân mốc thanh toán (Checker - Bước 2 có kiểm soát chéo)
         /// </summary>
         Task<ApiResponse<MilestoneAcceptanceDto>> ApproveMilestoneAcceptanceAsync(int milestoneId, ApproveMilestoneAcceptanceRequest request, int userId, bool isAdmin);
 
@@ -128,6 +133,12 @@ namespace ProcurementSystem.Core.Interfaces
         /// Tải/xem file phụ lục hợp đồng an toàn
         /// </summary>
         Task<(string PhysicalPath, string ContentType, string FileName)?> GetAddendumDocumentForDownloadAsync(int contractId, int addendumId, int userId, bool isInternalStaff, bool isAdmin);
+
+        /// <summary>
+        /// Tải tệp tài liệu snapshot nghiệm thu kỹ thuật an toàn (kiểm soát chặt chẽ phạm vi đơn vị và nhà thầu sở hữu)
+        /// </summary>
+        Task<ApiResponse<(string PhysicalPath, string FileName, string ContentType)>> GetAcceptanceSnapshotDocumentDownloadAsync(
+            int milestoneId, int acceptanceId, int userId, bool isAdmin, bool isProcurement, bool isContractor);
         #endregion
 
         #region Contractor Evaluation (Đánh giá uy tín & xếp hạng nhà thầu)

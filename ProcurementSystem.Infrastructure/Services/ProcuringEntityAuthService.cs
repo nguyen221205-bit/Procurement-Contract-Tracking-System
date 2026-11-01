@@ -175,6 +175,13 @@ namespace ProcurementSystem.Infrastructure.Services
                 };
 
                 await _context.ProcuringEntities.AddAsync(procuringEntity);
+                // Registration creates the initial Manager membership explicitly.
+                // Spending/signing authority still requires independent verification.
+                await _context.ProcuringEntityMembers.AddAsync(new ProcuringEntityMember {
+                    ProcuringEntity = procuringEntity, UserId = user.Id,
+                    RoleInEntity = ProcuringEntityMemberRole.Manager, Status = MemberStatus.Active,
+                    JoinedAt = procuringEntity.CreatedAt
+                });
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 

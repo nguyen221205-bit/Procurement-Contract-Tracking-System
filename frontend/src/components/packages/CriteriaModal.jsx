@@ -49,8 +49,8 @@ export const CriteriaModal = ({
 
   // Xử lý chọn nhanh gợi ý tên tiêu chí mẫu lẻ
   const handleSelectSuggestion = (suggestedName) => {
-    const isPrice = suggestedName.toLowerCase().includes('giá') || suggestedName.toLowerCase().includes('chi phí');
-    setFormData((prev) => ({ ...prev, name: suggestedName, isPriceCriteria: isPrice }));
+    const suggestion = typeof suggestedName === 'string' ? { name: suggestedName } : suggestedName;
+    setFormData((prev) => ({ ...prev, name: suggestion.name, isPriceCriteria: Boolean(suggestion.isPriceCriteria) }));
     if (errors.name) {
       setErrors((prev) => ({ ...prev, name: null }));
     }
@@ -175,12 +175,12 @@ export const CriteriaModal = ({
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {SINGLE_CRITERIA_SUGGESTIONS.map((suggestion) => (
                   <button
-                    key={suggestion}
+                    key={typeof suggestion === 'string' ? suggestion : suggestion.name}
                     type="button"
                     onClick={() => handleSelectSuggestion(suggestion)}
                     className="px-2 py-1 bg-white hover:bg-sky-100 text-slate-700 hover:text-sky-800 border border-slate-200 rounded-lg text-[10px] font-medium transition shadow-2xs"
                   >
-                    + {suggestion}
+                    + {typeof suggestion === 'string' ? suggestion : suggestion.name}
                   </button>
                 ))}
               </div>

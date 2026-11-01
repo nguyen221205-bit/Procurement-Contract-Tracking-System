@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using ProcurementSystem.Core.Enums;
 
 namespace ProcurementSystem.Core.DTOs.BidPackage
@@ -5,7 +6,9 @@ namespace ProcurementSystem.Core.DTOs.BidPackage
     public class BidPackageFilterParams
     {
         public string? Search { get; set; }
+        [EnumDataType(typeof(BidPackageType))]
         public BidPackageType? Type { get; set; }
+        [EnumDataType(typeof(BidPackageStatus))]
         public BidPackageStatus? Status { get; set; }
         public decimal? MinBudget { get; set; }
         public decimal? MaxBudget { get; set; }

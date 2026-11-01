@@ -46,6 +46,10 @@ namespace ProcurementSystem.Infrastructure.Repositories
             _dbSet.Update(entity);
         }
 
+        // Mark only the root. Authorization version touches must not overwrite
+        // related users/entities loaded earlier in this request.
+        public void UpdateScalar(T entity) => _context.Entry(entity).State = EntityState.Modified;
+
         public void Delete(T entity)
         {
             _dbSet.Remove(entity);

@@ -21,6 +21,11 @@ namespace ProcurementSystem.Infrastructure.Entities
 
         public MilestoneStatus Status { get; set; } = MilestoneStatus.Pending;
 
+        public int Version { get; set; } = 1;
+
+        [Timestamp]
+        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
         // Navigation properties
         [ForeignKey("ContractId")]
         public virtual Contract Contract { get; set; } = null!;

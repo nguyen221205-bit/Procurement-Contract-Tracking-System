@@ -25,6 +25,8 @@ namespace ProcurementSystem.Core.DTOs.Contractor
 
         /// <summary>Điểm đánh giá uy tín năng lực nhà thầu (0.0 đến 5.0 sao)</summary>
         public decimal Rating { get; set; }
+        public string RatingGrade => Helpers.ContractorRatingPolicy.Grade(Rating);
+        public string RatingGradeName => Helpers.ContractorRatingPolicy.GradeName(Rating);
 
         /// <summary>Thời điểm nhà thầu đăng ký trên hệ thống (UTC)</summary>
         public DateTime CreatedAt { get; set; }

@@ -34,6 +34,64 @@ export const procuringEntityApi = {
       responseType: 'blob',
     });
   },
+
+  // Quản lý thành viên & Lời mời nội bộ (Maker - Checker Membership)
+  getMembers: async (entityId) => {
+    return await axiosClient.get(`/procuring-entities/${entityId}/members`);
+  },
+
+  getInvitations: async (entityId) => {
+    return await axiosClient.get(`/procuring-entities/${entityId}/invitations`);
+  },
+
+  sendInvitation: async (entityId, data) => {
+    return await axiosClient.post(`/procuring-entities/${entityId}/invitations`, data);
+  },
+
+  revokeInvitation: async (entityId, invitationId) => {
+    return await axiosClient.delete(`/procuring-entities/${entityId}/invitations/${invitationId}`);
+  },
+
+  updateMemberRole: async (entityId, memberId, data) => {
+    return await axiosClient.put(`/procuring-entities/${entityId}/members/${memberId}`, data);
+  },
+
+  revokeMember: async (entityId, memberId) => {
+    return await axiosClient.delete(`/procuring-entities/${entityId}/members/${memberId}`);
+  },
+
+  getInvitationDetails: async (token) => {
+    return await axiosClient.get(`/procuring-entities/invitations/${token}`);
+  },
+
+  acceptInvitation: async (data) => {
+    return await axiosClient.post('/procuring-entities/invitations/accept', data);
+  },
+
+  // Quản lý thẩm quyền ký duyệt (Signing Authorities - Transparency & Integrity Control)
+  getSigningAuthorities: async (entityId) => {
+    return await axiosClient.get(`/procuring-entities/${entityId}/signing-authorities`);
+  },
+
+  requestSigningAuthority: async (entityId, data) => {
+    return await axiosClient.post(`/procuring-entities/${entityId}/signing-authorities`, data);
+  },
+
+  getPendingSigningAuthorities: async () => {
+    return await axiosClient.get('/signing-authorities/pending');
+  },
+
+  getSigningAuthorityById: async (id) => {
+    return await axiosClient.get(`/signing-authorities/${id}`);
+  },
+
+  verifySigningAuthority: async (id, data) => {
+    return await axiosClient.put(`/signing-authorities/${id}/verify`, data);
+  },
+
+  revokeSigningAuthority: async (id, data) => {
+    return await axiosClient.put(`/signing-authorities/${id}/revoke`, data);
+  },
 };
 
 export default procuringEntityApi;

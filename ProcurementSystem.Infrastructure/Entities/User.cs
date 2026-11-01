@@ -32,5 +32,7 @@ namespace ProcurementSystem.Infrastructure.Entities
         public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
         public virtual Contractor? Contractor { get; set; }
         public virtual ProcuringEntity? ProcuringEntity { get; set; }
+        public virtual ICollection<ProcuringEntityMember> EntityMemberships { get; set; } = new List<ProcuringEntityMember>();
+        public virtual ICollection<SigningAuthority> SigningAuthorities { get; set; } = new List<SigningAuthority>();
     }
 }

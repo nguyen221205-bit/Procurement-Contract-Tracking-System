@@ -1,3 +1,4 @@
+import { tryEnumValue } from '../api/enumContract';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -118,7 +119,7 @@ export const NotificationsPage = () => {
 
   // Render icon & badge theo loại thông báo
   const renderTypeInfo = (type) => {
-    switch (type) {
+    switch (tryEnumValue('NotificationType', type)) {
       case 1: // Warning
         return {
           icon: <AlertTriangle className="w-5 h-5 text-amber-600" />,
@@ -147,6 +148,8 @@ export const NotificationsPage = () => {
           badgeText: 'Quá hạn tiến độ',
           dotBg: 'bg-rose-500',
         };
+      case 5: // Success
+        return { icon: <Check className="w-5 h-5 text-emerald-600" />, bg: 'bg-emerald-50 border-emerald-200 text-emerald-800', badgeText: 'Thành công', dotBg: 'bg-emerald-500' };
       case 0: // Info
       default:
         return {

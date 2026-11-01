@@ -56,6 +56,11 @@ namespace ProcurementSystem.Core.DTOs.Contract
         /// <summary>Danh sách mốc thanh toán/nghiệm thu của hợp đồng.</summary>
         public List<ContractMilestoneDto> Milestones { get; set; } = new();
 
+        public decimal AllocatedAmount => Milestones.Sum(m => m.Amount);
+        public decimal UnallocatedAmount => Value - AllocatedAmount;
+        public bool IsFullyAllocated => AllocatedAmount == Value;
+        public bool CanAddMilestone => (Status == ContractStatus.Draft || Status == ContractStatus.Active) && UnallocatedAmount > 0;
+
         /// <summary>Danh sách bảo lãnh thực hiện hợp đồng và bảo lãnh dự thầu.</summary>
         public List<ContractGuaranteeDto> Guarantees { get; set; } = new();
 
