@@ -11,9 +11,15 @@ namespace ProcurementSystem.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_BidPackageEvaluators_Users_EvaluatorId",
-                table: "BidPackageEvaluators");
+            if (migrationBuilder.ActiveProvider == "Microsoft.EntityFrameworkCore.SqlServer")
+            {
+                migrationBuilder.Sql(@"
+                    IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_BidPackageEvaluators_Users_EvaluatorId')
+                        ALTER TABLE [BidPackageEvaluators] DROP CONSTRAINT [FK_BidPackageEvaluators_Users_EvaluatorId];
+                    IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_BidPackageEvaluators_Users_Evaluator')
+                        ALTER TABLE [BidPackageEvaluators] DROP CONSTRAINT [FK_BidPackageEvaluators_Users_Evaluator];
+                ");
+            }
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "RowVersion",

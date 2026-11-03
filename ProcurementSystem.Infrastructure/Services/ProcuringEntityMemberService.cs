@@ -441,6 +441,7 @@ namespace ProcurementSystem.Infrastructure.Services
             var clientBaseUrl = _configuration["ClientApp:BaseUrl"] ?? "http://localhost:5173";
 
             var acceptUrl = $"{clientBaseUrl}/invitation/accept?token={rawToken}";
+            _logger.LogInformation("INVITATION_ACCEPT_URL: {AcceptUrl}", acceptUrl);
 
             var roleDescription = request.RoleInEntity switch
 

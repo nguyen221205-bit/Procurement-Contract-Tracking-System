@@ -34,7 +34,7 @@ namespace ProcurementSystem.API.Controllers
         /// </summary>
         /// <remarks>Quyền hạn: Chỉ Admin.</remarks>
         [HttpGet]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(ApiResponse<PaginatedList<ProcuringEntityDto>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
@@ -50,7 +50,7 @@ namespace ProcurementSystem.API.Controllers
         /// </summary>
         /// <remarks>Quyền hạn: Chỉ Admin.</remarks>
         [HttpGet("{id:int}")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(ApiResponse<ProcuringEntityDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
@@ -297,6 +297,7 @@ namespace ProcurementSystem.API.Controllers
         /// Cập nhật vai trò / quyền hạn của thành viên trong đơn vị
         /// </summary>
         [HttpPut("{id:int}/members/{memberId:int}/role")]
+        [HttpPut("{id:int}/members/{memberId:int}")]
         [Authorize(Roles = "Admin,Procurement")]
         public async Task<ActionResult<ApiResponse<ProcuringEntityMemberDto>>> UpdateMemberRole(
             int id, int memberId, [FromBody] UpdateMemberRoleRequest request)
