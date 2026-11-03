@@ -53,7 +53,7 @@ export const procuringEntityApi = {
   },
 
   updateMemberRole: async (entityId, memberId, data) => {
-    return await axiosClient.put(`/procuring-entities/${entityId}/members/${memberId}`, data);
+    return await axiosClient.put(`/procuring-entities/${entityId}/members/${memberId}/role`, data);
   },
 
   revokeMember: async (entityId, memberId) => {

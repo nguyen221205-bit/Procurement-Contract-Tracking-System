@@ -54,6 +54,7 @@ export const ContractDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { hasRole, user } = useAuth();
+  const currentUser = user;
   const isAdminOrProcurement = hasRole(['Admin', 'Procurement']);
   const isAdmin = hasRole('Admin');
 

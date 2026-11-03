@@ -8,6 +8,7 @@ import VerifyProcuringEntityModal from '../components/procuringEntities/VerifyPr
 import ProcuringEntityMembersModal from '../components/procuringEntities/ProcuringEntityMembersModal';
 import toast from 'react-hot-toast';
 import {
+  Users,
   Briefcase,
   Search,
   Filter,
