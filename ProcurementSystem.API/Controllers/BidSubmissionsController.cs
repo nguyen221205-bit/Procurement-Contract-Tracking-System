@@ -226,7 +226,17 @@ namespace ProcurementSystem.API.Controllers
                 return NotFound(ApiResponse<string>.Fail(result.Message));
             }
 
-            return PhysicalFile(result.Data!.PhysicalPath, result.Data.ContentType, result.Data.FileName);
+            if (result.Data!.IsRedirect)
+            {
+                return Redirect(result.Data.RedirectUrl!);
+            }
+
+            if (result.Data.IsStream)
+            {
+                return File(result.Data.FileStream!, result.Data.ContentType, result.Data.FileName);
+            }
+
+            return PhysicalFile(result.Data.PhysicalPath!, result.Data.ContentType, result.Data.FileName);
         }
 
         private int? GetCurrentUserId()

@@ -77,5 +77,27 @@ namespace ProcurementSystem.Infrastructure.Services
 
             return fullPath;
         }
+    
+        public Task<ProcurementSystem.Core.DTOs.Common.FileDownloadResult> ResolveDownloadAsync(string storedPath, string originalFileName, string? contentType = null)
+        {
+            var physicalPath = GetPhysicalFilePath(storedPath);
+            return Task.FromResult(ProcurementSystem.Core.DTOs.Common.FileDownloadResult.FromPhysicalPath(
+                physicalPath,
+                originalFileName,
+                contentType ?? "application/octet-stream"));
+        }
+
+        public Task<string> GetPreSignedUrlAsync(string storedPath, int expirationMinutes = 15)
+        {
+            throw new NotSupportedException("Local File Storage không hỗ trợ Pre-signed URL.");
+        }
+
+        public bool IsCloudPath(string storedPath)
+        {
+            if (string.IsNullOrWhiteSpace(storedPath)) return false;
+            return storedPath.StartsWith("supabase://", StringComparison.OrdinalIgnoreCase)
+                || storedPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || storedPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

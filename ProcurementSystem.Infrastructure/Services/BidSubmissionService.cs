@@ -733,21 +733,6 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
-            string physicalPath;
-            try
-            {
-                physicalPath = _fileStorageService.GetPhysicalFilePath(file.FilePath);
-            }
-            catch (Exception ex)
-            {
-                return ApiResponse<SubmissionFileDownloadDto>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}");
-            }
-
-            if (!File.Exists(physicalPath))
-            {
-                return ApiResponse<SubmissionFileDownloadDto>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ.");
-            }
-
             var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             var contentType = ext switch
             {
@@ -763,11 +748,49 @@ namespace ProcurementSystem.Infrastructure.Services
                 _ => "application/octet-stream"
             };
 
+            ProcurementSystem.Core.DTOs.Common.FileDownloadResult downloadResult;
+            try
+            {
+                downloadResult = await _fileStorageService.ResolveDownloadAsync(file.FilePath, file.FileName, contentType);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<SubmissionFileDownloadDto>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}");
+            }
+
+            if (downloadResult.IsRedirect)
+            {
+                return ApiResponse<SubmissionFileDownloadDto>.Ok(new SubmissionFileDownloadDto
+                {
+                    FileName = file.FileName,
+                    ContentType = contentType,
+                    IsRedirect = true,
+                    RedirectUrl = downloadResult.RedirectUrl
+                });
+            }
+
+            if (downloadResult.IsStream)
+            {
+                return ApiResponse<SubmissionFileDownloadDto>.Ok(new SubmissionFileDownloadDto
+                {
+                    FileName = file.FileName,
+                    ContentType = contentType,
+                    IsRedirect = false,
+                    FileStream = downloadResult.FileStream
+                });
+            }
+
+            if (!File.Exists(downloadResult.PhysicalPath))
+            {
+                return ApiResponse<SubmissionFileDownloadDto>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ.");
+            }
+
             var dto = new SubmissionFileDownloadDto
             {
                 FileName = file.FileName,
                 ContentType = contentType,
-                PhysicalPath = physicalPath
+                PhysicalPath = downloadResult.PhysicalPath,
+                IsRedirect = false
             };
 
             return ApiResponse<SubmissionFileDownloadDto>.Ok(dto);

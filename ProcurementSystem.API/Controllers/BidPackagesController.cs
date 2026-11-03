@@ -352,12 +352,6 @@ namespace ProcurementSystem.API.Controllers
                 return NotFound(ApiResponse<string>.Fail("Không tìm thấy tài liệu mời thầu."));
             }
 
-            var physicalPath = _fileStorageService.GetPhysicalFilePath(document.FilePath);
-            if (!System.IO.File.Exists(physicalPath))
-            {
-                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ."));
-            }
-
             var ext = Path.GetExtension(document.FileName).ToLowerInvariant();
             var contentType = ext switch
             {
@@ -371,7 +365,23 @@ namespace ProcurementSystem.API.Controllers
                 _ => "application/octet-stream"
             };
 
-            return PhysicalFile(physicalPath, contentType, document.FileName);
+            var downloadResult = await _fileStorageService.ResolveDownloadAsync(document.FilePath, document.FileName, contentType);
+            if (downloadResult.IsRedirect)
+            {
+                return Redirect(downloadResult.RedirectUrl!);
+            }
+
+            if (downloadResult.IsStream)
+            {
+                return File(downloadResult.FileStream!, contentType, document.FileName);
+            }
+
+            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(downloadResult.PhysicalPath!, contentType, document.FileName);
         }
 
         /// <summary>

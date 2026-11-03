@@ -272,23 +272,8 @@ namespace ProcurementSystem.API.Controllers
                 return NotFound(ApiResponse<string>.Fail("Nhà thầu chưa tải lên tệp Giấy phép đăng ký kinh doanh."));
             }
 
-            string physicalPath;
-            try
-            {
-                physicalPath = _fileStorageService.GetPhysicalFilePath(contractor.BusinessLicenseFile);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ApiResponse<string>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}"));
-            }
-
-            if (!System.IO.File.Exists(physicalPath))
-            {
-                return NotFound(ApiResponse<string>.Fail("Tệp Giấy phép đăng ký kinh doanh không tồn tại trên hệ thống lưu trữ."));
-            }
-
-            var fileName = Path.GetFileName(physicalPath);
-            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var originalFileName = Path.GetFileName(contractor.BusinessLicenseFile);
+            var ext = Path.GetExtension(originalFileName).ToLowerInvariant();
             var contentType = ext switch
             {
                 ".pdf" => "application/pdf",
@@ -299,7 +284,32 @@ namespace ProcurementSystem.API.Controllers
                 _ => "application/octet-stream"
             };
 
-            return PhysicalFile(physicalPath, contentType, fileName);
+            ProcurementSystem.Core.DTOs.Common.FileDownloadResult downloadResult;
+            try
+            {
+                downloadResult = await _fileStorageService.ResolveDownloadAsync(contractor.BusinessLicenseFile, originalFileName, contentType);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<string>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}"));
+            }
+
+            if (downloadResult.IsRedirect)
+            {
+                return Redirect(downloadResult.RedirectUrl!);
+            }
+
+            if (downloadResult.IsStream)
+            {
+                return File(downloadResult.FileStream!, contentType, originalFileName);
+            }
+
+            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp Giấy phép đăng ký kinh doanh không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(downloadResult.PhysicalPath!, contentType, originalFileName);
         }
 
         /// <summary>

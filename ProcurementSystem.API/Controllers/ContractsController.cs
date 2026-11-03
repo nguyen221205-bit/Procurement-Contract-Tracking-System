@@ -1437,21 +1437,24 @@ namespace ProcurementSystem.API.Controllers
 
 
 
-            var physicalPath = _fileStorageService.GetPhysicalFilePath(contract.ScannedFilePath);
-
-            if (!System.IO.File.Exists(physicalPath))
-
+            var fileName = $"HopDong_{contract.ContractNumber}.pdf";
+            var downloadResult = await _fileStorageService.ResolveDownloadAsync(contract.ScannedFilePath, fileName, "application/pdf");
+            if (downloadResult.IsRedirect)
             {
-
-                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu scan không tồn tại trên hệ thống lưu trữ."));
-
+                return Redirect(downloadResult.RedirectUrl!);
             }
 
+            if (downloadResult.IsStream)
+            {
+                return File(downloadResult.FileStream!, "application/pdf", fileName);
+            }
 
+            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu scan không tồn tại trên hệ thống lưu trữ."));
+            }
 
-            var fileName = $"HopDong_{contract.ContractNumber}.pdf";
-
-            return PhysicalFile(physicalPath, "application/pdf", fileName);
+            return PhysicalFile(downloadResult.PhysicalPath!, "application/pdf", fileName);
 
         }
 

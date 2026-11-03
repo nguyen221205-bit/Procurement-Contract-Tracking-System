@@ -47,10 +47,16 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IOtpService, OtpService>();
 
-// Contractor Services
+// Contractor & Storage Services
+builder.Services.Configure<ProcurementSystem.Core.DTOs.Common.StorageSettings>(
+    builder.Configuration.GetSection(ProcurementSystem.Core.DTOs.Common.StorageSettings.SectionName));
 builder.Services.AddHttpClient<ITaxLookupService, TaxLookupService>();
 builder.Services.AddScoped<IPdfSecurityService, PdfSecurityService>();
-builder.Services.AddScoped<IFileStorageService, FileStorageService>();
+builder.Services.AddScoped<IFileCryptoCompressionService, FileCryptoCompressionService>();
+builder.Services.AddScoped<FileStorageService>();
+builder.Services.AddScoped<SupabaseStorageService>();
+builder.Services.AddScoped<IFileStorageService, HybridFileStorageService>();
+builder.Services.AddScoped<IStorageMigrationService, StorageMigrationService>();
 builder.Services.AddScoped<IContractorAuthService, ContractorAuthService>();
 builder.Services.AddScoped<IContractorService, ContractorService>();
 builder.Services.AddScoped<IProcuringEntityAuthService, ProcuringEntityAuthService>();

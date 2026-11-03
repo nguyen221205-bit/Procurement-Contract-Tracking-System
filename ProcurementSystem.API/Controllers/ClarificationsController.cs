@@ -176,20 +176,15 @@ namespace ProcurementSystem.API.Controllers
         /// </summary>
         [HttpGet("clarifications/attachments/download")]
         [Authorize]
-        public IActionResult DownloadAttachment([FromQuery] string filePath)
+        public async Task<IActionResult> DownloadAttachment([FromQuery] string filePath)
         {
             if (string.IsNullOrWhiteSpace(filePath))
             {
                 return BadRequest(ApiResponse<string>.Fail("Đường dẫn tệp tin không hợp lệ."));
             }
 
-            var physicalPath = _fileStorageService.GetPhysicalFilePath(filePath);
-            if (!System.IO.File.Exists(physicalPath))
-            {
-                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ."));
-            }
-
-            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var originalFileName = Path.GetFileName(filePath);
+            var ext = Path.GetExtension(originalFileName).ToLowerInvariant();
             var contentType = ext switch
             {
                 ".pdf" => "application/pdf",
@@ -204,8 +199,32 @@ namespace ProcurementSystem.API.Controllers
                 _ => "application/octet-stream"
             };
 
-            var fileName = Path.GetFileName(physicalPath);
-            return PhysicalFile(physicalPath, contentType, fileName);
+            ProcurementSystem.Core.DTOs.Common.FileDownloadResult downloadResult;
+            try
+            {
+                downloadResult = await _fileStorageService.ResolveDownloadAsync(filePath, originalFileName, contentType);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<string>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}"));
+            }
+
+            if (downloadResult.IsRedirect)
+            {
+                return Redirect(downloadResult.RedirectUrl!);
+            }
+
+            if (downloadResult.IsStream)
+            {
+                return File(downloadResult.FileStream!, contentType, originalFileName);
+            }
+
+            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(downloadResult.PhysicalPath!, contentType, originalFileName);
         }
 
         private int GetCurrentUserId()
