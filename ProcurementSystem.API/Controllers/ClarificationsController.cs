@@ -148,7 +148,7 @@ namespace ProcurementSystem.API.Controllers
         [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status400BadRequest)]
-        public async Task<ActionResult<ApiResponse<string>>> UploadAttachment([FromForm] IFormFile file)
+        public async Task<ActionResult<ApiResponse<string>>> UploadAttachment(IFormFile file)
         {
             if (file == null || file.Length == 0)
             {
