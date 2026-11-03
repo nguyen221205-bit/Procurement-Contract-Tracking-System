@@ -81,7 +81,7 @@ export const ReopenPackageModal = ({ isOpen, onClose, pkg, onSuccess }) => {
               <span>Lưu ý pháp lý khi gia hạn thầu:</span>
             </div>
             <p className="text-[11px] leading-relaxed">
-              Thao tác này sẽ chuyển trạng thái gói thầu từ <strong>Đã đóng (Closed)</strong> quay lại <strong>Đang mở (Open)</strong>, cho phép các nhà thầu tiếp tục gửi hồ sơ dự thầu đến thời hạn mới.
+              Thao tác này sẽ chuyển trạng thái gói thầu từ <strong>Đã đóng thầu</strong> sang <strong>Đang mở thầu (Gia hạn/Mở lại)</strong>, cho phép các nhà thầu tiếp tục gửi hồ sơ dự thầu đến thời hạn mới.
             </p>
           </div>
 

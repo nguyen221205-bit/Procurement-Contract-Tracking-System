@@ -179,7 +179,7 @@ export const ContractsPage = () => {
                 onClick={handleExportContracts}
                 disabled={exporting}
                 className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
-                title="Xuất danh sách hợp đồng ra file Excel (.xlsx) chuẩn ClosedXML"
+                title="Xuất danh sách hợp đồng ra file Excel (.xlsx)"
               >
                 <FileSpreadsheet className={`w-4 h-4 ${exporting ? 'animate-bounce' : ''}`} />
                 <span>Xuất Excel (.xlsx)</span>
@@ -258,7 +258,7 @@ export const ContractsPage = () => {
           title="Lọc hợp đồng bản thảo"
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Bản thảo (Draft)</span>
+            <span className="text-xs font-medium text-slate-500">Dự thảo hợp đồng</span>
             <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
               <Layers className="w-4 h-4" />
             </div>
@@ -320,7 +320,7 @@ export const ContractsPage = () => {
                 className="w-full px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden cursor-pointer"
               >
                 <option value="">Tất cả trạng thái</option>
-                <option value="Draft">Bản thảo (Draft)</option>
+                <option value="Draft">Dự thảo hợp đồng</option>
                 <option value="Active">Đang thực hiện (Active)</option>
                 <option value="Completed">Đã hoàn thành (Completed)</option>
                 <option value="Terminated">Đã chấm dứt (Terminated)</option>

@@ -666,9 +666,9 @@ export const ProcuringEntityMembersModal = ({
                         onChange={(e) => setReqAuthType(Number(e.target.value))}
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       >
-                        <option value={0}>Phê duyệt giải ngân (DisbursementApproval)</option>
-                        <option value={1}>Ký kết hợp đồng (ContractSigning)</option>
-                        <option value={2}>Đại diện toàn diện theo pháp luật (FullLegalRepresentative)</option>
+                        <option value={0}>Thẩm quyền Phê duyệt thanh toán / Giải ngân</option>
+                        <option value={1}>Thẩm quyền Ký kết hợp đồng kinh tế</option>
+                        <option value={2}>Người đại diện theo pháp luật của Bên mời thầu</option>
                       </select>
                     </div>
 

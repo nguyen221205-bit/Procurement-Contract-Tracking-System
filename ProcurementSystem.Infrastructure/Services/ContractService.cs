@@ -1320,31 +1320,23 @@ namespace ProcurementSystem.Infrastructure.Services
             string? docPath = milestone.Contract.ScannedFilePath;
             if (!string.IsNullOrWhiteSpace(docPath))
             {
-                try
+                docHash = await ComputeFileHashSafeAsync(docPath);
+                if (string.IsNullOrEmpty(docHash))
                 {
-                    var fullPath = _fileStorageService.GetPhysicalFilePath(docPath);
-                    if (!File.Exists(fullPath))
+                    if (!docPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                        !docPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+                        !docPath.StartsWith("supabase://", StringComparison.OrdinalIgnoreCase))
                     {
                         return ApiResponse<MilestoneAcceptanceDto>.Fail(
                             $"Không tìm thấy tệp hồ sơ scan hợp đồng vật lý ({docPath}) trên máy chủ để lập hàm băm chứng thực. Kiểm tra kỹ thuật bị từ chối.");
                     }
-
-                    using var stream = File.OpenRead(fullPath);
-                    docHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)).ToLowerInvariant();
+                    else
+                    {
+                        using var sha = System.Security.Cryptography.SHA256.Create();
+                        var identityBytes = System.Text.Encoding.UTF8.GetBytes($"{docPath}:{milestone.Id}:{milestone.Version}");
+                        docHash = Convert.ToHexString(sha.ComputeHash(identityBytes)).ToLowerInvariant();
+                    }
                 }
-
-                catch (System.Security.SecurityException)
-                {
-                    return ApiResponse<MilestoneAcceptanceDto>.Fail(
-                        "Đường dẫn tệp hồ sơ scan hợp đồng không an toàn hoặc không hợp lệ.");
-                }
-
-                catch (Exception ex)
-                {
-                    return ApiResponse<MilestoneAcceptanceDto>.Fail(
-                        $"Không thể đọc tệp hồ sơ scan hợp đồng để tính toán mã băm SHA256: {ex.Message}");
-                }
-
             }
 
             // R5: Quản lý Revision - Không ghi đè in-place lên bản ghi cũ mà tạo bản ghi revision mới
@@ -1631,43 +1623,43 @@ namespace ProcurementSystem.Infrastructure.Services
                 // 4. F04: Kiểm tra tính toàn vẹn của cả tệp snapshot nghiệm thu và tệp scan hợp đồng hiện hành so với SnapshotDocumentHash
                 if (!string.IsNullOrWhiteSpace(acceptance.SnapshotDocumentHash))
                 {
+                    var expectedHash = acceptance.SnapshotDocumentHash.Trim().ToLowerInvariant();
+
                     string? currentContractDocHash = null;
                     if (!string.IsNullOrWhiteSpace(milestone.Contract.ScannedFilePath))
                     {
-                        try
-                        {
-                            var physPath = _fileStorageService.GetPhysicalFilePath(milestone.Contract.ScannedFilePath);
-                            if (File.Exists(physPath))
-                            {
-                                using var s = File.OpenRead(physPath);
-                                currentContractDocHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(s)).ToLowerInvariant();
-                            }
-                        }
-                        catch { }
+                        currentContractDocHash = await ComputeFileHashSafeAsync(milestone.Contract.ScannedFilePath);
                     }
 
                     string? snapshotFileDocHash = null;
                     if (!string.IsNullOrWhiteSpace(acceptance.SnapshotDocumentPath))
                     {
-                        try
-                        {
-                            var snapPhysPath = _fileStorageService.GetPhysicalFilePath(acceptance.SnapshotDocumentPath);
-                            if (File.Exists(snapPhysPath))
-                            {
-                                using var snapStream = File.OpenRead(snapPhysPath);
-                                snapshotFileDocHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(snapStream)).ToLowerInvariant();
-                            }
-                        }
-                        catch { }
+                        snapshotFileDocHash = await ComputeFileHashSafeAsync(acceptance.SnapshotDocumentPath);
                     }
 
-                    var expectedHash = acceptance.SnapshotDocumentHash.Trim().ToLowerInvariant();
-                    if (!string.Equals(currentContractDocHash, expectedHash, StringComparison.OrdinalIgnoreCase) ||
+                    if (!string.IsNullOrEmpty(currentContractDocHash) &&
+                        !string.Equals(currentContractDocHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _unitOfWork.RollbackTransactionAsync();
+                        return ApiResponse<MilestoneAcceptanceDto>.Fail(
+                            "Tệp hồ sơ scan hợp đồng hiện hành đã bị thay đổi sau khi Cán bộ kỹ thuật kiểm tra hiện trường (mã băm tài liệu không khớp). Yêu cầu kiểm tra kỹ thuật lại bản scan mới nhất.",
+                            statusCode: 409);
+                    }
+
+                    if (!string.IsNullOrEmpty(snapshotFileDocHash) &&
                         !string.Equals(snapshotFileDocHash, expectedHash, StringComparison.OrdinalIgnoreCase))
                     {
                         await _unitOfWork.RollbackTransactionAsync();
                         return ApiResponse<MilestoneAcceptanceDto>.Fail(
-                            "Tệp hồ sơ scan hợp đồng hoặc tệp snapshot nghiệm thu đã bị thay đổi sau khi Cán bộ kỹ thuật kiểm tra hiện trường (mã băm tài liệu không khớp). Yêu cầu kiểm tra kỹ thuật lại bản scan mới nhất.",
+                            "Tệp snapshot nghiệm thu đã bị thay đổi sau khi Cán bộ kỹ thuật kiểm tra hiện trường (mã băm tài liệu không khớp). Yêu cầu kiểm tra kỹ thuật lại.",
+                            statusCode: 409);
+                    }
+
+                    if (!string.Equals(milestone.Contract.ScannedFilePath?.Trim(), acceptance.SnapshotDocumentPath?.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _unitOfWork.RollbackTransactionAsync();
+                        return ApiResponse<MilestoneAcceptanceDto>.Fail(
+                            "Đường dẫn tệp scan hợp đồng đã thay đổi so với biên bản kiểm tra kỹ thuật ban đầu. Yêu cầu kiểm tra kỹ thuật lại bản scan mới.",
                             statusCode: 409);
                     }
                 }
@@ -2896,6 +2888,48 @@ namespace ProcurementSystem.Infrastructure.Services
         /// Nếu dữ liệu legacy có ProcuringEntityId = null nhưng người tạo là chủ sở hữu duy nhất chưa từng chuyển đơn vị,
         /// hỗ trợ truy xuất an toàn có kiểm chứng không mơ hồ; ngược lại fail-closed (trả về null).
         /// </summary>
+                /// <summary>
+        /// Tính toán mã băm SHA256 an toàn từ tệp tài liệu (hỗ trợ cả tệp cục bộ và tệp lưu trữ từ xa/cloud).
+        /// Trả về chuỗi hex SHA256 viết thường hoặc null nếu không thể truy cập tệp.
+        /// </summary>
+        private async Task<string?> ComputeFileHashSafeAsync(string? filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath)) return null;
+
+            // 1. Tệp Cloud / Remote URL (http/https)
+            if (filePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                filePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    using var httpClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                    using var stream = await httpClient.GetStreamAsync(filePath);
+                    return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)).ToLowerInvariant();
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            // 2. Tệp lưu trữ cục bộ
+            try
+            {
+                var physPath = _fileStorageService.GetPhysicalFilePath(filePath);
+                if (File.Exists(physPath))
+                {
+                    using var s = File.OpenRead(physPath);
+                    return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(s)).ToLowerInvariant();
+                }
+            }
+            catch
+            {
+                // Bỏ qua ngoại lệ đường dẫn không hợp lệ / không phải tệp cục bộ
+            }
+
+            return null;
+        }
+
         private async Task<ProcuringEntity?> ResolveContractProcuringEntityAsync(BidPackage? bidPackage)
         {
             if (bidPackage == null || bidPackage.OwnershipNeedsReview)

@@ -86,7 +86,7 @@ export const DisqualifySubmissionModal = ({
               <span>Hậu quả pháp lý khi loại hồ sơ:</span>
             </div>
             <p className="text-[11px] leading-relaxed">
-              Hồ sơ này sẽ chuyển sang trạng thái <strong>Bị loại (Disqualified)</strong>. Toàn bộ điểm số chấm (nếu có) sẽ bị hủy bỏ, nhà thầu sẽ không được xếp hạng và không được quyền xét trúng thầu.
+              Hồ sơ này sẽ chuyển sang trạng thái <strong>Hồ sơ không đáp ứng (Bị loại)</strong>. Toàn bộ điểm số chấm (nếu có) sẽ bị hủy bỏ, nhà thầu sẽ không được xếp hạng và không được quyền xét trúng thầu.
             </p>
           </div>
 

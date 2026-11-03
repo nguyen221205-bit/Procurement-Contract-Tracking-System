@@ -209,7 +209,7 @@ export const CreateContractModal = ({
             </div>
             <div>
               <h3 className="text-base font-bold">Lập Hợp Đồng Kinh Tế Mới</h3>
-              <p className="text-xs text-blue-100">Kế thừa kết quả trúng thầu & tạo hợp đồng bản thảo (Draft)</p>
+              <p className="text-xs text-blue-100">Kế thừa kết quả trúng thầu & khởi tạo dự thảo hợp đồng</p>
             </div>
           </div>
           <button
@@ -275,7 +275,7 @@ export const CreateContractModal = ({
               <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold">Gói thầu chưa trao thầu</p>
-                <p>Gói thầu này chưa hoàn tất bước chấm điểm và phê duyệt nhà thầu trúng thầu (Selected). Vui lòng hoàn tất thẩm định trước khi lập hợp đồng.</p>
+                <p>Gói thầu này chưa hoàn tất bước chấm điểm và phê duyệt kết quả lựa chọn nhà thầu trúng thầu. Vui lòng hoàn tất thẩm định trước khi lập hợp đồng.</p>
               </div>
             </div>
           )}

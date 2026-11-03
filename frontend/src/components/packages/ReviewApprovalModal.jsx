@@ -117,8 +117,8 @@ export const ReviewApprovalModal = ({ isOpen, onClose, request, isAdmin, onSucce
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> Thao tác đề xuất:
               </p>
               <p className="text-xs font-semibold text-slate-700 leading-normal">
-                Chuyển từ <span className="font-bold text-slate-800 px-1.5 py-0.5 bg-slate-200/80 rounded">{request.currentStatusName || request.currentStatus}</span> sang{' '}
-                <span className="font-bold text-emerald-700 px-1.5 py-0.5 bg-emerald-50 border border-emerald-200 rounded">{request.targetStatusName || request.targetStatus}</span>
+                Chuyển từ <span className="font-bold text-slate-800 px-1.5 py-0.5 bg-slate-200/80 rounded">{request.currentStatusName || (request.currentStatus === 0 ? "Đang mở thầu" : request.currentStatus === 1 ? "Đã đóng thầu" : request.currentStatus === 2 ? "Đang chấm điểm" : request.currentStatus === 3 ? "Đã trao thầu" : request.currentStatus === 4 ? "Đã ký hợp đồng" : request.currentStatus === 5 ? "Đã hủy thầu" : request.currentStatus)}</span> sang{' '}
+                <span className="font-bold text-emerald-700 px-1.5 py-0.5 bg-emerald-50 border border-emerald-200 rounded">{request.targetStatusName || (request.targetStatus === 0 ? "Đang mở thầu" : request.targetStatus === 1 ? "Đã đóng thầu" : request.targetStatus === 2 ? "Đang chấm điểm" : request.targetStatus === 3 ? "Đã trao thầu" : request.targetStatus === 4 ? "Đã ký hợp đồng" : request.targetStatus === 5 ? "Đã hủy thầu" : request.targetStatus)}</span>
               </p>
               {request.newDeadline && (
                 <p className="text-xs font-semibold text-emerald-700 mt-1.5">

@@ -421,7 +421,7 @@ export const EvaluationPage = () => {
           }`}
         >
           <Scale className="w-4 h-4" />
-          <span>Ma trận Chấm điểm (Scorecard)</span>
+          <span>Phiếu chấm điểm chuyên gia</span>
           <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600">
             {rankings.length}
           </span>
@@ -437,7 +437,7 @@ export const EvaluationPage = () => {
           }`}
         >
           <Trophy className="w-4 h-4 text-amber-500" />
-          <span>Bảng xếp hạng & Trao thầu</span>
+          <span>Bảng tổng hợp xếp hạng & Trao thầu</span>
           {isAwarded && (
             <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold">
               Đã trao thầu
@@ -546,7 +546,7 @@ export const EvaluationPage = () => {
                 <li>Chỉ được thu hồi khi gói thầu <strong>chưa kích hoạt hợp đồng (Active / Completed)</strong>.</li>
                 <li>Gói thầu sẽ quay lại trạng thái <strong>Evaluating (Chấm điểm)</strong>.</li>
                 <li>Toàn bộ hồ sơ hợp lệ sẽ được khôi phục về trạng thái <strong>Evaluated</strong> để tiếp tục xét duyệt hoặc trao thầu cho nhà thầu khác.</li>
-                <li>Hợp đồng dự thảo (Draft) nếu có sẽ tự động bị hủy bỏ.</li>
+                <li>Dự thảo hợp đồng kinh tế đã lập (nếu có) sẽ tự động bị hủy bỏ.</li>
               </ul>
             </div>
 

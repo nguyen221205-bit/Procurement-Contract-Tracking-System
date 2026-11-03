@@ -401,6 +401,14 @@ namespace ProcurementSystem.Infrastructure.Services
                         $"Không thể bắt đầu chấm điểm. Tổ chuyên gia phải có tối thiểu 3 thành viên và là số lẻ (3, 5, 7,...) theo Luật Đấu thầu (Hiện tại: {evaluatorsCount} thành viên).");
                 }
 
+                var validSubmissionsCount = await _unitOfWork.Repository<BidSubmission>()
+                    .CountAsync(s => s.BidPackageId == package.Id && s.Status != BidSubmissionStatus.Withdrawn);
+                if (validSubmissionsCount == 0)
+                {
+                    return ApiResponse<List<EvaluationScoreDto>>.Fail(
+                        "Không thể bắt đầu chấm điểm vì gói thầu không có hồ sơ dự thầu hợp lệ nào.");
+                }
+
                 package.Status = BidPackageStatus.Evaluating;
                 package.UpdatedAt = DateTime.UtcNow;
                 _unitOfWork.Repository<BidPackage>().Update(package);

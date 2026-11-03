@@ -63,14 +63,14 @@ export const ChangeStatusModal = ({
     }
     if (isActivating) {
       return {
-        title: 'Kích Hoạt Hợp Đồng (Active)',
+        title: 'Kích Hoạt Hiệu Lực Hợp Đồng',
         subtitle: 'Xác nhận hợp đồng chính thức có hiệu lực thi hành',
         headerBg: 'bg-gradient-to-r from-emerald-600 to-teal-700',
         icon: PlayCircle,
         confirmBtnText: 'Xác nhận Kích hoạt HĐ',
         confirmBtnBg: 'bg-emerald-600 hover:bg-emerald-700',
         warningMsg:
-          'Khi kích hoạt, hợp đồng sẽ có hiệu lực chính thức. Hệ thống sẽ tự động chuyển trạng thái Gói thầu liên kết sang "Đã ký hợp đồng" (Contracted) để khép lại chu trình đấu thầu.',
+          'Khi kích hoạt, hợp đồng sẽ có hiệu lực chính thức. Hệ thống sẽ tự động chuyển trạng thái Gói thầu liên kết sang "Đã ký kết hợp đồng" để hoàn tất chu trình lựa chọn nhà thầu.',
       };
     }
     if (isCompleting) {

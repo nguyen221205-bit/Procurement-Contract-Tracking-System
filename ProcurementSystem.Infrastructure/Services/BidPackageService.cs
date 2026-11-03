@@ -572,6 +572,16 @@ namespace ProcurementSystem.Infrastructure.Services
                     return ApiResponse<BidPackageDto>.Fail(
                         $"Không thể bắt đầu giai đoạn Chấm điểm. Tổ chuyên gia phải có tối thiểu 3 thành viên và số lượng thành viên phải là số lẻ (3, 5, 7,...) theo quy định của Luật Đấu thầu (Hiện tại: {evaluatorsCount} thành viên). Vui lòng phân công đủ giám khảo trước khi chuyển trạng thái.");
                 }
+
+                // Rào chặn nghiệp vụ (Căn cứ Điều 17 Luật Đấu thầu 2023): Không thể chấm điểm khi gói thầu không có hồ sơ dự thầu hợp lệ
+                var validSubmissionsCount = await _unitOfWork.Repository<BidSubmission>()
+                    .CountAsync(s => s.BidPackageId == id && s.Status != BidSubmissionStatus.Withdrawn);
+
+                if (validSubmissionsCount == 0)
+                {
+                    return ApiResponse<BidPackageDto>.Fail(
+                        "Không thể bắt đầu giai đoạn Chấm điểm vì gói thầu không có hồ sơ dự thầu nào được nộp (hoặc tất cả đã rút thầu). Căn cứ Điều 17 Luật Đấu thầu 2023, Bên mời thầu vui lòng báo cáo Người có thẩm quyền để xem xét hủy thầu hoặc gia hạn thời điểm đóng thầu.");
+                }
             }
 
             // Quy trình Thẩm quyền Phê duyệt (Approval Workflow) - Tránh Bên mời thầu (Procurement) lạm quyền
