@@ -188,13 +188,28 @@ namespace ProcurementSystem.API.Controllers
                 }
             }
 
-            var file = await _procuringEntityService.GetEstablishmentFileAsync(id);
-            if (file == null)
+            var downloadResult = await _procuringEntityService.GetEstablishmentFileAsync(id);
+            if (downloadResult == null)
             {
                 return NotFound(ApiResponse<string>.Fail("Tệp Quyết định thành lập không tồn tại hoặc đã bị xóa."));
             }
 
-            return PhysicalFile(file.Value.PhysicalPath, file.Value.ContentType, file.Value.FileName);
+            if (downloadResult.IsRedirect)
+            {
+                return Redirect(downloadResult.RedirectUrl!);
+            }
+
+            if (downloadResult.IsStream)
+            {
+                return File(downloadResult.FileStream!, downloadResult.ContentType, downloadResult.FileName);
+            }
+
+            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp Quyết định thành lập không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(downloadResult.PhysicalPath!, downloadResult.ContentType, downloadResult.FileName);
         }
 
         /// <summary>
@@ -219,13 +234,28 @@ namespace ProcurementSystem.API.Controllers
                 }
             }
 
-            var file = await _procuringEntityService.GetAppointmentFileAsync(id);
-            if (file == null)
+            var downloadResult = await _procuringEntityService.GetAppointmentFileAsync(id);
+            if (downloadResult == null)
             {
                 return NotFound(ApiResponse<string>.Fail("Tệp Quyết định bổ nhiệm không tồn tại hoặc đã bị xóa."));
             }
 
-            return PhysicalFile(file.Value.PhysicalPath, file.Value.ContentType, file.Value.FileName);
+            if (downloadResult.IsRedirect)
+            {
+                return Redirect(downloadResult.RedirectUrl!);
+            }
+
+            if (downloadResult.IsStream)
+            {
+                return File(downloadResult.FileStream!, downloadResult.ContentType, downloadResult.FileName);
+            }
+
+            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp Quyết định bổ nhiệm không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(downloadResult.PhysicalPath!, downloadResult.ContentType, downloadResult.FileName);
         }
 
         // ==========================================

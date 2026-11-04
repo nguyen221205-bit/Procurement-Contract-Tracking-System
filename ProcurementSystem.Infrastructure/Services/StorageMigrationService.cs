@@ -127,6 +127,9 @@ namespace ProcurementSystem.Infrastructure.Services
 
                     INSERT INTO [{backupTableName}] (TableName, RecordId, ColumnName, OriginalPath)
                     SELECT 'BidClarifications', Id, 'AnswerAttachmentUrl', AnswerAttachmentUrl FROM BidClarifications WHERE AnswerAttachmentUrl IS NOT NULL AND AnswerAttachmentUrl LIKE '/uploads/%';
+
+                    INSERT INTO [{backupTableName}] (TableName, RecordId, ColumnName, OriginalPath)
+                    SELECT 'Acceptances', Id, 'SnapshotDocumentPath', SnapshotDocumentPath FROM Acceptances WHERE SnapshotDocumentPath IS NOT NULL AND SnapshotDocumentPath LIKE '/uploads/%';
                 ";
                 await _context.Database.ExecuteSqlRawAsync(backupInsertsSql);
                 report.Details.Add($"Đã tạo bảng sao lưu CSDL an toàn: {backupTableName}");
@@ -190,7 +193,8 @@ namespace ProcurementSystem.Infrastructure.Services
                         ("ProcuringEntities", "AppointmentDecisionFile"),
                         ("EvaluatorProposals", "CertificateFile"),
                         ("BidClarifications", "QuestionAttachmentUrl"),
-                        ("BidClarifications", "AnswerAttachmentUrl")
+                        ("BidClarifications", "AnswerAttachmentUrl"),
+                        ("Acceptances", "SnapshotDocumentPath")
                     };
 
                     foreach (var (tableName, colName) in updateTables)
@@ -303,6 +307,9 @@ namespace ProcurementSystem.Infrastructure.Services
 
                     UPDATE cl SET cl.AnswerAttachmentUrl = bk.OriginalPath
                     FROM BidClarifications cl INNER JOIN [{backupTableName}] bk ON bk.TableName = 'BidClarifications' AND bk.ColumnName = 'AnswerAttachmentUrl' AND bk.RecordId = cl.Id;
+
+                    UPDATE acc SET acc.SnapshotDocumentPath = bk.OriginalPath
+                    FROM Acceptances acc INNER JOIN [{backupTableName}] bk ON bk.TableName = 'Acceptances' AND bk.ColumnName = 'SnapshotDocumentPath' AND bk.RecordId = acc.Id;
                 ";
 
                 var affectedRows = await _context.Database.ExecuteSqlRawAsync(rollbackSql);

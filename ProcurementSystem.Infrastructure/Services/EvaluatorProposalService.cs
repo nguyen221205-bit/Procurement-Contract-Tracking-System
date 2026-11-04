@@ -471,7 +471,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 $"Đã từ chối đề xuất chỉ định Giám khảo của chuyên gia {proposal.FullName}.");
         }
 
-        public async Task<ApiResponse<(string PhysicalPath, string ContentType, string FileName)>> GetCertificateFileForDownloadAsync(
+        public async Task<ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>> GetCertificateFileForDownloadAsync(
             int id, int currentUserId, string currentUserRole)
         {
             var proposal = await _unitOfWork.Repository<EvaluatorProposal>()
@@ -481,36 +481,20 @@ namespace ProcurementSystem.Infrastructure.Services
 
             if (proposal == null)
             {
-                return ApiResponse<(string, string, string)>.Fail("Không tìm thấy đề xuất giám khảo.");
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail("Không tìm thấy đề xuất giám khảo.");
             }
 
             if (currentUserRole != "Admin" && proposal.ProposerUserId != currentUserId)
             {
-                return ApiResponse<(string, string, string)>.Fail("Bạn không có quyền xem tệp chứng chỉ của đề xuất này.");
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail("Bạn không có quyền xem tệp chứng chỉ của đề xuất này.");
             }
 
             if (string.IsNullOrWhiteSpace(proposal.CertificateFile))
             {
-                return ApiResponse<(string, string, string)>.Fail("Đề xuất này không có tệp chứng chỉ đính kèm.");
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail("Đề xuất này không có tệp chứng chỉ đính kèm.");
             }
 
-            string physicalPath;
-            try
-            {
-                physicalPath = _fileStorageService.GetPhysicalFilePath(proposal.CertificateFile);
-            }
-            catch (Exception ex)
-            {
-                return ApiResponse<(string, string, string)>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}");
-            }
-
-            if (!File.Exists(physicalPath))
-            {
-                return ApiResponse<(string, string, string)>.Fail("Tệp chứng chỉ không tồn tại trên hệ thống lưu trữ.");
-            }
-
-            var fileName = Path.GetFileName(physicalPath);
-            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var ext = Path.GetExtension(proposal.CertificateFile).ToLowerInvariant();
             var contentType = ext switch
             {
                 ".pdf" => "application/pdf",
@@ -520,8 +504,19 @@ namespace ProcurementSystem.Infrastructure.Services
                 ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 _ => "application/octet-stream"
             };
+            var fileName = $"ChungChi_{proposal.FullName.Replace(" ", "_")}{ext}";
 
-            return ApiResponse<(string, string, string)>.Ok((physicalPath, contentType, fileName));
+            ProcurementSystem.Core.DTOs.Common.FileDownloadResult downloadResult;
+            try
+            {
+                downloadResult = await _fileStorageService.ResolveDownloadAsync(proposal.CertificateFile, fileName, contentType);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}");
+            }
+
+            return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Ok(downloadResult);
         }
 
         private static EvaluatorProposalDto MapToDto(EvaluatorProposal ep)

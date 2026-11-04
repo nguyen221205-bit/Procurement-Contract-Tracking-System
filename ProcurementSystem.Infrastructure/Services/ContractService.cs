@@ -2058,7 +2058,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
         }
 
-        public async Task<(string PhysicalPath, string ContentType, string FileName)?> GetGuaranteeDocumentForDownloadAsync(
+        public async Task<ProcurementSystem.Core.DTOs.Common.FileDownloadResult?> GetGuaranteeDocumentForDownloadAsync(
             int contractId, int guaranteeId, int userId, bool isInternalStaff, bool isAdmin)
         {
             var guarantee = await _unitOfWork.Repository<ContractGuarantee>()
@@ -2087,16 +2087,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 {
                     return null;
                 }
-
             }
 
-            var physicalPath = _fileStorageService.GetPhysicalFilePath(guarantee.ScannedDocumentPath);
-            if (!File.Exists(physicalPath))
-            {
-                return null;
-            }
-
-            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var ext = Path.GetExtension(guarantee.ScannedDocumentPath).ToLowerInvariant();
             var contentType = ext switch
             {
                 ".pdf" => "application/pdf",
@@ -2105,7 +2098,15 @@ namespace ProcurementSystem.Infrastructure.Services
                 _ => "application/octet-stream"
             };
             var fileName = $"BaoLanh_{guarantee.GuaranteeNumber}{ext}";
-            return (physicalPath, contentType, fileName);
+
+            try
+            {
+                return await _fileStorageService.ResolveDownloadAsync(guarantee.ScannedDocumentPath, fileName, contentType);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         #endregion
@@ -2464,7 +2465,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
         }
 
-        public async Task<(string PhysicalPath, string ContentType, string FileName)?> GetAddendumDocumentForDownloadAsync(
+        public async Task<ProcurementSystem.Core.DTOs.Common.FileDownloadResult?> GetAddendumDocumentForDownloadAsync(
             int contractId, int addendumId, int userId, bool isInternalStaff, bool isAdmin)
         {
             var addendum = await _unitOfWork.Repository<ContractAddendum>()
@@ -2493,16 +2494,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 {
                     return null;
                 }
-
             }
 
-            var physicalPath = _fileStorageService.GetPhysicalFilePath(addendum.ScannedDocumentPath);
-            if (!File.Exists(physicalPath))
-            {
-                return null;
-            }
-
-            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var ext = Path.GetExtension(addendum.ScannedDocumentPath).ToLowerInvariant();
             var contentType = ext switch
             {
                 ".pdf" => "application/pdf",
@@ -2511,7 +2505,15 @@ namespace ProcurementSystem.Infrastructure.Services
                 _ => "application/octet-stream"
             };
             var fileName = $"PhuLuc_{addendum.AddendumNumber}{ext}";
-            return (physicalPath, contentType, fileName);
+
+            try
+            {
+                return await _fileStorageService.ResolveDownloadAsync(addendum.ScannedDocumentPath, fileName, contentType);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         #endregion
@@ -2774,7 +2776,7 @@ namespace ProcurementSystem.Infrastructure.Services
         /// <summary>
         /// T01: Tải tệp tài liệu snapshot nghiệm thu kỹ thuật an toàn (kiểm soát chặt chẽ phạm vi đơn vị và nhà thầu sở hữu)
         /// </summary>
-        public async Task<ApiResponse<(string PhysicalPath, string FileName, string ContentType)>> GetAcceptanceSnapshotDocumentDownloadAsync(
+        public async Task<ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>> GetAcceptanceSnapshotDocumentDownloadAsync(
             int milestoneId, int acceptanceId, int userId, bool isAdmin, bool isProcurement, bool isContractor)
         {
             var acceptance = await _unitOfWork.Repository<Acceptance>()
@@ -2788,13 +2790,13 @@ namespace ProcurementSystem.Infrastructure.Services
 
             if (acceptance == null)
             {
-                return ApiResponse<(string PhysicalPath, string FileName, string ContentType)>.Fail(
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail(
                     "Không tìm thấy biên bản nghiệm thu kỹ thuật.", statusCode: 404);
             }
 
             if (string.IsNullOrWhiteSpace(acceptance.SnapshotDocumentPath))
             {
-                return ApiResponse<(string PhysicalPath, string FileName, string ContentType)>.Fail(
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail(
                     "Biên bản nghiệm thu này không có tài liệu snapshot đính kèm.", statusCode: 404);
             }
 
@@ -2814,18 +2816,17 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 if (contractor == null || contractor.Id != acceptance.Contract.ContractorId)
                 {
-                    return ApiResponse<(string PhysicalPath, string FileName, string ContentType)>.Forbidden(
+                    return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Forbidden(
                         "Bạn không có quyền tải tài liệu snapshot của nghiệm thu này. Bạn không phải là nhà thầu sở hữu hợp đồng.");
                 }
             }
             // 3. Procurement: BẮT BUỘC phải là thành viên đang hoạt động (MemberStatus.Active) của Bên mời thầu quản lý hợp đồng này
             else if (isProcurement)
             {
-                // R4-01: Xác định Bên mời thầu quản lý hợp đồng trực tiếp từ BidPackage.ProcuringEntityId
                 var pe = await ResolveContractProcuringEntityAsync(acceptance.Contract?.BidPackage);
                 if (pe == null)
                 {
-                    return ApiResponse<(string PhysicalPath, string FileName, string ContentType)>.Forbidden(
+                    return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Forbidden(
                         "Không xác định được Bên mời thầu quản lý hợp đồng này.");
                 }
 
@@ -2839,47 +2840,82 @@ namespace ProcurementSystem.Infrastructure.Services
 
                 if (!isEntityMember)
                 {
-                    return ApiResponse<(string PhysicalPath, string FileName, string ContentType)>.Forbidden(
+                    return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Forbidden(
                         "Bạn không có quyền tải tài liệu snapshot của nghiệm thu này. Bạn không phải là thành viên đang hoạt động của Bên mời thầu quản lý hợp đồng.");
                 }
             }
             else
             {
-                return ApiResponse<(string PhysicalPath, string FileName, string ContentType)>.Forbidden(
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Forbidden(
                     "Bạn không có quyền truy cập tài liệu snapshot của nghiệm thu này.");
             }
 
-            var physicalPath = _fileStorageService.GetPhysicalFilePath(acceptance.SnapshotDocumentPath);
-            if (!File.Exists(physicalPath))
+            var fileName = $"NghiemThu_Moc{milestoneId}_Rev{acceptance.Revision}.pdf";
+            ProcurementSystem.Core.DTOs.Common.FileDownloadResult downloadResult;
+            try
             {
-                return ApiResponse<(string PhysicalPath, string FileName, string ContentType)>.Fail(
+                downloadResult = await _fileStorageService.ResolveDownloadAsync(acceptance.SnapshotDocumentPath, fileName, "application/pdf");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail($"Không thể tải tệp snapshot: {ex.Message}", statusCode: 500);
+            }
+
+            if (!downloadResult.IsRedirect && !downloadResult.IsStream && !File.Exists(downloadResult.PhysicalPath))
+            {
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail(
                     "Tệp tài liệu snapshot không tồn tại trên hệ thống lưu trữ.", statusCode: 404);
             }
 
             if (!string.IsNullOrWhiteSpace(acceptance.SnapshotDocumentHash))
             {
-                try
+                string? actualHash = null;
+                if (!string.IsNullOrWhiteSpace(downloadResult.PhysicalPath) && File.Exists(downloadResult.PhysicalPath))
                 {
-                    using var stream = File.OpenRead(physicalPath);
-                    var actualHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)).ToLowerInvariant();
-                    if (!string.Equals(actualHash, acceptance.SnapshotDocumentHash.Trim(), StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        return ApiResponse<(string PhysicalPath, string FileName, string ContentType)>.Fail(
-                            "Tệp tài liệu snapshot trên máy chủ không khớp với mã băm SHA256 đã lưu trữ lúc nghiệm thu kỹ thuật.",
+                        using var stream = File.OpenRead(downloadResult.PhysicalPath);
+                        actualHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)).ToLowerInvariant();
+                    }
+                    catch
+                    {
+                        return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail(
+                            "Không thể xác thực tính toàn vẹn của tệp tài liệu snapshot.",
                             statusCode: 409);
                     }
                 }
-                catch
+                else if (downloadResult.IsStream && downloadResult.FileStream != null)
                 {
-                    return ApiResponse<(string PhysicalPath, string FileName, string ContentType)>.Fail(
-                        "Không thể xác thực tính toàn vẹn của tệp tài liệu snapshot.",
+                    try
+                    {
+                        var ms = new MemoryStream();
+                        await downloadResult.FileStream.CopyToAsync(ms);
+                        ms.Position = 0;
+                        actualHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(ms)).ToLowerInvariant();
+                        ms.Position = 0;
+                        downloadResult = ProcurementSystem.Core.DTOs.Common.FileDownloadResult.FromStream(ms, fileName, "application/pdf");
+                    }
+                    catch
+                    {
+                        return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail(
+                            "Không thể xác thực tính toàn vẹn của tệp tài liệu snapshot.",
+                            statusCode: 409);
+                    }
+                }
+                else if (downloadResult.IsRedirect && !string.IsNullOrWhiteSpace(downloadResult.RedirectUrl))
+                {
+                    actualHash = await ComputeFileHashSafeAsync(downloadResult.RedirectUrl);
+                }
+
+                if (actualHash == null || !string.Equals(actualHash, acceptance.SnapshotDocumentHash.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail(
+                        "Tệp tài liệu snapshot trên máy chủ không khớp với mã băm SHA256 đã lưu trữ lúc nghiệm thu kỹ thuật.",
                         statusCode: 409);
                 }
             }
 
-            var fileName = $"NghiemThu_Moc{milestoneId}_Rev{acceptance.Revision}.pdf";
-            return ApiResponse<(string PhysicalPath, string FileName, string ContentType)>.Ok(
-                (physicalPath, fileName, "application/pdf"));
+            return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Ok(downloadResult);
         }
 
         /// <summary>
@@ -2888,7 +2924,7 @@ namespace ProcurementSystem.Infrastructure.Services
         /// Nếu dữ liệu legacy có ProcuringEntityId = null nhưng người tạo là chủ sở hữu duy nhất chưa từng chuyển đơn vị,
         /// hỗ trợ truy xuất an toàn có kiểm chứng không mơ hồ; ngược lại fail-closed (trả về null).
         /// </summary>
-                /// <summary>
+        /// <summary>
         /// Tính toán mã băm SHA256 an toàn từ tệp tài liệu (hỗ trợ cả tệp cục bộ và tệp lưu trữ từ xa/cloud).
         /// Trả về chuỗi hex SHA256 viết thường hoặc null nếu không thể truy cập tệp.
         /// </summary>
@@ -2912,7 +2948,37 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
-            // 2. Tệp lưu trữ cục bộ
+            // 2. Sử dụng ResolveDownloadAsync để hỗ trợ cả Supabase/Cloud Storage lẫn Local Storage
+            try
+            {
+                var download = await _fileStorageService.ResolveDownloadAsync(filePath, "temp_hash_calc");
+                if (download.IsRedirect && !string.IsNullOrWhiteSpace(download.RedirectUrl))
+                {
+                    using var httpClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                    using var stream = await httpClient.GetStreamAsync(download.RedirectUrl);
+                    return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)).ToLowerInvariant();
+                }
+
+                if (download.IsStream && download.FileStream != null)
+                {
+                    using (download.FileStream)
+                    {
+                        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(download.FileStream)).ToLowerInvariant();
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(download.PhysicalPath) && File.Exists(download.PhysicalPath))
+                {
+                    using var s = File.OpenRead(download.PhysicalPath);
+                    return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(s)).ToLowerInvariant();
+                }
+            }
+            catch
+            {
+                // Fallback nếu có ngoại lệ
+            }
+
+            // 3. Fallback tệp lưu trữ cục bộ trực tiếp
             try
             {
                 var physPath = _fileStorageService.GetPhysicalFilePath(filePath);

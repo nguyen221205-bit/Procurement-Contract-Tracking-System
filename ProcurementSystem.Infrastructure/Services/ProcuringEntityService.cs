@@ -280,7 +280,7 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<ProcuringEntityDto>.Ok(MapToDto(entity), message);
         }
 
-        public async Task<(string PhysicalPath, string ContentType, string FileName)?> GetEstablishmentFileAsync(int id)
+        public async Task<ProcurementSystem.Core.DTOs.Common.FileDownloadResult?> GetEstablishmentFileAsync(int id)
         {
             var entity = await _context.ProcuringEntities.AsNoTracking().FirstOrDefaultAsync(pe => pe.Id == id);
             if (entity == null || string.IsNullOrEmpty(entity.EstablishmentDecisionFile))
@@ -288,23 +288,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 return null;
             }
 
-            string physicalPath;
-            try
-            {
-                physicalPath = _fileStorageService.GetPhysicalFilePath(entity.EstablishmentDecisionFile);
-            }
-            catch
-            {
-                return null;
-            }
-
-            if (!System.IO.File.Exists(physicalPath))
-            {
-                return null;
-            }
-
-            var fileName = Path.GetFileName(physicalPath);
-            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var ext = Path.GetExtension(entity.EstablishmentDecisionFile).ToLowerInvariant();
             var contentType = ext switch
             {
                 ".pdf" => "application/pdf",
@@ -312,11 +296,19 @@ namespace ProcurementSystem.Infrastructure.Services
                 ".jpg" or ".jpeg" => "image/jpeg",
                 _ => "application/octet-stream"
             };
+            var fileName = $"QuyetDinhThanhLap_Entity{id}{ext}";
 
-            return (physicalPath, contentType, fileName);
+            try
+            {
+                return await _fileStorageService.ResolveDownloadAsync(entity.EstablishmentDecisionFile, fileName, contentType);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
-        public async Task<(string PhysicalPath, string ContentType, string FileName)?> GetAppointmentFileAsync(int id)
+        public async Task<ProcurementSystem.Core.DTOs.Common.FileDownloadResult?> GetAppointmentFileAsync(int id)
         {
             var entity = await _context.ProcuringEntities.AsNoTracking().FirstOrDefaultAsync(pe => pe.Id == id);
             if (entity == null || string.IsNullOrEmpty(entity.AppointmentDecisionFile))
@@ -324,23 +316,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 return null;
             }
 
-            string physicalPath;
-            try
-            {
-                physicalPath = _fileStorageService.GetPhysicalFilePath(entity.AppointmentDecisionFile);
-            }
-            catch
-            {
-                return null;
-            }
-
-            if (!System.IO.File.Exists(physicalPath))
-            {
-                return null;
-            }
-
-            var fileName = Path.GetFileName(physicalPath);
-            var ext = Path.GetExtension(physicalPath).ToLowerInvariant();
+            var ext = Path.GetExtension(entity.AppointmentDecisionFile).ToLowerInvariant();
             var contentType = ext switch
             {
                 ".pdf" => "application/pdf",
@@ -348,8 +324,16 @@ namespace ProcurementSystem.Infrastructure.Services
                 ".jpg" or ".jpeg" => "image/jpeg",
                 _ => "application/octet-stream"
             };
+            var fileName = $"QuyetDinhBoNhiem_Entity{id}{ext}";
 
-            return (physicalPath, contentType, fileName);
+            try
+            {
+                return await _fileStorageService.ResolveDownloadAsync(entity.AppointmentDecisionFile, fileName, contentType);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static ProcuringEntityDto MapToDto(ProcuringEntity entity)

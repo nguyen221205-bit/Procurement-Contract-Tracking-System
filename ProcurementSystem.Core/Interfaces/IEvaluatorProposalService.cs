@@ -1,4 +1,5 @@
 using ProcurementSystem.Core.DTOs;
+using ProcurementSystem.Core.DTOs.Common;
 using ProcurementSystem.Core.DTOs.EvaluatorProposal;
 
 namespace ProcurementSystem.Core.Interfaces
@@ -41,7 +42,7 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Tải về hoặc xem tệp Chứng chỉ nghiệp vụ / Bằng cấp chuyên môn của đề xuất
         /// </summary>
-        Task<ApiResponse<(string PhysicalPath, string ContentType, string FileName)>> GetCertificateFileForDownloadAsync(
+        Task<ApiResponse<FileDownloadResult>> GetCertificateFileForDownloadAsync(
             int id, int currentUserId, string currentUserRole);
     }
 }
