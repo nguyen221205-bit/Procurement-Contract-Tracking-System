@@ -34,16 +34,22 @@ namespace ProcurementSystem.Infrastructure.Services
 
         public async Task<ApiResponse<ContractorRegisterResponse>> RegisterContractorAsync(RegisterContractorRequest request)
         {
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return ApiResponse<ContractorRegisterResponse>.Fail("Email là bắt buộc.");
+            }
+
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-            // 0. Xác thực mã OTP email (cố định purpose RegisterContractor, tránh ghi đè thông báo số lần thử còn lại)
-            // 0. Xác thực mã OTP email (nếu có cung cấp - tạm thời ẩn/bỏ qua bắt buộc)
-            if (!string.IsNullOrWhiteSpace(request.OtpCode))
+            // 0. Bắt buộc xác thực mã OTP email với purpose RegisterContractor
+            if (string.IsNullOrWhiteSpace(request.OtpCode))
             {
-                if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterContractor", out var otpError))
-                {
-                    return ApiResponse<ContractorRegisterResponse>.Fail(otpError);
-                }
+                return ApiResponse<ContractorRegisterResponse>.Fail("Mã xác thực OTP là bắt buộc.");
+            }
+
+            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode.Trim(), "RegisterContractor", out var otpError))
+            {
+                return ApiResponse<ContractorRegisterResponse>.Fail(otpError);
             }
 
             // 1. Kiểm tra email tồn tại

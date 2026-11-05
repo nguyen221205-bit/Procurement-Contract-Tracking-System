@@ -249,9 +249,19 @@ namespace ProcurementSystem.Infrastructure.Services
                     var restoredStream = await _cryptoService.RestoreFromStorageAsync(encryptedMemStream);
                     return FileDownloadResult.FromStream(restoredStream, originalFileName, finalContentType);
                 }
+                catch (System.Security.Cryptography.CryptographicException)
+                {
+                    // Lỗi mã hóa/sai khóa: ném ngoại lệ, tuyệt đối không fallback che giấu lỗi khóa
+                    throw;
+                }
+                catch (InvalidOperationException)
+                {
+                    // Lỗi cấu hình khóa: ném ngoại lệ, tuyệt đối không fallback che giấu lỗi khóa
+                    throw;
+                }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Không thể giải mã tệp {Key} từ Supabase. Chuyển hướng sang Pre-signed URL.", key);
+                    _logger.LogWarning(ex, "Không thể tải luồng giải mã tệp {Key} từ Supabase. Chuyển hướng sang Pre-signed URL.", key);
                     var signedUrl = GetPreSignedUrl(storedPath, 15);
                     return FileDownloadResult.FromRedirect(signedUrl, originalFileName, finalContentType);
                 }

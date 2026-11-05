@@ -32,16 +32,22 @@ namespace ProcurementSystem.Infrastructure.Services
 
         public async Task<ApiResponse<ProcuringEntityRegisterResponse>> RegisterProcuringEntityAsync(RegisterProcuringEntityRequest request)
         {
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return ApiResponse<ProcuringEntityRegisterResponse>.Fail("Email công vụ / đăng nhập là bắt buộc.");
+            }
+
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-            // 0. Xác thực mã OTP email (cố định purpose RegisterProcuringEntity, tránh ghi đè thông báo số lần thử còn lại)
-            // 0. Xác thực mã OTP email công vụ (nếu có cung cấp - tạm thời ẩn/bỏ qua bắt buộc)
-            if (!string.IsNullOrWhiteSpace(request.OtpCode))
+            // 0. Bắt buộc xác thực mã OTP email công vụ với purpose RegisterProcuringEntity
+            if (string.IsNullOrWhiteSpace(request.OtpCode))
             {
-                if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterProcuringEntity", out var otpError))
-                {
-                    return ApiResponse<ProcuringEntityRegisterResponse>.Fail(otpError);
-                }
+                return ApiResponse<ProcuringEntityRegisterResponse>.Fail("Mã xác thực OTP là bắt buộc.");
+            }
+
+            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode.Trim(), "RegisterProcuringEntity", out var otpError))
+            {
+                return ApiResponse<ProcuringEntityRegisterResponse>.Fail(otpError);
             }
 
             // 1. Kiểm tra email đã tồn tại trong hệ thống chưa

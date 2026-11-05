@@ -50,6 +50,30 @@ builder.Services.AddScoped<IOtpService, OtpService>();
 // Contractor & Storage Services
 builder.Services.Configure<ProcurementSystem.Core.DTOs.Common.StorageSettings>(
     builder.Configuration.GetSection(ProcurementSystem.Core.DTOs.Common.StorageSettings.SectionName));
+
+// SEC-STORAGE: Kiểm tra tính hợp lệ của MasterKey ngay khi khởi động (nếu bật mã hóa)
+var startupStorageSettings = builder.Configuration.GetSection(ProcurementSystem.Core.DTOs.Common.StorageSettings.SectionName)
+    .Get<ProcurementSystem.Core.DTOs.Common.StorageSettings>();
+if (startupStorageSettings?.Encryption?.Enabled == true && string.Equals(startupStorageSettings.Provider, "Supabase", StringComparison.OrdinalIgnoreCase))
+{
+    var mKey = startupStorageSettings.Encryption?.MasterKey;
+    if (string.IsNullOrWhiteSpace(mKey))
+    {
+        throw new InvalidOperationException("Khởi động API thất bại: StorageSettings:Encryption:MasterKey là bắt buộc khi bật mã hóa lưu trữ Cloud.");
+    }
+    try
+    {
+        var decodedKey = Convert.FromBase64String(mKey.Trim());
+        if (decodedKey.Length != 32)
+        {
+            throw new InvalidOperationException($"Khởi động API thất bại: StorageSettings:Encryption:MasterKey phải giải mã ra đúng 32 bytes (256 bits). Hiện tại là {decodedKey.Length} bytes.");
+        }
+    }
+    catch (FormatException ex)
+    {
+        throw new InvalidOperationException("Khởi động API thất bại: StorageSettings:Encryption:MasterKey không đúng định dạng Base64 hợp lệ.", ex);
+    }
+}
 builder.Services.AddHttpClient<ITaxLookupService, TaxLookupService>();
 builder.Services.AddScoped<IPdfSecurityService, PdfSecurityService>();
 builder.Services.AddScoped<IFileCryptoCompressionService, FileCryptoCompressionService>();

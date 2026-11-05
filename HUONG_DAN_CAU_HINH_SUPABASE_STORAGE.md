@@ -40,26 +40,59 @@ Supabase Storage hỗ trợ giao thức S3 Protocol tiêu chuẩn quốc tế:
 5. Lấy **Project Reference ID**:
    - Nằm ngay trong URL trang Dashboard của bạn: `https://supabase.com/dashboard/project/<PROJECT_REF>`.
    - Hoặc xem tại mục *Project Settings -> General -> Reference ID*.
-   - Endpoint S3 sẽ có dạng: `https://<PROJECT_REF>.storage.supabase.co/v1/s3`.
+   - Endpoint S3 sẽ có dạng: `https://<PROJECT_REF>.storage.supabase.co/storage/v1/s3`.
+
 ---
 
-## BƯỚC 4: ĐIỀN CẤU HÌNH VÀO `appsettings.json`
+## BƯỚC 4: SINH KHÓA MÃ HÓA MASTERKEY (AES-256) VÀ ĐIỀN CẤU HÌNH
+
+### 1. Sinh khóa mã hóa 256-bit (32 bytes Base64) ngẫu nhiên an toàn:
+Khóa mã hóa bắt buộc phải là chuỗi Base64 giải mã ra đúng 32 bytes (256 bits). Bạn có thể sinh khóa bằng một trong các lệnh sau:
+
+- **PowerShell (Windows)**:
+  ```powershell
+  $bytes = New-Object byte[] 32
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  [Convert]::ToBase64String($bytes)
+  ```
+- **Linux / macOS Terminal (OpenSSL)**:
+  ```bash
+  openssl rand -base64 32
+  ```
+
+### 2. Điền cấu hình vào `appsettings.json` hoặc User Secrets:
 Mở tệp `ProcurementSystem.API/appsettings.json` và cập nhật block `StorageSettings`:
 
 ```json
   "StorageSettings": {
-    "Provider": "Supabase", // Chuyển từ "Local" sang "Supabase" để kích hoạt Cloud
+    "Provider": "Supabase", // "Local" hoặc "Supabase"
     "Supabase": {
       "Endpoint": "https://<PROJECT_REF>.storage.supabase.co/storage/v1/s3",
       "BucketName": "procurement-documents",
       "AccessKeyId": "<ACCESS_KEY_ID_VỪA_LẤY>",
       "SecretAccessKey": "<SECRET_ACCESS_KEY_VỪA_LẤY>",
       "Region": "ap-southeast-1"
+    },
+    "Encryption": {
+      "Enabled": true,
+      "MasterKey": "<CHUỖI_BASE64_32_BYTES_VỪA_SINH>"
     }
   }
 ```
 
-> **Lưu ý**: Nếu muốn quay trở lại dùng lưu trữ cục bộ trên ổ cứng như cũ, bạn chỉ cần đổi `"Provider": "Local"`.
+> 🔒 **Khuyến nghị bảo mật môi trường Production**:
+> - Không commit `MasterKey`, `AccessKeyId`, `SecretAccessKey` vào kho mã nguồn Git.
+> - Thiết lập thông qua **Environment Variables**:
+>   + `StorageSettings__Encryption__MasterKey`
+>   + `StorageSettings__Supabase__AccessKeyId`
+>   + `StorageSettings__Supabase__SecretAccessKey`
+> - Hoặc trong môi trường phát triển cục bộ, sử dụng **.NET User Secrets**:
+>   ```powershell
+>   dotnet user-secrets set "StorageSettings:Encryption:MasterKey" "<YOUR_BASE64_KEY>" --project ProcurementSystem.API
+>   ```
+
+> ⚠️ **Cảnh báo quan trọng về thay đổi khóa MasterKey**:
+> Việc thay đổi hoặc mất `MasterKey` mà chưa chuyển đổi dữ liệu sẽ khiến toàn bộ các tệp đã mã hóa trước đó trên Cloud **không thể giải mã được** (hệ thống sẽ ném `CryptographicException` để bảo vệ tính toàn vẹn dữ liệu). Bắt buộc phải sao lưu khóa bí mật an toàn.
 
 ---
 
@@ -74,8 +107,8 @@ Hệ thống đã tích hợp sẵn Controller quản trị lưu trữ dành ri�
 - **API**: `POST /api/admin/storage/sync-to-cloud`
 - **Cơ chế an toàn tự động**:
   1. Tự động tạo bảng sao lưu CSDL `_Backup_FilePaths_YYYYMMDD_HHMMSS` lưu toàn bộ đường dẫn cũ.
-  2. Đẩy toàn bộ tệp trong thư mục `uploads/` lên Supabase Private Bucket.
-  3. Cập nhật các đường dẫn trong CSDL sang tiền tố `supabase://...`.
+  2. Nén GZip và mã hóa AES-256 từng tệp trong thư mục `uploads/` trước khi đẩy lên Supabase Private Bucket.
+  3. Cập nhật các đường dẫn trong CSDL sang tiền tố `supabase://...` (bao gồm các bảng BidSubmissions, Contracts, Acceptances, EvaluatorProposals, ProcuringEntities, BidClarifications).
   4. Trả về báo cáo chi tiết từng tệp thành công/thất bại.
 
 ### 3. 1-Click Rollback về Local (Khôi phục nếu muốn):
@@ -84,15 +117,18 @@ Hệ thống đã tích hợp sẵn Controller quản trị lưu trữ dành ri�
 
 ---
 
-## KIỂM TRA BẢO MẬT & XỬ LÝ DỮ LIỆU ĐÁM MÂY (ZERO-TRUST PIPELINE)
-Hệ thống triển khai chuẩn mực bảo mật và xử lý dữ liệu trước khi đẩy lên Cloud:
+## QUY TRÌNH KIỂM KÊ VÀ CHUYỂN ĐỔI FILE CŨ (LEGACY CONVERSION GUIDE)
 
-### 1. Luồng tải lên (Upload Pipeline):
-1. **Kiểm tra Magic Bytes**: Kiểm tra header nhị phân thực tế của tệp (chặn giả mạo đuôi mở rộng).
-2. **Nén dữ liệu (GZip Stream)**: Tối ưu dung lượng giảm 40% - 70%, tiết kiệm băng thông và bộ nhớ Cloud.
-3. **Mã hóa đối xứng (AES-256-CBC)**: Sinh Dynamic IV 16 bytes ngẫu nhiên cho mỗi file và mã hóa dữ liệu. Tệp lưu trên Supabase Storage là chuỗi nhị phân vô nghĩa (Zero-Trust), bên thứ ba không thể xem được.
+Nếu trong quá khứ hệ thống từng có các tệp mã hóa bằng khóa fallback mặc định (trước khi ban hành quy định bảo mật bắt buộc MasterKey 05/11/2026), quản trị viên cần tuân thủ quy trình kiểm kê và chuyển đổi sau:
 
-### 2. Luồng tải về (Download Pipeline):
-1. Kiểm tra xác thực token JWT và phân quyền người dùng (RBAC).
-2. Kiểm tra nghiệp vụ Đấu thầu (hồ sơ dự thầu chỉ được mở sau thời điểm đóng/mở thầu).
-3. Backend kéo tệp mã hóa từ Supabase S3 $\rightarrow$ Đọc 16 bytes IV $\rightarrow$ Giải mã AES-256 $\rightarrow$ Giải nén GZip $\rightarrow$ Stream trả về tệp gốc cho trình duyệt (người dùng mở xem bình thường, hoàn toàn trong suốt).
+1. **Kiểm kê tệp**:
+   - Quét tất cả các tệp có tiền tố `supabase://` trong cơ sở dữ liệu.
+   - Thử nghiệm giải mã với MasterKey chính thức trên môi trường staging / replica.
+   - Tệp nào ném `CryptographicException` tức là từng được mã hóa bằng khóa cũ hoặc đã bị biến đổi.
+2. **Chuyển đổi an toàn (Re-encryption Tool)**:
+   - Sử dụng script chuyển đổi chuyên biệt được cấp quyền tường minh:
+     + Đọc tệp cũ với khóa cũ được cung cấp qua secret tạm thời.
+     + Giải mã và giải nén.
+     + Nén và mã hóa lại với MasterKey mới chính thức 32-byte Base64.
+     + Cập nhật lại blob trên Supabase Bucket và đối soát mã băm SHA-256.
+   - **Tuyệt đối không nhúng khóa cũ vào mã nguồn ứng dụng như một cơ chế fallback tự động**.
