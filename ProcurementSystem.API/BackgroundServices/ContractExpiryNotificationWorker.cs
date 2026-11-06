@@ -60,7 +60,7 @@ namespace ProcurementSystem.API.BackgroundServices
             _logger.LogInformation("ContractExpiryNotificationWorker đang dừng.");
         }
 
-        private async Task RunNotificationCheckAsync(CancellationToken stoppingToken)
+        public async Task RunNotificationCheckAsync(CancellationToken stoppingToken = default)
         {
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -69,18 +69,8 @@ namespace ProcurementSystem.API.BackgroundServices
             var now = DateTime.UtcNow;
             var window24h = now.AddHours(-24);
 
-            // 1. Lấy danh sách UserId của Procurement & Admin để gửi cảnh báo nội bộ
-            var internalUserIds = await dbContext.UserRoles
-                .Include(ur => ur.Role)
-                .Where(ur => ur.Role.Name == "Procurement" || ur.Role.Name == "Admin")
-                .Select(ur => ur.UserId)
-                .Distinct()
-                .ToListAsync(stoppingToken);
-
-            // Tra cứu map UserId -> Email để gửi email song song với Notification
-            var usersDict = await dbContext.Users
-                .AsNoTracking()
-                .ToDictionaryAsync(u => u.Id, u => u.Email, stoppingToken);
+            // 1. Khởi tạo Snapshot người nhận cho lượt quét hiện tại (không cache xuyên lượt)
+            var recipientContext = await NotificationRecipientResolver.BuildContextAsync(dbContext, stoppingToken);
 
             var notificationsToAdd = new List<Notification>();
             var emailsToSend = new List<(string Email, string Title, string Message)>();
@@ -89,6 +79,12 @@ namespace ProcurementSystem.API.BackgroundServices
             async Task TryAddNotification(int userId, string title, string message, NotificationType type)
             {
                 if (userId <= 0) return;
+
+                // Chỉ gửi tới tài khoản đang hoạt động (IsActive == true)
+                if (!recipientContext.ActiveUsersEmailMap.ContainsKey(userId))
+                {
+                    return;
+                }
 
                 // Kiểm tra trong lô đang chuẩn bị add
                 if (notificationsToAdd.Any(n => n.UserId == userId && n.Title == title))
@@ -115,7 +111,7 @@ namespace ProcurementSystem.API.BackgroundServices
                     });
 
                     // Thêm vào hàng đợi gửi email chống trùng 24h
-                    if (usersDict.TryGetValue(userId, out var email) && !string.IsNullOrWhiteSpace(email))
+                    if (recipientContext.ActiveUsersEmailMap.TryGetValue(userId, out var email) && !string.IsNullOrWhiteSpace(email))
                     {
                         emailsToSend.Add((email, title, message));
                     }
@@ -138,14 +134,16 @@ namespace ProcurementSystem.API.BackgroundServices
                 var title = $"[Thông báo] Gói thầu {bp.Code} đã hết hạn và tự động đóng thầu";
                 var message = $"Gói thầu \"{bp.Name}\" đã kết thúc thời hạn tiếp nhận hồ sơ dự thầu lúc {bp.Deadline:dd/MM/yyyy HH:mm} UTC và đã được hệ thống tự động chuyển sang trạng thái Đóng thầu (Closed). Vui lòng phân công Tổ chuyên gia để tiến hành mở thầu và chấm điểm.";
 
-                // Gửi cho người tạo
-                if (bp.CreatedBy > 0)
-                {
-                    await TryAddNotification(bp.CreatedBy, title, message, NotificationType.DeadlineApproaching);
-                }
+                // Resolve người nhận nội bộ theo Entity và Admin policy (không suy đoán theo Creator nếu thiếu owner hoặc cờ review)
+                var internalRecipients = NotificationRecipientResolver.ResolveInternalRecipients(
+                    bp.ProcuringEntityId,
+                    bp.OwnershipNeedsReview,
+                    recipientContext,
+                    _logger,
+                    "Gói thầu",
+                    bp.Code);
 
-                // Gửi cho các chuyên viên Mua sắm
-                foreach (var internalUserId in internalUserIds)
+                foreach (var internalUserId in internalRecipients)
                 {
                     await TryAddNotification(internalUserId, title, message, NotificationType.DeadlineApproaching);
                 }
@@ -189,14 +187,25 @@ namespace ProcurementSystem.API.BackgroundServices
 
                 if (title != null && message != null)
                 {
-                    // Gửi cho nhà thầu
-                    if (contract.Contractor?.UserId > 0)
+                    // Gửi cho nhà thầu đúng hợp đồng (nếu tài khoản còn hoạt động)
+                    var contractorUserId = NotificationRecipientResolver.ResolveActiveContractorRecipient(
+                        contract.Contractor?.UserId,
+                        recipientContext);
+                    if (contractorUserId.HasValue)
                     {
-                        await TryAddNotification(contract.Contractor.UserId, title, message, NotificationType.ContractExpiring);
+                        await TryAddNotification(contractorUserId.Value, title, message, NotificationType.ContractExpiring);
                     }
 
-                    // Gửi cho Ban QLDA / Chuyên viên mua sắm
-                    foreach (var internalUserId in internalUserIds)
+                    // Gửi cho Bên mời thầu thuộc đúng Entity & Admin nền tảng
+                    var internalRecipients = NotificationRecipientResolver.ResolveInternalRecipients(
+                        contract.BidPackage?.ProcuringEntityId,
+                        contract.BidPackage?.OwnershipNeedsReview ?? false,
+                        recipientContext,
+                        _logger,
+                        "Hợp đồng",
+                        contract.ContractNumber);
+
+                    foreach (var internalUserId in internalRecipients)
                     {
                         await TryAddNotification(internalUserId, title, message, NotificationType.ContractExpiring);
                     }
@@ -209,6 +218,8 @@ namespace ProcurementSystem.API.BackgroundServices
             var pendingMilestones = await dbContext.ContractMilestones
                 .Include(m => m.Contract)
                     .ThenInclude(c => c.Contractor)
+                .Include(m => m.Contract)
+                    .ThenInclude(c => c.BidPackage)
                 .Where(m => m.Status != MilestoneStatus.Completed && m.Contract.Status == ContractStatus.Active)
                 .ToListAsync(stoppingToken);
 
@@ -236,12 +247,25 @@ namespace ProcurementSystem.API.BackgroundServices
 
                 if (title != null && message != null)
                 {
-                    if (m.Contract.Contractor?.UserId > 0)
+                    // Gửi cho nhà thầu đúng hợp đồng (nếu còn hoạt động)
+                    var contractorUserId = NotificationRecipientResolver.ResolveActiveContractorRecipient(
+                        m.Contract.Contractor?.UserId,
+                        recipientContext);
+                    if (contractorUserId.HasValue)
                     {
-                        await TryAddNotification(m.Contract.Contractor.UserId, title, message, NotificationType.ProgressOverdue);
+                        await TryAddNotification(contractorUserId.Value, title, message, NotificationType.ProgressOverdue);
                     }
 
-                    foreach (var internalUserId in internalUserIds)
+                    // Gửi cho Bên mời thầu thuộc đúng Entity & Admin nền tảng
+                    var internalRecipients = NotificationRecipientResolver.ResolveInternalRecipients(
+                        m.Contract.BidPackage?.ProcuringEntityId,
+                        m.Contract.BidPackage?.OwnershipNeedsReview ?? false,
+                        recipientContext,
+                        _logger,
+                        "Mốc tiến độ",
+                        $"{m.Contract.ContractNumber} - {m.Title}");
+
+                    foreach (var internalUserId in internalRecipients)
                     {
                         await TryAddNotification(internalUserId, title, message, NotificationType.ProgressOverdue);
                     }
@@ -268,11 +292,15 @@ namespace ProcurementSystem.API.BackgroundServices
                     var title = $"[Khẩn cấp] Chứng thư bảo lãnh {g.GuaranteeNumber} đã hết hạn";
                     var message = $"Chứng thư bảo lãnh ngân hàng #{g.GuaranteeNumber} thuộc hợp đồng {g.Contract?.ContractNumber} đã hết hạn hiệu lực ({g.ExpiryDate:dd/MM/yyyy}). Vui lòng yêu cầu nhà thầu gia hạn hoặc xử lý biện pháp bảo đảm.";
 
-                    if (g.Contract?.BidPackage?.CreatedBy > 0)
-                    {
-                        await TryAddNotification(g.Contract.BidPackage.CreatedBy, title, message, NotificationType.ContractExpiring);
-                    }
-                    foreach (var internalUserId in internalUserIds)
+                    var internalRecipients = NotificationRecipientResolver.ResolveInternalRecipients(
+                        g.Contract?.BidPackage?.ProcuringEntityId,
+                        g.Contract?.BidPackage?.OwnershipNeedsReview ?? false,
+                        recipientContext,
+                        _logger,
+                        "Bảo lãnh",
+                        g.GuaranteeNumber);
+
+                    foreach (var internalUserId in internalRecipients)
                     {
                         await TryAddNotification(internalUserId, title, message, NotificationType.ContractExpiring);
                     }
@@ -282,11 +310,15 @@ namespace ProcurementSystem.API.BackgroundServices
                     var title = $"[Cảnh báo] Chứng thư bảo lãnh {g.GuaranteeNumber} sắp hết hạn (còn {daysRemaining} ngày)";
                     var message = $"Chứng thư bảo lãnh ngân hàng #{g.GuaranteeNumber} thuộc hợp đồng {g.Contract?.ContractNumber} sẽ hết hạn vào ngày {g.ExpiryDate:dd/MM/yyyy}. Đề nghị rà soát và yêu cầu nhà thầu gia hạn bảo đảm.";
 
-                    if (g.Contract?.BidPackage?.CreatedBy > 0)
-                    {
-                        await TryAddNotification(g.Contract.BidPackage.CreatedBy, title, message, NotificationType.ContractExpiring);
-                    }
-                    foreach (var internalUserId in internalUserIds)
+                    var internalRecipients = NotificationRecipientResolver.ResolveInternalRecipients(
+                        g.Contract?.BidPackage?.ProcuringEntityId,
+                        g.Contract?.BidPackage?.OwnershipNeedsReview ?? false,
+                        recipientContext,
+                        _logger,
+                        "Bảo lãnh",
+                        g.GuaranteeNumber);
+
+                    foreach (var internalUserId in internalRecipients)
                     {
                         await TryAddNotification(internalUserId, title, message, NotificationType.ContractExpiring);
                     }
@@ -311,8 +343,11 @@ namespace ProcurementSystem.API.BackgroundServices
                 var hoursRemaining = (clar.Deadline!.Value - now).TotalHours;
                 if (hoursRemaining <= 24 && hoursRemaining > 0)
                 {
-                    var contractorUserId = clar.BidSubmission?.Contractor?.UserId;
-                    if (contractorUserId.HasValue && contractorUserId.Value > 0)
+                    var rawContractorUserId = clar.BidSubmission?.Contractor?.UserId;
+                    var contractorUserId = NotificationRecipientResolver.ResolveActiveContractorRecipient(
+                        rawContractorUserId,
+                        recipientContext);
+                    if (contractorUserId.HasValue)
                     {
                         var title = $"[Khẩn cấp] Thời hạn giải trình HSDT gói [{clar.BidPackage?.Code}] còn dưới 24 giờ";
                         var message = $"Yêu cầu giải trình bổ sung hồ sơ '{clar.Title}' cho gói thầu {clar.BidPackage?.Code} sẽ hết hạn vào lúc {clar.Deadline.Value:dd/MM/yyyy HH:mm} UTC. Quý nhà thầu vui lòng khẩn trương nộp văn bản giải trình.";

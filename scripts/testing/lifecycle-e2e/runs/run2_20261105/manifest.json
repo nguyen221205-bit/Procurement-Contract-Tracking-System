@@ -1,0 +1,351 @@
+{
+  "runId": "run2_20261105",
+  "database": "procurement_db_e2e_run2_20261105",
+  "timestampUtc": "2026-11-05T11:20:18Z",
+  "actors": {
+    "admin": {
+      "userId": 1,
+      "email": "admin@procurement.com",
+      "roles": [
+        "Admin"
+      ]
+    },
+    "managerA": {
+      "userId": 10,
+      "email": "manager_run2_20261105@procurement.com",
+      "entityId": 2,
+      "role": "Manager"
+    },
+    "officerA": {
+      "userId": 11,
+      "email": "officer_run2_20261105@procurement.com",
+      "memberId": 3,
+      "entityId": 2,
+      "authorityId": 1,
+      "role": "Officer"
+    },
+    "checkerA": {
+      "userId": 12,
+      "email": "checker_run2_20261105@procurement.com",
+      "memberId": 4,
+      "entityId": 2,
+      "authorityId": 2,
+      "role": "Signer"
+    },
+    "procurementB": {
+      "userId": 13,
+      "email": "procurement_b_run2_20261105@procurement.com",
+      "entityId": 3,
+      "role": "Manager"
+    },
+    "contractor1": {
+      "contractorId": 1,
+      "userId": 6,
+      "email": "contractor1_run2_20261105@test.com",
+      "companyName": "Công ty CP Công nghệ & Thiết bị E2E run2_20261105",
+      "taxCode": "0301277618"
+    },
+    "contractor2": {
+      "contractorId": 2,
+      "userId": 7,
+      "email": "contractor2_run2_20261105@test.com",
+      "companyName": "Công ty TNHH Giải pháp Đấu thầu E2E run2_20261105",
+      "taxCode": "0302277618"
+    },
+    "evaluators": [
+      {
+        "email": "evaluator@procurement.com",
+        "name": "Tran Van Giam Khao Cham Thau"
+      },
+      {
+        "email": "evaluator2@procurement.com",
+        "name": "Le Thi Giam Khao Ky Thuat"
+      },
+      {
+        "email": "evaluator3@procurement.com",
+        "name": "Pham Minh Tai - Giam Khao Tai Chinh"
+      }
+    ]
+  },
+  "entities": {
+    "entityA": {
+      "id": 2,
+      "name": "Ban Quản lý Dự án E2E run2_20261105",
+      "taxCode": "0100277618",
+      "managerUserId": 10
+    },
+    "entityB": {
+      "id": 3,
+      "name": "Ban Quản lý Dự án B run2_20261105",
+      "taxCode": "0101277618"
+    }
+  },
+  "git": {
+    "branch": "dev",
+    "commit": "eb9d90a6380392e6d01f7a9a8a7a3c196b7e497f",
+    "workingTreeDirty": true,
+    "modifiedFilesCount": 9
+  },
+  "environment": {
+    "frontendBaseUrl": "http://localhost:5173",
+    "apiBaseUrl": "http://localhost:5225",
+    "isolatedDatabase": "procurement_db_e2e_run2_20261105",
+    "pythonVersion": "3.14.5",
+    "playwrightVersion": "1.60.0"
+  },
+  "businessFlow": {
+    "packageId": 6,
+    "packageCode": "PKG-RUN2_20261105",
+    "packageName": "Gói thầu Thiết bị CNTT & Giám sát E2E run2_20261105",
+    "budget": 1800000000,
+    "contractId": 2
+  },
+  "negativeTests": [
+    {
+      "caseId": "NEG-01A",
+      "description": "Chặn Procurement B đọc dữ liệu nội bộ nhạy cảm của Entity A",
+      "expectedStatus": "HTTP 403",
+      "actualStatus": "HTTP 403",
+      "passed": true,
+      "detail": "Server từ chối truy cập chéo đơn vị hợp lệ."
+    },
+    {
+      "caseId": "NEG-01B",
+      "description": "Chặn Procurement B sửa trạng thái hợp đồng của Entity A",
+      "expectedStatus": "HTTP 403",
+      "actualStatus": "HTTP 403",
+      "passed": true,
+      "detail": "Server từ chối sửa đổi hợp đồng chéo đơn vị."
+    },
+    {
+      "caseId": "NEG-01C",
+      "description": "Chặn Procurement B tải snapshot nghiệm thu của Entity A",
+      "expectedStatus": "HTTP 403",
+      "actualStatus": "HTTP 403",
+      "passed": true,
+      "detail": "Server từ chối tải snapshot tài liệu của đơn vị khác."
+    },
+    {
+      "caseId": "NEG-02",
+      "description": "Chặn Maker tự phê duyệt giải ngân cho biên bản do mình thẩm tra",
+      "expectedStatus": "HTTP 400 (Anti-Self-Approval)",
+      "actualStatus": "HTTP 400",
+      "passed": true,
+      "detail": "Server từ chối vi phạm kiểm soát chéo Maker-Checker."
+    },
+    {
+      "caseId": "NEG-03",
+      "description": "Chặn user có JWT nhưng tư cách thành viên đã bị thu hồi",
+      "expectedStatus": "HTTP 403 (Member Inactive)",
+      "actualStatus": "HTTP 403 / 403",
+      "passed": true,
+      "detail": "Server kiểm tra tính hợp lệ thành viên theo thời gian thực."
+    },
+    {
+      "caseId": "NEG-04",
+      "description": "Chặn phê duyệt khi phiên bản / revision bị cũ (Stale Concurrency)",
+      "expectedStatus": "HTTP 409 Conflict",
+      "actualStatus": "HTTP 409",
+      "passed": true,
+      "detail": "Server bảo vệ tính toàn vẹn phiên bản chống ghi đè dữ liệu cũ."
+    },
+    {
+      "caseId": "NEG-05A",
+      "description": "Chặn tải snapshot tài liệu khi chưa đăng nhập",
+      "expectedStatus": "HTTP 401 Unauthorized",
+      "actualStatus": "HTTP 401",
+      "passed": true,
+      "detail": "Endpoint được bảo vệ nghiêm ngặt bằng [Authorize]."
+    },
+    {
+      "caseId": "NEG-05B",
+      "description": "Tải snapshot tài liệu với quyền hợp lệ & kiểm tra mã băm SHA-256",
+      "expectedStatus": "HTTP 200 + Hash Match",
+      "actualStatus": "HTTP 200 (Match: True)",
+      "passed": true,
+      "detail": "Tệp tải về hợp lệ, dung lượng 84926 bytes."
+    },
+    {
+      "caseId": "NEG-06",
+      "description": "Chặn Quản trị viên hệ thống (Admin) duyệt chi thay Bên mời thầu",
+      "expectedStatus": "HTTP 403 Forbidden",
+      "actualStatus": "HTTP 403",
+      "passed": true,
+      "detail": "Phân định quyền lực rõ ràng: Admin quản trị hệ thống, không thay thế lãnh đạo đơn vị."
+    }
+  ],
+  "results": {
+    "step1": {
+      "status": "PASS",
+      "packageId": 6,
+      "packageCode": "PKG-RUN2_20261105"
+    },
+    "step2": {
+      "status": "PASS",
+      "contractor1Bid": 1500000000,
+      "contractor2Bid": 1600000000
+    },
+    "step3": {
+      "status": "PASS",
+      "evaluatorsCount": 3,
+      "packageStatus": "Evaluating"
+    },
+    "step4": {
+      "status": "PASS",
+      "completedEvaluators": 3
+    },
+    "step5": {
+      "status": "PASS",
+      "awardedContractorId": 1
+    },
+    "step6": {
+      "status": "Draft",
+      "contractId": 2
+    },
+    "step7": {
+      "status": "Active",
+      "allocatedAmount": 1500000000
+    },
+    "step8": {
+      "status": "PASS",
+      "progressWeek1": 50,
+      "progressWeek2": 100
+    },
+    "step9": {
+      "status": "PASS",
+      "milestone1Status": "Completed",
+      "contractStatus": "Active"
+    },
+    "step10": {
+      "status": "PASS",
+      "contractStatus": "Completed",
+      "totalDisbursed": 1500000000,
+      "remaining": 0
+    },
+    "step11": {
+      "status": "PASS",
+      "auditLogsVerified": true
+    }
+  },
+  "reconciliation": {
+    "packageId": 6,
+    "winningSubmissionId": 9,
+    "submissions": [
+      {
+        "submissionId": 9,
+        "contractorId": 1,
+        "bidPrice": 1500000000.0,
+        "status": "Selected"
+      },
+      {
+        "submissionId": 10,
+        "contractorId": 2,
+        "bidPrice": 1600000000.0,
+        "status": "Rejected"
+      }
+    ],
+    "contractId": 2,
+    "contractValue": 1500000000.0,
+    "totalApprovedAndDisbursed": 1500000000.0,
+    "remainingAmount": 0.0,
+    "milestones": [
+      {
+        "milestoneId": 4,
+        "amount": 500000000.0,
+        "status": "2",
+        "version": 2,
+        "acceptanceId": 1,
+        "revision": 1,
+        "makerUserId": 11,
+        "checkerUserId": 12,
+        "acceptanceStatus": "1"
+      },
+      {
+        "milestoneId": 5,
+        "amount": 1000000000.0,
+        "status": "2",
+        "version": 2,
+        "acceptanceId": 2,
+        "revision": 1,
+        "makerUserId": 11,
+        "checkerUserId": 12,
+        "acceptanceStatus": "1"
+      }
+    ],
+    "auditTrailSampleCount": 20,
+    "auditTrailSamples": [
+      {
+        "auditId": 113,
+        "userId": "12",
+        "action": "APPROVE_MILESTONE_ACCEPTANCE",
+        "entityType": "Acceptance",
+        "entityId": "2"
+      },
+      {
+        "auditId": 112,
+        "userId": "12",
+        "action": "UPDATE",
+        "entityType": "Acceptance",
+        "entityId": "2"
+      },
+      {
+        "auditId": 111,
+        "userId": "12",
+        "action": "UPDATE",
+        "entityType": "Contract",
+        "entityId": "2"
+      },
+      {
+        "auditId": 109,
+        "userId": "10",
+        "action": "REVOKE_MEMBER",
+        "entityType": "ProcuringEntityMember",
+        "entityId": "6"
+      },
+      {
+        "auditId": 106,
+        "userId": "11",
+        "action": "CREATE",
+        "entityType": "Acceptance",
+        "entityId": "2"
+      },
+      {
+        "auditId": 105,
+        "userId": "12",
+        "action": "APPROVE_MILESTONE_ACCEPTANCE",
+        "entityType": "Acceptance",
+        "entityId": "1"
+      },
+      {
+        "auditId": 101,
+        "userId": "6",
+        "action": "CREATE",
+        "entityType": "ProgressUpdate",
+        "entityId": "2"
+      },
+      {
+        "auditId": 99,
+        "userId": "10",
+        "action": "UPDATE",
+        "entityType": "Contract",
+        "entityId": "2"
+      },
+      {
+        "auditId": 98,
+        "userId": "10",
+        "action": "UPDATE",
+        "entityType": "BidPackage",
+        "entityId": "6"
+      },
+      {
+        "auditId": 97,
+        "userId": "10",
+        "action": "UPDATE",
+        "entityType": "Contract",
+        "entityId": "2"
+      }
+    ]
+  },
+  "overallStatus": "PASS",
+  "completedAtUtc": "2026-11-05T11:23:05Z"
+}
