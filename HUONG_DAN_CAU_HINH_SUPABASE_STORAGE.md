@@ -1,6 +1,6 @@
-# HƯỚNG DẪN CẤU HÌNH & KÍCH HOẠT SUPABASE CLOUD STORAGE (S3-COMPATIBLE)
+# HƯỚNG DẪN CẤU HÌNH & KÍCH HOẠT SUPABASE CLOUD STORAGE (S3-COMPATIBLE) & XÁC THỰC OTP
 
-Tài liệu này hướng dẫn cách kết nối hệ sinh thái lưu trữ đám mây miễn phí **Supabase Storage** cho **Hệ thống Quản lý Đấu thầu & Theo dõi Hợp đồng**. 
+Tài liệu này hướng dẫn cách kết nối hệ sinh thái lưu trữ đám mây miễn phí **Supabase Storage** và cấu hình **Dịch vụ gửi mã OTP qua Email** cho **Hệ thống Quản lý Đấu thầu & Theo dõi Hợp đồng**. 
 
 Được thiết kế theo chuẩn **Zero-Risk**: Bạn có thể kích hoạt, trải nghiệm và hoàn tác (Rollback) về máy cục bộ bất cứ lúc nào chỉ bằng 1 thao tác mà không sợ mất mát dữ liệu.
 
@@ -45,6 +45,10 @@ Supabase Storage hỗ trợ giao thức S3 Protocol tiêu chuẩn quốc tế:
 ---
 
 ## BƯỚC 4: SINH KHÓA MÃ HÓA MASTERKEY (AES-256) VÀ ĐIỀN CẤU HÌNH
+
+> 💡 **NGUYÊN TẮC HOẠT ĐỘNG ĐỘC LẬP CỦA LOCAL STORAGE**:
+> - Khi `StorageSettings:Provider` được đặt là `"Local"` (mặc định), hệ thống **KHÔNG bắt buộc** phải cấu hình `MasterKey`. Toàn bộ ứng dụng, các tác vụ đọc/ghi file nội bộ và bộ inject DI khởi động bình thường mà không phát sinh bất kỳ lỗi nào.
+> - `MasterKey` chỉ bắt buộc khi bạn kích hoạt nhà cung cấp `"Supabase"` VÀ bật mã hóa `StorageSettings:Encryption:Enabled = true`.
 
 ### 1. Sinh khóa mã hóa 256-bit (32 bytes Base64) ngẫu nhiên an toàn:
 Khóa mã hóa bắt buộc phải là chuỗi Base64 giải mã ra đúng 32 bytes (256 bits). Bạn có thể sinh khóa bằng một trong các lệnh sau:
@@ -91,12 +95,42 @@ Mở tệp `ProcurementSystem.API/appsettings.json` và cập nhật block `Stor
 >   dotnet user-secrets set "StorageSettings:Encryption:MasterKey" "<YOUR_BASE64_KEY>" --project ProcurementSystem.API
 >   ```
 
-> ⚠️ **Cảnh báo quan trọng về thay đổi khóa MasterKey**:
-> Việc thay đổi hoặc mất `MasterKey` mà chưa chuyển đổi dữ liệu sẽ khiến toàn bộ các tệp đã mã hóa trước đó trên Cloud **không thể giải mã được** (hệ thống sẽ ném `CryptographicException` để bảo vệ tính toàn vẹn dữ liệu). Bắt buộc phải sao lưu khóa bí mật an toàn.
+### 3. Cơ chế tự động giải mã file cũ (Smart Automatic Decryption):
+- **Tính độc lập giữa ĐỌC và GHI**: Cờ `StorageSettings:Encryption:Enabled` chỉ điều khiển chiều **GHI** (khi lưu tệp mới qua `SaveFileAsync` / `SaveStreamAsync`).
+- Khi người dùng tải tệp qua API (`ResolveDownloadAsync`), hệ thống sẽ tải luồng dữ liệu từ Cloud về và tự động kiểm tra header nhị phân:
+  + Nếu tệp có header mã hóa **`PSEN`** (Procurement System Encrypted): Backend sử dụng `MasterKey` giải mã AES-256-CBC và giải nén GZip để trả lại luồng tệp gốc, **kể cả khi cờ `Encryption:Enabled` đang tắt**.
+  + Nếu tệp là dữ liệu Plaintext cũ (không có header `PSEN`): Trả về nguyên vẹn luồng tệp an toàn (passthrough).
+  + Nếu tệp có header `PSEN` nhưng cấu hình thiếu `MasterKey` hoặc sai khóa: Ném ngoại lệ `InvalidOperationException` hoặc `CryptographicException`. Tuyệt đối không che giấu lỗi bằng cách trả ciphertext hay chuyển hướng người dùng tới liên kết rác.
 
 ---
 
-## BƯỚC 5: SỬ DỤNG TIỆN ÍCH 1-CLICK SYNC & ROLLBACK
+## BƯỚC 5: CẤU HÌNH DỊCH VỤ SMTP GỬI MÃ OTP XÁC THỰC
+
+Hệ thống yêu cầu xác thực OTP 6 số bảo mật qua Email khi đăng ký tài khoản Nhà thầu (`Contractor`) và Bên mời thầu (`ProcuringEntity`).
+
+### Cấu hình block `Smtp` trong `ProcurementSystem.API/appsettings.json`:
+```json
+  "Smtp": {
+    "Host": "smtp.gmail.com",
+    "Port": 587,
+    "Username": "your-email@gmail.com",
+    "Password": "your-app-specific-password",
+    "EnableSsl": true,
+    "SenderName": "Hệ thống Đấu thầu & Quản lý Hợp đồng",
+    "SenderEmail": "your-email@gmail.com"
+  }
+```
+
+> 🛡️ **Nguyên tắc bảo vệ OTP**:
+> - Nếu chưa cấu hình `Smtp:Username` hoặc `Smtp:Password`, API `POST /api/auth/send-otp` sẽ từ chối rõ ràng với thông báo hướng dẫn cấu hình máy chủ gửi thư, không phát sinh lỗi ngầm.
+> - Mã OTP được sinh ngẫu nhiên từ bộ sinh số an toàn mật mã (`RandomNumberGenerator`), có hiệu lực 5 phút và áp dụng cooldown 60 giây.
+> - `DevOtpCode` tuyệt đối không được trả về trong API response.
+> - Mã OTP tự động bị hủy ngay lập tức nếu nhập sai quá 5 lần (chống Brute-force).
+> - Mã OTP tự động bị xóa sau khi xác thực thành công (chống Replay Attack / sử dụng lại mã).
+
+---
+
+## BƯỚC 6: SỬ DỤNG TIỆN ÍCH 1-CLICK SYNC & ROLLBACK
 Hệ thống đã tích hợp sẵn Controller quản trị lưu trữ dành riêng cho Admin (`StorageAdminController`):
 
 ### 1. Kiểm tra trạng thái và kết nối S3:

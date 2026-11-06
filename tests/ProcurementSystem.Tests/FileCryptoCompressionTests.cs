@@ -29,8 +29,9 @@ namespace ProcurementSystem.Tests
         }
 
         [Fact]
-        public void Constructor_WhenMasterKeyMissing_AndEncryptionEnabled_ShouldThrowInvalidOperationException()
+        public async Task Constructor_WhenMasterKeyMissing_AndEncryptionEnabled_ShouldNotThrow_AndDeferExceptionToExecution()
         {
+            // R-B01: Khởi tạo không ném lỗi dù Encryption:Enabled = true nhưng MasterKey rỗng
             var options = Options.Create(new StorageSettings
             {
                 Encryption = new StorageEncryptionConfig
@@ -40,10 +41,25 @@ namespace ProcurementSystem.Tests
                 }
             });
 
-            var ex = Assert.Throws<InvalidOperationException>(() =>
-                new FileCryptoCompressionService(options, NullLogger<FileCryptoCompressionService>.Instance));
+            var serviceWithoutKey = new FileCryptoCompressionService(options, NullLogger<FileCryptoCompressionService>.Instance);
+            Assert.NotNull(serviceWithoutKey);
 
-            Assert.Contains("StorageSettings:Encryption:MasterKey", ex.Message);
+            // Nhưng khi thực thi ghi (ProcessForStorageAsync) -> Bắt buộc ném InvalidOperationException
+            using var samplePlainStream = new MemoryStream(Encoding.UTF8.GetBytes("Thử nghiệm mã hóa khi thiếu MasterKey"));
+            var exProcess = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                serviceWithoutKey.ProcessForStorageAsync(samplePlainStream));
+            Assert.Contains("MasterKey", exProcess.Message);
+
+            // Và khi thực thi đọc tệp đã mã hóa PSEN (RestoreFromStorageAsync) -> Bắt buộc ném InvalidOperationException
+            using var validInputStream = new MemoryStream(Encoding.UTF8.GetBytes("Dữ liệu cần giải mã"));
+            using var encryptedStream = await _cryptoService.ProcessForStorageAsync(validInputStream);
+            using var msEnc = new MemoryStream();
+            await encryptedStream.CopyToAsync(msEnc);
+            msEnc.Position = 0;
+
+            var exRestore = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                serviceWithoutKey.RestoreFromStorageAsync(msEnc));
+            Assert.Contains("MasterKey", exRestore.Message);
         }
 
         [Fact]
@@ -165,6 +181,71 @@ namespace ProcurementSystem.Tests
             // Assert: Hệ thống tự nhận diện không có header mã hóa và trả về nguyên vẹn (backward compatibility)
             Assert.Equal(plainData, outputBytes);
         }
+
+        #region R-B03 Truncated PSEN & Edge Cases Tests
+
+        [Fact]
+        public async Task RestoreFromStorage_WhenPsenHeaderOnly_4Bytes_ShouldThrowInvalidDataException()
+        {
+            // Input chỉ có 4 bytes "PSEN"
+            var bytes = new byte[] { 0x50, 0x53, 0x45, 0x4E };
+            using var ms = new MemoryStream(bytes);
+
+            var ex = await Assert.ThrowsAsync<InvalidDataException>(() => _cryptoService.RestoreFromStorageAsync(ms));
+            Assert.Contains("bị cắt cụt", ex.Message);
+        }
+
+        [Fact]
+        public async Task RestoreFromStorage_WhenPsenTruncated_6Bytes_ShouldThrowInvalidDataException()
+        {
+            // Input 6 bytes ("PSEN" + 2 bytes rác)
+            var bytes = new byte[] { 0x50, 0x53, 0x45, 0x4E, 0xAA, 0xBB };
+            using var ms = new MemoryStream(bytes);
+
+            var ex = await Assert.ThrowsAsync<InvalidDataException>(() => _cryptoService.RestoreFromStorageAsync(ms));
+            Assert.Contains("bị cắt cụt", ex.Message);
+        }
+
+        [Fact]
+        public async Task RestoreFromStorage_WhenPsenHeaderAndIvOnly_NoCiphertext_20Bytes_ShouldThrowInvalidDataException()
+        {
+            // Input 20 bytes ("PSEN" + 16 bytes IV), không có ciphertext payload
+            var bytes = new byte[20];
+            bytes[0] = 0x50; bytes[1] = 0x53; bytes[2] = 0x45; bytes[3] = 0x4E;
+            for (int i = 4; i < 20; i++) bytes[i] = 0x12;
+
+            using var ms = new MemoryStream(bytes);
+
+            var ex = await Assert.ThrowsAsync<InvalidDataException>(() => _cryptoService.RestoreFromStorageAsync(ms));
+            Assert.Contains("không có nội dung ciphertext", ex.Message);
+        }
+
+        [Fact]
+        public async Task RestoreFromStorage_WhenEmptyStream_0Bytes_ShouldPassThroughSafely()
+        {
+            // Input rỗng (0 bytes)
+            var bytes = Array.Empty<byte>();
+            using var ms = new MemoryStream(bytes);
+
+            using var outputStream = await _cryptoService.RestoreFromStorageAsync(ms);
+            Assert.Equal(0, outputStream.Length);
+        }
+
+        [Fact]
+        public async Task RestoreFromStorage_WhenLessThan4Bytes_3Bytes_ShouldPassThroughSafely()
+        {
+            // Input 3 bytes "ABC" (< 4 bytes header)
+            var bytes = Encoding.UTF8.GetBytes("ABC");
+            using var ms = new MemoryStream(bytes);
+
+            using var outputStream = await _cryptoService.RestoreFromStorageAsync(ms);
+            using var msOut = new MemoryStream();
+            await outputStream.CopyToAsync(msOut);
+
+            Assert.Equal(bytes, msOut.ToArray());
+        }
+
+        #endregion
 
         [Fact]
         public void ComputeSha256_ShouldReturnConsistentHash()

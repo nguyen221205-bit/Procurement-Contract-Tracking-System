@@ -22,11 +22,8 @@ namespace ProcurementSystem.Infrastructure.Services
             IOptions<StorageSettings> settings,
             IFileCryptoCompressionService cryptoService,
             ILogger<SupabaseStorageService> logger)
+            : this(settings, cryptoService, logger, null)
         {
-            _settings = settings.Value;
-            _cryptoService = cryptoService;
-            _logger = logger;
-
             var supabase = _settings.Supabase;
             if (!string.IsNullOrWhiteSpace(supabase.Endpoint) &&
                 !string.IsNullOrWhiteSpace(supabase.AccessKeyId) &&
@@ -49,6 +46,18 @@ namespace ProcurementSystem.Infrastructure.Services
                     _s3Client = null;
                 }
             }
+        }
+
+        public SupabaseStorageService(
+            IOptions<StorageSettings> settings,
+            IFileCryptoCompressionService cryptoService,
+            ILogger<SupabaseStorageService> logger,
+            IAmazonS3? s3Client)
+        {
+            _settings = settings.Value;
+            _cryptoService = cryptoService;
+            _logger = logger;
+            _s3Client = s3Client;
         }
 
         public bool IsConfigured => _s3Client != null;
@@ -140,6 +149,11 @@ namespace ProcurementSystem.Infrastructure.Services
                     ContentType = _settings.Encryption?.Enabled == true ? "application/octet-stream" : (string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType)
                 };
 
+                if (_settings.Encryption?.Enabled == true)
+                {
+                    putRequest.Metadata.Add("x-amz-meta-encrypted", "true");
+                }
+
                 await _s3Client.PutObjectAsync(putRequest);
                 _logger.LogInformation("Đã tải tệp lên Supabase Storage thành công (Nén & Mã hóa: {Enc}): {Bucket}/{Key}", _settings.Encryption?.Enabled == true, _settings.Supabase.BucketName, objectKey);
                 return $"supabase://{objectKey}";
@@ -187,6 +201,11 @@ namespace ProcurementSystem.Infrastructure.Services
                     ContentType = _settings.Encryption?.Enabled == true ? "application/octet-stream" : (string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType)
                 };
 
+                if (_settings.Encryption?.Enabled == true)
+                {
+                    putRequest.Metadata.Add("x-amz-meta-encrypted", "true");
+                }
+
                 await _s3Client.PutObjectAsync(putRequest);
                 return $"supabase://{objectKey}";
             }
@@ -229,47 +248,52 @@ namespace ProcurementSystem.Infrastructure.Services
             var key = ExtractKey(storedPath);
             var finalContentType = contentType ?? "application/octet-stream";
 
-            // Nếu tính năng mã hóa được bật, backend sẽ kéo file mã hóa về, giải mã + giải nén và stream trực tiếp
-            if (_settings.Encryption?.Enabled == true)
+            // R-B02: Đọc file cũ độc lập với cờ _settings.Encryption?.Enabled.
+            // Bất kể cờ ghi file mới bật hay tắt: Kéo stream từ S3 về và đưa qua RestoreFromStorageAsync.
+            // RestoreFromStorageAsync sẽ tự nhận diện header:
+            // - Nếu là tệp mã hóa (header PSEN) -> giải mã AES-256 + GZip bằng MasterKey.
+            // - Nếu là tệp plaintext (legacy) -> trả về stream gốc (passthrough).
+            try
             {
-                try
+                var getRequest = new GetObjectRequest
                 {
-                    var getRequest = new GetObjectRequest
-                    {
-                        BucketName = _settings.Supabase.BucketName,
-                        Key = key
-                    };
+                    BucketName = _settings.Supabase.BucketName,
+                    Key = key
+                };
 
-                    using var getResponse = await _s3Client.GetObjectAsync(getRequest);
-                    var encryptedMemStream = new MemoryStream();
-                    await getResponse.ResponseStream.CopyToAsync(encryptedMemStream);
-                    encryptedMemStream.Position = 0;
+                using var getResponse = await _s3Client.GetObjectAsync(getRequest);
+                var downloadedMemStream = new MemoryStream();
+                await getResponse.ResponseStream.CopyToAsync(downloadedMemStream);
+                downloadedMemStream.Position = 0;
 
-                    // Giải mã AES-256 và giải nén GZip
-                    var restoredStream = await _cryptoService.RestoreFromStorageAsync(encryptedMemStream);
-                    return FileDownloadResult.FromStream(restoredStream, originalFileName, finalContentType);
-                }
-                catch (System.Security.Cryptography.CryptographicException)
-                {
-                    // Lỗi mã hóa/sai khóa: ném ngoại lệ, tuyệt đối không fallback che giấu lỗi khóa
-                    throw;
-                }
-                catch (InvalidOperationException)
-                {
-                    // Lỗi cấu hình khóa: ném ngoại lệ, tuyệt đối không fallback che giấu lỗi khóa
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Không thể tải luồng giải mã tệp {Key} từ Supabase. Chuyển hướng sang Pre-signed URL.", key);
-                    var signedUrl = GetPreSignedUrl(storedPath, 15);
-                    return FileDownloadResult.FromRedirect(signedUrl, originalFileName, finalContentType);
-                }
+                var restoredStream = await _cryptoService.RestoreFromStorageAsync(downloadedMemStream);
+                return FileDownloadResult.FromStream(restoredStream, originalFileName, finalContentType);
             }
-
-            // Nếu không bật mã hóa, trả về Pre-signed URL chuyển hướng trực tiếp
-            var preSignedUrl = GetPreSignedUrl(storedPath, 15);
-            return FileDownloadResult.FromRedirect(preSignedUrl, originalFileName, finalContentType);
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                // Lỗi sai khóa hoặc tệp mã hóa bị hỏng: ném ngoại lệ, tuyệt đối không che giấu lỗi hoặc trả về ciphertext
+                throw;
+            }
+            catch (InvalidOperationException)
+            {
+                // Lỗi thiếu MasterKey khi gặp tệp mã hóa: ném ngoại lệ, không fallback che giấu
+                throw;
+            }
+            catch (InvalidDataException)
+            {
+                // Lỗi tệp mã hóa PSEN bị cắt cụt: ném ngoại lệ
+                throw;
+            }
+            catch (AmazonS3Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi truy xuất tệp từ Supabase Storage: {Key}", key);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Không thể tải hoặc xử lý tệp {Key} từ Supabase.", key);
+                throw;
+            }
         }
 
         public Task<string> GetPreSignedUrlAsync(string storedPath, int expirationMinutes = 15)
