@@ -159,9 +159,17 @@ export const ContractorsPage = () => {
     }
   };
 
-  const handleQuickViewLicense = (e, contractorId) => {
+  const handleQuickViewLicense = async (e, contractorId) => {
     e.stopPropagation();
-    window.open(`/api/contractors/${contractorId}/license`, '_blank', 'noopener,noreferrer');
+    try {
+      toast.loading('Đang mở tệp GPKD...', { id: `view-license-${contractorId}` });
+      const blob = await contractorApi.downloadLicenseFile(contractorId);
+      const fileUrl = window.URL.createObjectURL(blob);
+      window.open(fileUrl, '_blank');
+      toast.success('Đã mở tệp GPKD!', { id: `view-license-${contractorId}` });
+    } catch (err) {
+      toast.error('Không thể mở tệp GPKD: ' + (err.message || 'Lỗi kết nối'), { id: `view-license-${contractorId}` });
+    }
   };
 
   const totalPages = Math.ceil(totalCount / pageSize) || 1;

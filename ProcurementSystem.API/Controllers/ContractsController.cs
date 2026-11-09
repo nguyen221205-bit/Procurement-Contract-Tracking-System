@@ -1493,12 +1493,28 @@ namespace ProcurementSystem.API.Controllers
             var result = await _contractService.GetAcceptanceSnapshotDocumentDownloadAsync(
                 milestoneId, acceptanceId, userId.Value, isAdmin, isProcurement, isContractor);
 
-            if (!result.Success)
+            if (!result.Success || result.Data == null)
             {
                 return StatusCode(result.StatusCode, ApiResponse<string>.Fail(result.Message, statusCode: result.StatusCode));
             }
 
-            return PhysicalFile(result.Data.PhysicalPath, result.Data.ContentType, result.Data.FileName);
+            var downloadResult = result.Data;
+            if (downloadResult.IsRedirect)
+            {
+                return Redirect(downloadResult.RedirectUrl!);
+            }
+
+            if (downloadResult.IsStream)
+            {
+                return File(downloadResult.FileStream!, downloadResult.ContentType, downloadResult.FileName);
+            }
+
+            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu snapshot không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(downloadResult.PhysicalPath!, downloadResult.ContentType, downloadResult.FileName);
         }
 
 
@@ -1654,18 +1670,27 @@ namespace ProcurementSystem.API.Controllers
             var isInternalStaff = isAdmin || User.IsInRole("Procurement");
 
             var fileData = await _contractService.GetGuaranteeDocumentForDownloadAsync(contractId, guaranteeId, userId.Value, isInternalStaff, isAdmin);
-
             if (fileData == null)
-
             {
-
                 return NotFound(ApiResponse<string>.Fail("Không tìm thấy tệp tài liệu scan hoặc bạn không có quyền truy cập."));
-
             }
 
+            if (fileData.IsRedirect)
+            {
+                return Redirect(fileData.RedirectUrl!);
+            }
 
+            if (fileData.IsStream)
+            {
+                return File(fileData.FileStream!, fileData.ContentType, fileData.FileName);
+            }
 
-            return PhysicalFile(fileData.Value.PhysicalPath, fileData.Value.ContentType, fileData.Value.FileName);
+            if (!System.IO.File.Exists(fileData.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu scan không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(fileData.PhysicalPath!, fileData.ContentType, fileData.FileName);
 
         }
 
@@ -1824,18 +1849,27 @@ namespace ProcurementSystem.API.Controllers
             var isInternalStaff = isAdmin || User.IsInRole("Procurement");
 
             var fileData = await _contractService.GetAddendumDocumentForDownloadAsync(contractId, addendumId, userId.Value, isInternalStaff, isAdmin);
-
             if (fileData == null)
-
             {
-
                 return NotFound(ApiResponse<string>.Fail("Không tìm thấy tệp tài liệu scan hoặc bạn không có quyền truy cập."));
-
             }
 
+            if (fileData.IsRedirect)
+            {
+                return Redirect(fileData.RedirectUrl!);
+            }
 
+            if (fileData.IsStream)
+            {
+                return File(fileData.FileStream!, fileData.ContentType, fileData.FileName);
+            }
 
-            return PhysicalFile(fileData.Value.PhysicalPath, fileData.Value.ContentType, fileData.Value.FileName);
+            if (!System.IO.File.Exists(fileData.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu scan không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(fileData.PhysicalPath!, fileData.ContentType, fileData.FileName);
 
         }
 

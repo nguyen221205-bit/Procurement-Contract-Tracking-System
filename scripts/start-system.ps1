@@ -1,7 +1,7 @@
 # Set console UTF-8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$projectDir = "D:\Thuc_Tap_backend\Procurement & Contract Tracking System"
+$projectDir = Split-Path -Parent $PSScriptRoot
 $backendDir = Join-Path $projectDir "ProcurementSystem.API"
 $frontendDir = Join-Path $projectDir "frontend"
 

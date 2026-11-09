@@ -100,7 +100,7 @@ export const ProcuringEntitiesPage = () => {
     try {
       toast.loading('Đang mở tệp Quyết định thành lập...', { id: 'view-est-tbl' });
       const response = await procuringEntityApi.downloadEstablishmentFile(entityId);
-      const fileBlob = new Blob([response], { type: 'application/pdf' });
+      const fileBlob = response instanceof Blob ? response : new Blob([response], { type: 'application/pdf' });
       const fileUrl = window.URL.createObjectURL(fileBlob);
       window.open(fileUrl, '_blank');
       toast.success('Đã mở tệp tài liệu!', { id: 'view-est-tbl' });

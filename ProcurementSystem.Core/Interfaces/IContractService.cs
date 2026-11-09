@@ -105,7 +105,7 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Tải/xem file chứng thư bảo lãnh an toàn
         /// </summary>
-        Task<(string PhysicalPath, string ContentType, string FileName)?> GetGuaranteeDocumentForDownloadAsync(int contractId, int guaranteeId, int userId, bool isInternalStaff, bool isAdmin);
+        Task<ProcurementSystem.Core.DTOs.Common.FileDownloadResult?> GetGuaranteeDocumentForDownloadAsync(int contractId, int guaranteeId, int userId, bool isInternalStaff, bool isAdmin);
         #endregion
 
         #region Contract Addenda (Phụ lục hợp đồng)
@@ -132,12 +132,12 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Tải/xem file phụ lục hợp đồng an toàn
         /// </summary>
-        Task<(string PhysicalPath, string ContentType, string FileName)?> GetAddendumDocumentForDownloadAsync(int contractId, int addendumId, int userId, bool isInternalStaff, bool isAdmin);
+        Task<ProcurementSystem.Core.DTOs.Common.FileDownloadResult?> GetAddendumDocumentForDownloadAsync(int contractId, int addendumId, int userId, bool isInternalStaff, bool isAdmin);
 
         /// <summary>
         /// Tải tệp tài liệu snapshot nghiệm thu kỹ thuật an toàn (kiểm soát chặt chẽ phạm vi đơn vị và nhà thầu sở hữu)
         /// </summary>
-        Task<ApiResponse<(string PhysicalPath, string FileName, string ContentType)>> GetAcceptanceSnapshotDocumentDownloadAsync(
+        Task<ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>> GetAcceptanceSnapshotDocumentDownloadAsync(
             int milestoneId, int acceptanceId, int userId, bool isAdmin, bool isProcurement, bool isContractor);
         #endregion
 

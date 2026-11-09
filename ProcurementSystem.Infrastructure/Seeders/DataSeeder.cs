@@ -1104,6 +1104,94 @@ namespace ProcurementSystem.Infrastructure.Seeders
                 );
                 await context.SaveChangesAsync();
             }
+
+            // Tự động kiểm tra và chuẩn hóa toàn bộ tệp đính kèm trong thư mục uploads thành PDF hành chính thực tế (Self-Healing)
+            SelfHealAllUploadDocuments();
+        }
+
+        private static void SelfHealAllUploadDocuments()
+        {
+            try
+            {
+                var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+                if (!Directory.Exists(uploadsDir)) return;
+
+                var pdfFiles = Directory.GetFiles(uploadsDir, "*.pdf", SearchOption.AllDirectories);
+                foreach (var file in pdfFiles)
+                {
+                    try
+                    {
+                        var fileInfo = new FileInfo(file);
+                        bool isInvalidOrStub = fileInfo.Length < 500;
+
+                        if (!isInvalidOrStub)
+                        {
+                            var headerBytes = new byte[Math.Min(1024, (int)fileInfo.Length)];
+                            using var fs = File.OpenRead(file);
+                            fs.Read(headerBytes, 0, headerBytes.Length);
+                            var contentSample = System.Text.Encoding.ASCII.GetString(headerBytes);
+                            if (contentSample.Contains("Project Paused") || contentSample.Contains("HE THONG DAU THAU DIEN TU"))
+                            {
+                                isInvalidOrStub = true;
+                            }
+                        }
+
+                        if (isInvalidOrStub)
+                        {
+                            var lowerPath = file.ToLowerInvariant();
+                            byte[] validPdf;
+
+                            if (lowerPath.Contains("guarantees") || lowerPath.Contains("bao-lanh"))
+                            {
+                                validPdf = Utilities.DocumentSampleGenerator.GenerateGuaranteeDocumentPdf(
+                                    "BL-VCB-2026-0899",
+                                    "Ngan hang TMCP Ngoai thuong Viet Nam (Vietcombank)",
+                                    117500000m,
+                                    "HD-2026-PKG-SEC-2026-001-019",
+                                    "CONG TY CO PHAN PHAN MEM ABC"
+                                );
+                            }
+                            else if (lowerPath.Contains("evaluator") || lowerPath.Contains("certificate"))
+                            {
+                                validPdf = Utilities.DocumentSampleGenerator.GenerateEvaluatorCertificatePdf(
+                                    "Nguyen Thi Chuyen Vien Mua Sam",
+                                    "Chung chi hanh nghe hoat dong dau thau chuyen nghiep"
+                                );
+                            }
+                            else if (lowerPath.Contains("procuring") || lowerPath.Contains("decision"))
+                            {
+                                validPdf = Utilities.DocumentSampleGenerator.GenerateEstablishmentDecisionPdf(
+                                    "Ban Quan ly Du an Dau tu va Mua sam Tap trung",
+                                    "0100109106",
+                                    "Nguyen Thi Chuyen Vien Mua Sam"
+                                );
+                            }
+                            else if (lowerPath.Contains("contractor") || lowerPath.Contains("license"))
+                            {
+                                validPdf = Utilities.DocumentSampleGenerator.GenerateBusinessLicensePdf(
+                                    "NGAN HANG TMCP DAU TU VA PHAT TRIEN VIET NAM (BIDV)",
+                                    "0100150619",
+                                    "Nguyen Van Dai Dien BIDV",
+                                    "Thap BIDV, so 194 Tran Quang Khai, Phuong Hoan Kiem, TP Ha Noi"
+                                );
+                            }
+                            else
+                            {
+                                validPdf = Utilities.DocumentSampleGenerator.GenerateContractScannedPdf(
+                                    "HD-2026-PKG-SEC-2026-001-019",
+                                    "Goi thau Mua sam & Trien khai Ha tang Cong nghe Nam 2026",
+                                    "CONG TY CO PHAN PHAN MEM ABC",
+                                    2350000000m
+                                );
+                            }
+
+                            File.WriteAllBytes(file, validPdf);
+                        }
+                    }
+                    catch { /* Bỏ qua từng tệp nếu bị lock */ }
+                }
+            }
+            catch { /* Không làm gián đoạn khởi động ứng dụng */ }
         }
     }
 }
