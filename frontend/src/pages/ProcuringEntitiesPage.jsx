@@ -11,7 +11,6 @@ import {
   Users,
   Briefcase,
   Search,
-  Filter,
   CheckCircle2,
   Clock,
   XCircle,
@@ -20,15 +19,16 @@ import {
   ShieldCheck,
   MapPin,
   Mail,
-  Phone,
   RotateCcw,
   ExternalLink,
   FileText,
+  Building2,
   UserCheck
 } from 'lucide-react';
 
 export const ProcuringEntitiesPage = () => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, hasRole } = useAuth();
+  const isAdmin = hasRole('Admin');
 
   const [entities, setEntities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,43 +36,59 @@ export const ProcuringEntitiesPage = () => {
   const [pageIndex, setPageIndex] = useState(1);
   const [pageSize] = useState(10);
 
-  // Bộ lọc
+  // Bộ lọc (dành cho Admin)
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState(''); // '', 'Pending', 'Approved', 'Rejected'
   const [typeFilter, setTypeFilter] = useState('');
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Modal thẩm định
+  // Đơn vị đang chọn để quản lý thành viên (dành cho tài khoản Bên mời thầu)
+  const [activeEntityId, setActiveEntityId] = useState(null);
+
+  // Modal thẩm định / xem chi tiết hồ sơ pháp nhân
   const [selectedEntity, setSelectedEntity] = useState(null);
+  // Modal quản lý thành viên (dành cho Admin mở từ bảng danh sách)
   const [memberModalEntity, setMemberModalEntity] = useState(null);
 
-  // Tải danh sách Bên mời thầu
+  // Tải danh sách Bên mời thầu (Admin nhận toàn bộ; Bên mời thầu chỉ nhận đơn vị của mình)
   const fetchEntities = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {
-        pageNumber: pageIndex,
-        pageSize,
-        keyword: keyword.trim() || undefined,
-        verificationStatus: statusFilter || undefined,
-        organizationType: typeFilter || undefined,
-      };
+      const params = isAdmin
+        ? {
+            pageNumber: pageIndex,
+            pageSize,
+            keyword: keyword.trim() || undefined,
+            verificationStatus: statusFilter || undefined,
+            organizationType: typeFilter || undefined,
+          }
+        : {
+            pageNumber: 1,
+            pageSize: 20,
+          };
 
       const res = await procuringEntityApi.getProcuringEntities(params);
       if (res && res.success && res.data) {
-        setEntities(res.data.items || []);
-        setTotalCount(res.data.totalCount || 0);
+        const items = res.data.items || [];
+        setEntities(items);
+        setTotalCount(res.data.totalCount || items.length);
+        if (!isAdmin && items.length > 0) {
+          setActiveEntityId((prev) =>
+            prev && items.some((item) => item.id === prev) ? prev : items[0].id
+          );
+        }
       }
     } catch (err) {
-      console.error('Lỗi tải danh sách Bên mời thầu:', err);
-      toast.error('Không thể tải danh sách: ' + (err.message || 'Lỗi mạng'));
+      console.error('Lỗi tải thông tin đơn vị:', err);
+      toast.error('Không thể tải thông tin đơn vị: ' + (err.message || 'Lỗi mạng'));
     } finally {
       setLoading(false);
     }
-  }, [pageIndex, pageSize, keyword, statusFilter, typeFilter]);
+  }, [isAdmin, pageIndex, pageSize, keyword, statusFilter, typeFilter]);
 
-  // Đếm số lượng hồ sơ chờ duyệt (Pending)
+  // Đếm số lượng hồ sơ chờ duyệt (Chỉ cần cho Admin)
   const fetchPendingCount = useCallback(async () => {
+    if (!isAdmin) return;
     try {
       const res = await procuringEntityApi.getProcuringEntities({
         pageNumber: 1,
@@ -85,7 +101,7 @@ export const ProcuringEntitiesPage = () => {
     } catch (err) {
       console.warn('Không thể lấy số lượng Pending:', err);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     fetchEntities();
@@ -110,7 +126,162 @@ export const ProcuringEntitiesPage = () => {
   };
 
   const totalPages = Math.ceil(totalCount / pageSize) || 1;
+  const currentProcurementEntity =
+    entities.find((e) => e.id === activeEntityId) || entities[0] || null;
 
+  // ============================================================================
+  // GIAO DIỆN DÀNH CHO TÀI KHOẢN BÊN MỜI THẦU (QUẢN LÝ THÀNH VIÊN ĐƠN VỊ)
+  // ============================================================================
+  if (!isAdmin) {
+    return (
+      <div className="space-y-6">
+        {/* HEADER TRANG QUẢN LÝ THÀNH VIÊN */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center space-x-2 text-indigo-700 font-semibold text-xs mb-1">
+              <Users className="w-4 h-4" />
+              <span>Tổ chức & Nhân sự Nội bộ Bên mời thầu</span>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+              Quản lý Thành viên & Phân quyền Nghiệp vụ
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              Quản lý danh sách cán bộ thuộc đơn vị, gửi lời mời tham gia và thiết lập thẩm quyền ký duyệt giải ngân (Maker - Checker)
+            </p>
+          </div>
+
+          {entities.length > 1 && (
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-semibold text-slate-600">Đơn vị công tác:</span>
+              <select
+                value={currentProcurementEntity?.id || ''}
+                onChange={(e) => setActiveEntityId(Number(e.target.value))}
+                className="px-3 py-2 text-xs font-bold bg-white border border-slate-200 rounded-xl text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {entities.map((ent) => (
+                  <option key={ent.id} value={ent.id}>
+                    {ent.organizationName} (MST: {ent.taxCode})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-16">
+            <LoadingSpinner message="Đang tải thông tin đơn vị và danh sách thành viên..." />
+          </div>
+        ) : !currentProcurementEntity ? (
+          <div className="bg-white rounded-2xl border border-slate-200 py-16 text-center space-y-3">
+            <div className="inline-flex p-3 bg-slate-100 text-slate-400 rounded-full">
+              <Building2 className="w-8 h-8" />
+            </div>
+            <p className="text-sm font-semibold text-slate-700">
+              Tài khoản của bạn chưa được liên kết với đơn vị mời thầu nào
+            </p>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              Vui lòng liên hệ Quản lý đơn vị để nhận thư mời tham gia hoặc kiểm tra lại trạng thái hồ sơ pháp nhân.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* THẺ TÓM TẮT THÔNG TIN ĐƠN VỊ HIỆN TẠI */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2.5 py-0.5 text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200 rounded-md">
+                    {currentProcurementEntity.organizationType}
+                  </span>
+                  <StatusBadge status={currentProcurementEntity.verificationStatus} />
+                  <span className="text-xs text-slate-500 font-mono">
+                    MST:{' '}
+                    <strong className="text-slate-800">{currentProcurementEntity.taxCode}</strong>
+                  </span>
+                  {currentProcurementEntity.budgetCode && (
+                    <span className="text-xs text-slate-500 font-mono">
+                      • Mã ĐVQHNS:{' '}
+                      <strong className="text-slate-800">
+                        {currentProcurementEntity.budgetCode}
+                      </strong>
+                    </span>
+                  )}
+                </div>
+
+                <h2 className="text-lg font-bold text-slate-900">
+                  {currentProcurementEntity.organizationName}
+                </h2>
+
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-600">
+                  <div className="flex items-center space-x-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-slate-400" />
+                    <span>
+                      Người đại diện:{' '}
+                      <strong className="text-slate-800">
+                        {currentProcurementEntity.representativeName}
+                      </strong>{' '}
+                      ({currentProcurementEntity.representativeTitle})
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-1.5">
+                    <Mail className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{currentProcurementEntity.email}</span>
+                  </div>
+                  {currentProcurementEntity.address && (
+                    <div className="flex items-center space-x-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{currentProcurementEntity.address}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleViewEstablishmentFile(currentProcurementEntity.id)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-sky-50 text-slate-700 hover:text-sky-700 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Quyết định thành lập (PDF)</span>
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedEntity(currentProcurementEntity)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>Chi tiết hồ sơ đơn vị</span>
+                </button>
+              </div>
+            </div>
+
+            {/* BẢNG QUẢN LÝ THÀNH VIÊN, LỜI MỜI & THẨM QUYỀN KÝ DUYỆT TRỰC TIẾP TRÊN TRANG */}
+            <ProcuringEntityMembersModal
+              isOpen={true}
+              inline={true}
+              entity={currentProcurementEntity}
+              canManage={currentProcurementEntity.userId === currentUser?.id}
+            />
+          </>
+        )}
+
+        {/* MODAL XEM CHI TIẾT HỒ SƠ ĐƠN VỊ (CHẾ ĐỘ CHỈ ĐỌC CHO BÊN MỜI THẦU) */}
+        <VerifyProcuringEntityModal
+          isOpen={Boolean(selectedEntity)}
+          onClose={() => setSelectedEntity(null)}
+          entity={selectedEntity}
+          readOnly={true}
+        />
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // GIAO DIỆN DÀNH CHO QUẢN TRỊ VIÊN HỆ THỐNG (ADMIN)
+  // ============================================================================
   return (
     <div className="space-y-6">
       {/* HEADER & TIÊU ĐỀ */}
@@ -118,7 +289,7 @@ export const ProcuringEntitiesPage = () => {
         <div>
           <div className="flex items-center space-x-2 text-sky-700 font-semibold text-xs mb-1">
             <Briefcase className="w-4 h-4" />
-            <span>Phân hệ Quản trị Hệ thống (Admin Only)</span>
+            <span>Phân hệ Quản trị Hệ thống</span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
             Quản lý Bên mời thầu & Chủ đầu tư
@@ -361,14 +532,14 @@ export const ProcuringEntitiesPage = () => {
                         <button
                           type="button"
                           onClick={() => setSelectedEntity(ent)}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center space-x-1 ml-auto shadow-2xs ${
-                          ent.verificationStatus === 'Pending'
-                            ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                        }`}
-                      >
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>{ent.verificationStatus === 'Pending' ? 'Thẩm định ngay' : 'Xem / Đổi trạng thái'}</span>
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center space-x-1 ml-auto shadow-2xs ${
+                            ent.verificationStatus === 'Pending'
+                              ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>{ent.verificationStatus === 'Pending' ? 'Thẩm định ngay' : 'Xem / Đổi trạng thái'}</span>
                         </button>
                       </div>
                     </td>
@@ -427,7 +598,7 @@ export const ProcuringEntitiesPage = () => {
         isOpen={Boolean(memberModalEntity)}
         onClose={() => setMemberModalEntity(null)}
         entity={memberModalEntity}
-        canManage={currentUser?.role === 'Admin' || memberModalEntity?.userId === currentUser?.id}
+        canManage={true}
       />
     </div>
   );

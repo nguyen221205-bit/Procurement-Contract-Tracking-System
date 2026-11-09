@@ -227,17 +227,20 @@ namespace ProcurementSystem.Infrastructure.Services
                         recipientUserIds.Add(bidPackage.Creator.ProcuringEntity.UserId);
                     }
 
-                    // 2.3. Đảm bảo tất cả người dùng có vai trò Procurement trong hệ thống đều nhận được thông báo
-                    var procurementUserIds = await _unitOfWork.Repository<UserRole>()
-                        .Query()
-                        .Include(ur => ur.Role)
-                        .Where(ur => ur.Role.Name == "Procurement")
-                        .Select(ur => ur.UserId)
-                        .ToListAsync();
-
-                    foreach (var procId in procurementUserIds)
+                    // 2.3. Thêm các thành viên đang hoạt động (Active) của Bên mời thầu sở hữu gói thầu
+                    if (bidPackage.ProcuringEntityId.HasValue)
                     {
-                        recipientUserIds.Add(procId);
+                        var entityMemberUserIds = await _unitOfWork.Repository<ProcuringEntityMember>()
+                            .Query()
+                            .AsNoTracking()
+                            .Where(m => m.ProcuringEntityId == bidPackage.ProcuringEntityId.Value && m.Status == MemberStatus.Active)
+                            .Select(m => m.UserId)
+                            .ToListAsync();
+
+                        foreach (var mId in entityMemberUserIds)
+                        {
+                            recipientUserIds.Add(mId);
+                        }
                     }
 
                     // Gửi thông báo in-app và email cho từng Bên mời thầu liên quan

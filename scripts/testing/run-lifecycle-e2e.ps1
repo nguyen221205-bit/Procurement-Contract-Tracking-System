@@ -2,6 +2,7 @@ param(
     [string]$RunId = "",
     [int]$ApiPort = 5225,
     [int]$FrontendPort = 5173,
+    [int]$SmtpPort = 2525,
     [switch]$DropDatabaseOnSuccess = $false
 )
 
@@ -23,9 +24,10 @@ New-Item -ItemType Directory -Force -Path $UploadsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $LogsDir | Out-Null
 
 Write-Host "=================================================================" -ForegroundColor Cyan
-Write-Host " REPRODUCIBLE FULL-LIFECYCLE E2E RUNNER" -ForegroundColor Cyan
+Write-Host " REPRODUCIBLE ALL-WORKFLOWS & ALL-ROLES E2E RUNNER" -ForegroundColor Cyan
 Write-Host " RunId       : $RunId" -ForegroundColor White
 Write-Host " Database    : $DbName" -ForegroundColor White
+Write-Host " SMTP Catcher: 127.0.0.1:$SmtpPort" -ForegroundColor White
 Write-Host " Output Dir  : $RunDir" -ForegroundColor White
 Write-Host "=================================================================" -ForegroundColor Cyan
 
@@ -39,6 +41,12 @@ if ($apiBusy) {
 $feBusy = Get-NetTCPConnection -LocalPort $FrontendPort -State Listen -ErrorAction SilentlyContinue
 if ($feBusy) {
     Write-Host "[BLOCKED] Port $FrontendPort is already in use. Please free port $FrontendPort before running E2E." -ForegroundColor Red
+    exit 2
+}
+
+$smtpBusy = Get-NetTCPConnection -LocalPort $SmtpPort -State Listen -ErrorAction SilentlyContinue
+if ($smtpBusy) {
+    Write-Host "[BLOCKED] Port $SmtpPort is already in use. Please free port $SmtpPort before running E2E." -ForegroundColor Red
     exit 2
 }
 
@@ -65,7 +73,22 @@ $apiErrLog = Join-Path $LogsDir "api_stderr.log"
 $env:DB_CONNECTION_STRING = "Server=localhost;Database=$DbName;User Id=sa;Password=123;TrustServerCertificate=True;MultipleActiveResultSets=true"
 $env:ASPNETCORE_URLS = "http://localhost:$ApiPort"
 $env:ASPNETCORE_ENVIRONMENT = "Development"
+$env:StorageSettings__Provider = "Local"
 $env:StorageSettings__LocalBasePath = $UploadsDir
+$env:StorageSettings__Supabase__Endpoint = ""
+$env:StorageSettings__Supabase__AccessKey = ""
+$env:StorageSettings__Supabase__SecretKey = ""
+$env:SMTP_HOST = "127.0.0.1"
+$env:SMTP_PORT = "$SmtpPort"
+$env:SMTP_USERNAME = "e2e@local.test"
+$env:SMTP_PASSWORD = "e2epass"
+$env:SMTP_SENDER_EMAIL = "e2e@local.test"
+$env:Smtp__Host = "127.0.0.1"
+$env:Smtp__Port = "$SmtpPort"
+$env:Smtp__EnableSsl = "false"
+$env:Smtp__Username = "e2e@local.test"
+$env:Smtp__Password = "e2epass"
+$env:Smtp__SenderEmail = "e2e@local.test"
 
 $apiProc = Start-Process -FilePath "dotnet" `
     -ArgumentList "run --no-build --no-launch-profile --project `"$apiProject`"" `
@@ -135,9 +158,9 @@ try {
     }
 
     # 5. Execute Full E2E Suite
-    Write-Host "`n[4/5] Running Playwright Browser Lifecycle & Negative Rules Suite..." -ForegroundColor Yellow
+    Write-Host "`n[4/5] Running Playwright Browser Lifecycle, Negative Rules & All-Workflows Suite..." -ForegroundColor Yellow
     $runSuiteScript = Join-Path $SuiteDir "run_suite.py"
-    python $runSuiteScript $RunId $DbName "http://localhost:$FrontendPort" "http://localhost:$ApiPort"
+    python $runSuiteScript $RunId $DbName "http://localhost:$FrontendPort" "http://localhost:$ApiPort" "$SmtpPort"
     $suiteExitCode = $LASTEXITCODE
 }
 finally {
@@ -161,13 +184,14 @@ finally {
 
 if ($suiteExitCode -eq 0) {
     Write-Host "`n=================================================================" -ForegroundColor Green
-    Write-Host " E2E LIFECYCLE ACCEPTANCE SUITE PASSED (RunId: $RunId)" -ForegroundColor Green
-    Write-Host " Evidence & Manifest: $RunDir\manifest.json" -ForegroundColor Green
+    Write-Host " E2E ACCEPTANCE SUITE COMPLETED (RunId: $RunId)" -ForegroundColor Green
+    Write-Host " Manifest    : $RunDir\manifest.json" -ForegroundColor Green
+    Write-Host " Case Results: $RunDir\case_results.json" -ForegroundColor Green
     Write-Host "=================================================================" -ForegroundColor Green
     exit 0
 } else {
     Write-Host "`n=================================================================" -ForegroundColor Red
-    Write-Host " E2E LIFECYCLE ACCEPTANCE SUITE FAILED (RunId: $RunId)" -ForegroundColor Red
+    Write-Host " E2E ACCEPTANCE SUITE FAILED (RunId: $RunId)" -ForegroundColor Red
     Write-Host " Check logs & failure artifacts in: $RunDir" -ForegroundColor Red
     Write-Host "=================================================================" -ForegroundColor Red
     exit $suiteExitCode

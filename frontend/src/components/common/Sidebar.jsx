@@ -66,8 +66,10 @@ const MENU_ITEMS = [
   },
   {
     name: 'Bên mời thầu',
+    procurementName: 'Quản lý thành viên',
     path: '/procuring-entities',
     icon: Briefcase,
+    procurementIcon: Users,
     roles: [ROLES.ADMIN, ROLES.PROCUREMENT],
   },
   {
@@ -80,6 +82,7 @@ const MENU_ITEMS = [
 
 export const Sidebar = () => {
   const { hasRole } = useAuth();
+  const isAdmin = hasRole(ROLES.ADMIN);
 
   const visibleItems = MENU_ITEMS.filter((item) => hasRole(item.roles));
 
@@ -87,7 +90,8 @@ export const Sidebar = () => {
     <aside className="w-56 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 min-h-[calc(100vh-4rem)]">
       <nav className="p-3 space-y-1">
         {visibleItems.map((item) => {
-          const Icon = item.icon;
+          const Icon = !isAdmin && item.procurementIcon ? item.procurementIcon : item.icon;
+          const displayName = !isAdmin && item.procurementName ? item.procurementName : item.name;
           return (
             <NavLink
               key={item.path}
@@ -101,7 +105,7 @@ export const Sidebar = () => {
               }
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
-              <span>{item.name}</span>
+              <span>{displayName}</span>
             </NavLink>
           );
         })}

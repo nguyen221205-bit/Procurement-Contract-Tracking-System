@@ -24,12 +24,35 @@ namespace ProcurementSystem.Infrastructure.Services
             _notificationService = notificationService;
         }
 
-        public async Task<ApiResponse<PaginatedList<ProcuringEntityDto>>> GetProcuringEntitiesAsync(ProcuringEntityFilterParams filter)
+        public async Task<bool> CanAccessEntityAsync(int entityId, int userId, bool isAdmin)
+        {
+            if (isAdmin) return true;
+
+            return await _context.ProcuringEntities
+                .AsNoTracking()
+                .AnyAsync(pe => pe.Id == entityId && (
+                    pe.UserId == userId ||
+                    pe.Members.Any(m => m.UserId == userId && m.Status == MemberStatus.Active)));
+        }
+
+        public async Task<ApiResponse<PaginatedList<ProcuringEntityDto>>> GetProcuringEntitiesAsync(
+            ProcuringEntityFilterParams filter,
+            int? currentUserId = null,
+            bool isAdmin = true)
         {
             var query = _context.ProcuringEntities
                 .Include(pe => pe.User)
                 .Include(pe => pe.ReviewedByUser)
                 .AsNoTracking();
+
+            // Nếu không phải Admin, chỉ lấy các đơn vị mà tài khoản hiện tại thuộc về (Chủ hồ sơ hoặc Thành viên đang hoạt động)
+            if (!isAdmin && currentUserId.HasValue)
+            {
+                var uid = currentUserId.Value;
+                query = query.Where(pe =>
+                    pe.UserId == uid ||
+                    pe.Members.Any(m => m.UserId == uid && m.Status == MemberStatus.Active));
+            }
 
             // 1. Tìm kiếm theo từ khóa
             if (!string.IsNullOrWhiteSpace(filter.Keyword))
@@ -79,7 +102,7 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<PaginatedList<ProcuringEntityDto>>.Ok(paginated);
         }
 
-        public async Task<ApiResponse<ProcuringEntityDto>> GetProcuringEntityByIdAsync(int id)
+        public async Task<ApiResponse<ProcuringEntityDto>> GetProcuringEntityByIdAsync(int id, int? currentUserId = null, bool isAdmin = true)
         {
             var entity = await _context.ProcuringEntities
                 .Include(pe => pe.User)
@@ -89,7 +112,16 @@ namespace ProcurementSystem.Infrastructure.Services
 
             if (entity == null)
             {
-                return ApiResponse<ProcuringEntityDto>.Fail("Không tìm thấy thông tin Bên mời thầu.");
+                return ApiResponse<ProcuringEntityDto>.Fail("Không tìm thấy thông tin Bên mời thầu.", statusCode: 404);
+            }
+
+            if (!isAdmin && currentUserId.HasValue)
+            {
+                var hasAccess = await CanAccessEntityAsync(id, currentUserId.Value, isAdmin: false);
+                if (!hasAccess)
+                {
+                    return ApiResponse<ProcuringEntityDto>.Forbidden("Bạn không có quyền xem thông tin hồ sơ của đơn vị mời thầu khác.");
+                }
             }
 
             return ApiResponse<ProcuringEntityDto>.Ok(MapToDto(entity));
@@ -102,6 +134,26 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Include(pe => pe.ReviewedByUser)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(pe => pe.UserId == userId);
+
+            if (entity == null)
+            {
+                var memberEntityId = await _context.ProcuringEntityMembers
+                    .AsNoTracking()
+                    .Where(m => m.UserId == userId && m.Status == MemberStatus.Active)
+                    .OrderBy(m => m.RoleInEntity == ProcuringEntityMemberRole.Manager ? 0 : 1)
+                    .ThenBy(m => m.JoinedAt)
+                    .Select(m => m.ProcuringEntityId)
+                    .FirstOrDefaultAsync();
+
+                if (memberEntityId > 0)
+                {
+                    entity = await _context.ProcuringEntities
+                        .Include(pe => pe.User)
+                        .Include(pe => pe.ReviewedByUser)
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(pe => pe.Id == memberEntityId);
+                }
+            }
 
             if (entity == null)
             {

@@ -28,7 +28,7 @@ def ui_login(page, base_url, email, password="Admin@123"):
     )
     page.wait_for_timeout(500)
 
-def run_lifecycle_e2e(run_id, manifest, base_url="http://localhost:5173", api_base_url="http://localhost:5225", output_dir=None):
+def run_lifecycle_e2e(run_id, manifest, base_url="http://localhost:5173", api_base_url="http://localhost:5225", output_dir=None, smtp_catcher=None):
     if output_dir is None:
         output_dir = os.path.join(os.path.dirname(__file__), "runs", run_id, "screenshots")
     os.makedirs(output_dir, exist_ok=True)
@@ -631,7 +631,7 @@ def run_lifecycle_e2e(run_id, manifest, base_url="http://localhost:5173", api_ba
 
         # Execute all 6 Server-Side Negative Constraint Cases while Contract is Active and Milestone 2 is Pending (TechnicalApproved)
         from test_negative_rules import run_negative_rules
-        run_negative_rules(run_id, manifest, api_base_url=api_base_url)
+        run_negative_rules(run_id, manifest, api_base_url=api_base_url, smtp_catcher=smtp_catcher)
 
         checker_ctx2 = browser.new_context(viewport={'width': 1366, 'height': 850})
         checker_page2 = checker_ctx2.new_page()

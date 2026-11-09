@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { formatDate } from '../../utils/formatters';
 import StatusBadge from '../common/StatusBadge';
 import { procuringEntityApi } from '../../api/procuringEntityApi';
+import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import {
   Building2,
@@ -26,7 +27,10 @@ export const VerifyProcuringEntityModal = ({
   onClose,
   entity,
   onSuccess,
+  readOnly = false,
 }) => {
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'Admin' && !readOnly;
   const [adminNotes, setAdminNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [downloadingFile, setDownloadingFile] = useState(false);
@@ -114,7 +118,7 @@ export const VerifyProcuringEntityModal = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900">
-                Thẩm định Hồ sơ Bên Mời Thầu
+                {isAdmin ? 'Thẩm định Hồ sơ Bên Mời Thầu' : 'Hồ sơ Pháp nhân Đơn vị Mời thầu'}
               </h3>
               <p className="text-xs text-slate-500">
                 Căn cứ Khoản 3 Điều 4 Luật Đấu thầu 22/2023/QH15 & Nghị định 24/2024/NĐ-CP
@@ -301,22 +305,24 @@ export const VerifyProcuringEntityModal = ({
             </div>
           )}
 
-          {/* Ô nhập ghi chú / lý do từ chối */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">
-              Ghi chú thẩm định của Quản trị viên (Admin)
-              <span className="text-slate-400 font-normal ml-1">
-                (Bắt buộc nhập nếu từ chối phê duyệt hồ sơ)
-              </span>
-            </label>
-            <textarea
-              rows={3}
-              value={adminNotes}
-              onChange={(e) => setAdminNotes(e.target.value)}
-              placeholder="Nhập nhận xét hoặc lý do từ chối (ví dụ: Quyết định thành lập mờ, thiếu con dấu pháp lý, mã số thuế không khớp...)"
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
-            />
-          </div>
+          {/* Ô nhập ghi chú / lý do từ chối (Chỉ hiển thị cho Admin) */}
+          {isAdmin && (
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700">
+                Ghi chú thẩm định của Quản trị viên (Admin)
+                <span className="text-slate-400 font-normal ml-1">
+                  (Bắt buộc nhập nếu từ chối phê duyệt hồ sơ)
+                </span>
+              </label>
+              <textarea
+                rows={3}
+                value={adminNotes}
+                onChange={(e) => setAdminNotes(e.target.value)}
+                placeholder="Nhập nhận xét hoặc lý do từ chối (ví dụ: Quyết định thành lập mờ, thiếu con dấu pháp lý, mã số thuế không khớp...)"
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
+              />
+            </div>
+          )}
 
           {/* Trạng thái duyệt trước đó nếu có */}
           {entity.adminNotes && (
@@ -346,27 +352,29 @@ export const VerifyProcuringEntityModal = ({
             Đóng
           </button>
 
-          <div className="flex items-center space-x-2.5">
-            <button
-              type="button"
-              onClick={() => handleVerify(false)}
-              disabled={submitting}
-              className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition flex items-center space-x-1.5 disabled:opacity-50"
-            >
-              <XCircle className="w-4 h-4 text-rose-600" />
-              <span>Từ chối hồ sơ</span>
-            </button>
+          {isAdmin && (
+            <div className="flex items-center space-x-2.5">
+              <button
+                type="button"
+                onClick={() => handleVerify(false)}
+                disabled={submitting}
+                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition flex items-center space-x-1.5 disabled:opacity-50"
+              >
+                <XCircle className="w-4 h-4 text-rose-600" />
+                <span>Từ chối hồ sơ</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => handleVerify(true)}
-              disabled={submitting}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition flex items-center space-x-1.5 disabled:opacity-50"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Phê duyệt hồ sơ</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => handleVerify(true)}
+                disabled={submitting}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition flex items-center space-x-1.5 disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Phê duyệt hồ sơ</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

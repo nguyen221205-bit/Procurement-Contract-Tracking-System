@@ -176,6 +176,21 @@ npm run build --prefix frontend
 
 Các bài test frontend hiện dùng Node test runner cho enum contract và tính điểm xem trước. Chúng không phải kiểm thử giao diện trình duyệt.
 
+### Bộ kiểm thử E2E Toàn bộ Luồng nghiệp vụ & Vai trò (Automated Reproducible E2E Suite)
+
+Dự án cung cấp bộ công cụ nghiệm thu E2E tự động hóa toàn diện tại `scripts/testing/lifecycle-e2e/`, tự động khởi tạo cơ sở dữ liệu cô lập `procurement_db_e2e_<RunId>`, dựng SMTP Catcher nội bộ (`127.0.0.1:2525`) bắt OTP và token mời thật, khởi chạy Backend + Frontend và thực thi kiểm thử trên trình duyệt Chromium Headless kết hợp đối soát dữ liệu SQL & mã băm SHA-256 (**0 câu lệnh SQL `UPDATE`**):
+
+~~~powershell
+powershell -ExecutionPolicy Bypass -File "scripts/testing/run-lifecycle-e2e.ps1" -RunId "full_run1_20261106" -DropDatabaseOnSuccess
+~~~
+
+Tài liệu đặc tả, ma trận phân quyền, danh mục 93 test case, runbook và báo cáo kết quả nghiệm thu thực tế:
+- [`docs/E2E_ALL_WORKFLOWS_INVENTORY.md`](docs/E2E_ALL_WORKFLOWS_INVENTORY.md): Kiểm kê đầy đủ 18 Controllers (~85 HTTP endpoints), 16 UI routes và Background Worker.
+- [`docs/E2E_ROLE_PERMISSION_MATRIX.csv`](docs/E2E_ROLE_PERMISSION_MATRIX.csv): Ma trận phân quyền theo vai trò hệ thống và vai trò trong đơn vị mời thầu (`Manager`, `Officer`, `Finance`, `Signer`).
+- [`docs/E2E_ALL_WORKFLOWS_CASES.csv`](docs/E2E_ALL_WORKFLOWS_CASES.csv): Danh mục 93 test case định danh phủ toàn bộ 22 phân hệ và 6 chuỗi nghiệp vụ.
+- [`docs/E2E_ALL_WORKFLOWS_RUNBOOK.md`](docs/E2E_ALL_WORKFLOWS_RUNBOOK.md): Hướng dẫn cài đặt, cấu hình, thực thi và dọn dẹp môi trường kiểm thử E2E.
+- [`docs/E2E_ALL_WORKFLOWS_RESULT_2026-11-06.md`](docs/E2E_ALL_WORKFLOWS_RESULT_2026-11-06.md): Báo cáo kết quả thực thi thực tế qua 2 lượt chạy độc lập liên tiếp (`full_run1_20261106` và `full_run2_20261106`), bảng đối soát SQL/tài chính và 6 Bug Cards phát hiện được.
+
 ### Script tích hợp đời cũ
 
 Đường dẫn scripts/testing/test_e2e_full_flow.ps1 được viết cho dữ liệu mẫu và luồng Admin tạo gói cũ. Script không chọn ProcuringEntityId, không tạo membership/invitation và không kiểm tra Maker–Checker; nó cũng chỉ tạo milestone chứ không hoàn tất nghiệm thu. Không dùng script này làm bằng chứng E2E cho transparency hiện tại hoặc chạy trên database thật. Hãy dùng quy trình thực hành bên dưới trên database cô lập.

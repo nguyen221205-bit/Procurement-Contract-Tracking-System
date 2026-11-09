@@ -30,11 +30,64 @@ const ROLE_OPTIONS = [
   { value: 0, name: 'Manager', label: 'Quản lý đơn vị / Điều hành' },
 ];
 
+const ROLE_LABEL_MAP = {
+  0: 'Quản lý đơn vị (Manager)',
+  Manager: 'Quản lý đơn vị (Manager)',
+  1: 'Cán bộ kỹ thuật / Hiện trường (Maker)',
+  Officer: 'Cán bộ kỹ thuật / Hiện trường (Maker)',
+  2: 'Kế toán / Kiểm soát tài chính',
+  Finance: 'Kế toán / Kiểm soát tài chính',
+  3: 'Người ký duyệt giải ngân (Checker)',
+  Signer: 'Người ký duyệt giải ngân (Checker)',
+};
+
+const MEMBER_STATUS_MAP = {
+  0: 'Đang hoạt động',
+  Active: 'Đang hoạt động',
+  1: 'Tạm ngưng',
+  Suspended: 'Tạm ngưng',
+  2: 'Đã thu hồi quyền',
+  Revoked: 'Đã thu hồi quyền',
+};
+
+const INVITATION_STATUS_MAP = {
+  0: 'Chờ chấp nhận',
+  Pending: 'Chờ chấp nhận',
+  1: 'Đã tham gia',
+  Accepted: 'Đã tham gia',
+  2: 'Đã hủy / Hết hạn',
+  Revoked: 'Đã hủy / Hết hạn',
+  Expired: 'Đã hết hạn',
+};
+
+const AUTHORITY_STATUS_MAP = {
+  0: 'Chờ Admin xác minh',
+  PendingVerification: 'Chờ Admin xác minh',
+  1: 'Đang có hiệu lực',
+  Active: 'Đang có hiệu lực',
+  2: 'Đã từ chối',
+  Rejected: 'Đã từ chối',
+  3: 'Đã thu hồi',
+  Revoked: 'Đã thu hồi',
+  4: 'Đã hết hạn',
+  Expired: 'Đã hết hạn',
+};
+
+const AUTHORITY_TYPE_MAP = {
+  0: 'Phê duyệt thanh toán / Giải ngân (Checker)',
+  DisbursementApproval: 'Phê duyệt thanh toán / Giải ngân (Checker)',
+  1: 'Ký kết hợp đồng kinh tế',
+  ContractSigning: 'Ký kết hợp đồng kinh tế',
+  2: 'Người đại diện theo pháp luật',
+  FullLegalRepresentative: 'Người đại diện theo pháp luật',
+};
+
 export const ProcuringEntityMembersModal = ({
   isOpen,
   onClose,
   entity,
-  canManage = true,
+  canManage: canManageProp,
+  inline = false,
 }) => {
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'Admin';
@@ -43,6 +96,18 @@ export const ProcuringEntityMembersModal = ({
   const [members, setMembers] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [authorities, setAuthorities] = useState([]);
+
+  const isMemberManager = members.some(
+    (m) =>
+      m.userId === currentUser?.id &&
+      (m.roleInEntity === 0 || m.roleInEntity === 'Manager') &&
+      (m.status === 0 || m.status === 'Active')
+  );
+  const canManage =
+    isAdmin ||
+    entity?.userId === currentUser?.id ||
+    isMemberManager ||
+    Boolean(canManageProp && isAdmin);
 
   // Form đề nghị cấp thẩm quyền ký (Signing Authority Request)
   const [showReqAuthForm, setShowReqAuthForm] = useState(false);
@@ -71,8 +136,8 @@ export const ProcuringEntityMembersModal = ({
     try {
       const [membersRes, invRes, authRes] = await Promise.all([
         procuringEntityApi.getMembers(entity.id),
-        procuringEntityApi.getInvitations(entity.id),
-        procuringEntityApi.getSigningAuthorities(entity.id).catch(() => ({ success: false })),
+        procuringEntityApi.getInvitations(entity.id).catch(() => ({ success: false, data: [] })),
+        procuringEntityApi.getSigningAuthorities(entity.id).catch(() => ({ success: false, data: [] })),
       ]);
 
       if (membersRes?.success) {
@@ -290,36 +355,41 @@ export const ProcuringEntityMembersModal = ({
     }
   };
 
-  if (!isOpen || !entity) return null;
+  if ((!isOpen && !inline) || !entity) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="px-6 py-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center space-x-3.5">
-            <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-md">
-              <Users className="w-5 h-5 text-indigo-300" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="text-base font-bold">Thành Viên Đơn Vị & Kiểm Soát Chéo</h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-200 border border-indigo-400/30">
-                  Maker - Checker
-                </span>
-              </div>
-              <p className="text-xs text-slate-300">
-                {entity.organizationName || entity.name} (MST: {entity.taxCode || '---'})
-              </p>
-            </div>
+  const containerClasses = inline
+    ? 'bg-white rounded-2xl shadow-2xs border border-slate-200 w-full overflow-hidden flex flex-col'
+    : 'bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]';
+
+  const content = (
+    <div className={containerClasses}>
+      {/* Header */}
+      <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center space-x-3.5">
+          <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-md">
+            <Users className="w-5 h-5 text-indigo-300" />
           </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <h3 className="text-base font-bold">Danh sách Thành viên & Phân quyền Nghiệp vụ</h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-200 border border-indigo-400/30">
+                Maker - Checker
+              </span>
+            </div>
+            <p className="text-xs text-slate-300">
+              {entity.organizationName || entity.name} (MST: {entity.taxCode || '---'})
+            </p>
+          </div>
+        </div>
+        {!inline && onClose && (
           <button
             onClick={onClose}
             className="text-white/70 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
-        </div>
+        )}
+      </div>
 
         {/* Tab Navigation */}
         <div className="px-6 pt-4 pb-2 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between flex-shrink-0">
@@ -467,7 +537,7 @@ export const ProcuringEntityMembersModal = ({
                               }`}
                             >
                               <ShieldCheck className="w-3 h-3" />
-                              <span>{m.roleInEntityName || m.roleInEntity}</span>
+                              <span>{ROLE_LABEL_MAP[m.roleInEntityName] || ROLE_LABEL_MAP[m.roleInEntity] || m.roleInEntityName || m.roleInEntity}</span>
                             </span>
                           </td>
                           <td className="py-3.5 px-4">
@@ -480,7 +550,7 @@ export const ProcuringEntityMembersModal = ({
                                   : 'bg-rose-100 text-rose-800'
                               }`}
                             >
-                              {m.statusName || m.status}
+                              {MEMBER_STATUS_MAP[m.statusName] || MEMBER_STATUS_MAP[m.status] || m.statusName || m.status}
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-slate-500 whitespace-nowrap">
@@ -552,7 +622,7 @@ export const ProcuringEntityMembersModal = ({
                           <td className="py-3.5 px-4 font-bold text-slate-900">{inv.email}</td>
                           <td className="py-3.5 px-4">
                             <span className="font-semibold text-indigo-700">
-                              {inv.roleInEntityName || inv.roleInEntity}
+                              {ROLE_LABEL_MAP[inv.roleInEntityName] || ROLE_LABEL_MAP[inv.roleInEntity] || inv.roleInEntityName || inv.roleInEntity}
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-slate-600">{inv.invitedByName}</td>
@@ -566,7 +636,7 @@ export const ProcuringEntityMembersModal = ({
                                   : 'bg-rose-100 text-rose-800'
                               }`}
                             >
-                              {inv.statusName || inv.status}
+                              {INVITATION_STATUS_MAP[inv.statusName] || INVITATION_STATUS_MAP[inv.status] || inv.statusName || inv.status}
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-slate-500 whitespace-nowrap">
@@ -648,7 +718,7 @@ export const ProcuringEntityMembersModal = ({
                       >
                         <option value="">-- Chọn thành viên đơn vị --</option>
                         {members
-                          .filter((m) => m.status === 'Active' || m.status === 1)
+                          .filter((m) => m.status === 'Active' || m.status === 0)
                           .map((m) => (
                             <option key={m.userId} value={m.userId}>
                               {m.fullName} ({m.email})
@@ -796,16 +866,16 @@ export const ProcuringEntityMembersModal = ({
                                   : 'bg-slate-100 text-slate-700'
                               }`}
                             >
-                              {a.statusName || a.status}
+                              {AUTHORITY_STATUS_MAP[a.statusName] || AUTHORITY_STATUS_MAP[a.status] || a.statusName || a.status}
                             </span>
                           </div>
 
                           <div className="flex items-center space-x-2">
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                              {a.authorityTypeName || a.authorityType}
+                              {AUTHORITY_TYPE_MAP[a.authorityTypeName] || AUTHORITY_TYPE_MAP[a.authorityType] || a.authorityTypeName || a.authorityType}
                             </span>
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                              Phạm vi: {a.scope}
+                              Phạm vi: {a.scope === 'EntityWide' ? 'Toàn đơn vị' : a.scope}
                             </span>
                           </div>
                         </div>
@@ -924,6 +994,15 @@ export const ProcuringEntityMembersModal = ({
           </div>
         )}
       </div>
+  );
+
+  if (inline) {
+    return content;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      {content}
     </div>
   );
 };

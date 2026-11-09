@@ -10,7 +10,7 @@ from db_helper import run_sqlcmd
 logger = logging.getLogger("test_negative_rules")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-def run_negative_rules(run_id, manifest, api_base_url="http://localhost:5225"):
+def run_negative_rules(run_id, manifest, api_base_url="http://localhost:5225", smtp_catcher=None):
     logger.info("=================================================================")
     logger.info(" STARTING SERVER-SIDE NEGATIVE CONSTRAINTS SUITE")
     logger.info("=================================================================")
@@ -120,15 +120,19 @@ def run_negative_rules(run_id, manifest, api_base_url="http://localhost:5225"):
     # -------------------------------------------------------------------------
     logger.info("\n--- CASE 3: Revoked Membership Token Rejection ---")
     aux_email = f"aux_officer_{run_id}@procurement.com"
-    inv_aux = requests.post(
+    inv_aux_res = requests.post(
         f"{api_base_url}/api/procuring-entities/{entities['entityA']['id']}/invitations",
         json={"email": aux_email, "roleInEntity": 1},
         headers={"Authorization": f"Bearer {manager_token}"}
-    ).json()["data"]
+    )
+    assert inv_aux_res.status_code == 200, f"Invite aux officer failed: {inv_aux_res.text}"
 
-    token_aux_raw = f"token_aux_{run_id}"
-    token_aux_hash = hashlib.sha256(token_aux_raw.encode("utf-8")).hexdigest().lower()
-    run_sqlcmd(f"UPDATE ProcuringEntityInvitations SET TokenHash = '{token_aux_hash}' WHERE Id = {inv_aux['id']};", db_name=db_name)
+    if smtp_catcher is not None:
+        aux_msg = smtp_catcher.wait_for_email(aux_email, timeout_sec=10)
+        assert aux_msg and aux_msg.get("extractedInviteToken"), f"No invite email caught for {aux_email}"
+        token_aux_raw = aux_msg["extractedInviteToken"]
+    else:
+        raise RuntimeError("smtp_catcher required to extract aux invitation token without SQL UPDATE!")
 
     aux_member = requests.post(
         f"{api_base_url}/api/procuring-entities/invitations/accept",
@@ -224,11 +228,3 @@ def run_negative_rules(run_id, manifest, api_base_url="http://localhost:5225"):
 
     manifest["negativeTests"] = negative_results
     return negative_results
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python test_negative_rules.py <manifest_json_path>")
-        sys.exit(1)
-    with open(sys.argv[1], "r", encoding="utf-8") as f:
-        mf = json.load(f)
-    run_negative_rules(mf["runId"], mf)

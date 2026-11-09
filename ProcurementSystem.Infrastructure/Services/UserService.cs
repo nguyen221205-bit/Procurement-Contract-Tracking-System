@@ -326,7 +326,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
             // 2. Hash mật khẩu và cập nhật trạng thái bảo mật
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
-            user.MustChangePassword = false; // Cho phép người dùng đăng nhập làm việc ngay bằng mật khẩu admin cấp
+            user.MustChangePassword = true; // Bắt buộc người dùng đổi mật khẩu tạm do admin cấp trong lần đầu đăng nhập
             user.RefreshToken = null;
             user.RefreshTokenExpiry = null;
             user.UpdatedAt = DateTime.UtcNow;
@@ -341,7 +341,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 EntityType = "User",
                 EntityId = user.Id,
                 OldValues = null,
-                NewValues = JsonSerializer.Serialize(new { MustChangePassword = false, ResetByAdmin = true }),
+                NewValues = JsonSerializer.Serialize(new { MustChangePassword = true, ResetByAdmin = true }),
                 Timestamp = DateTime.UtcNow
             };
             await _unitOfWork.Repository<AuditLog>().AddAsync(auditLog);
@@ -380,7 +380,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 Email = user.Email,
                 FullName = user.FullName,
                 NewPassword = newPassword,
-                MustChangePassword = false,
+                MustChangePassword = true,
                 EmailSent = emailSent
             };
 

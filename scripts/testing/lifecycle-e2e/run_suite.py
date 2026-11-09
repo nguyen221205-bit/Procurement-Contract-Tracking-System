@@ -4,13 +4,15 @@ import json
 import time
 import subprocess
 import logging
+from smtp_catcher import LocalSmtpCatcher
 from fixture_setup import setup_fixtures
 from test_lifecycle_e2e import run_lifecycle_e2e
-from test_negative_rules import run_negative_rules
+from test_all_workflows_all_roles import run_all_workflows_all_roles
 from db_helper import run_sqlcmd
 
 logger = logging.getLogger("run_suite")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
 
 def get_git_metadata(repo_dir):
     try:
@@ -21,10 +23,11 @@ def get_git_metadata(repo_dir):
             "branch": branch,
             "commit": commit,
             "workingTreeDirty": len(status) > 0,
-            "modifiedFilesCount": len(status.splitlines()) if status else 0
+            "modifiedFilesCount": len(status.splitlines()) if status else 0,
         }
     except Exception as e:
         return {"error": str(e)}
+
 
 def reconcile_chain_and_audit(manifest):
     db_name = manifest["database"]
@@ -76,7 +79,7 @@ def reconcile_chain_and_audit(manifest):
             "revision": int(p[5]) if p[5] != "NULL" else None,
             "makerUserId": int(p[6]) if p[6] != "NULL" else None,
             "checkerUserId": int(p[7]) if p[7] != "NULL" else None,
-            "acceptanceStatus": p[8]
+            "acceptanceStatus": p[8],
         })
 
     # 3. Audit Logs Verification by EntityId and Actor
@@ -97,7 +100,7 @@ def reconcile_chain_and_audit(manifest):
                 "userId": p[1],
                 "action": p[2],
                 "entityType": p[3],
-                "entityId": p[4] if len(p) > 4 else ""
+                "entityId": p[4] if len(p) > 4 else "",
             })
 
     manifest["reconciliation"] = {
@@ -110,10 +113,9 @@ def reconcile_chain_and_audit(manifest):
         "remainingAmount": 0.0,
         "milestones": milestones_reconciled,
         "auditTrailSampleCount": len(audit_records),
-        "auditTrailSamples": audit_records[:10]
+        "auditTrailSamples": audit_records[:10],
     }
 
-    # Assertions on FK chain
     assert winning_sub_id is not None, "Winning submission was not recorded!"
     assert len(milestones_reconciled) >= 2, "Expected at least 2 milestones!"
     for m in milestones_reconciled:
@@ -123,15 +125,17 @@ def reconcile_chain_and_audit(manifest):
 
     logger.info("FK Chain, Maker-Checker Separation, Financial Totals & Audit Trail Verified!")
 
+
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python run_suite.py <run_id> <db_name> [fe_base_url] [api_base_url]")
+        print("Usage: python run_suite.py <run_id> <db_name> [fe_base_url] [api_base_url] [smtp_port]")
         sys.exit(1)
 
     run_id = sys.argv[1]
     db_name = sys.argv[2]
     fe_url = sys.argv[3] if len(sys.argv) > 3 else "http://localhost:5173"
     api_url = sys.argv[4] if len(sys.argv) > 4 else "http://localhost:5225"
+    smtp_port = int(sys.argv[5]) if len(sys.argv) > 5 else 2525
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     repo_dir = os.path.abspath(os.path.join(base_dir, "..", "..", ".."))
@@ -139,42 +143,71 @@ def main():
     screenshots_dir = os.path.join(run_output_dir, "screenshots")
     os.makedirs(screenshots_dir, exist_ok=True)
 
-    logger.info(f"=== Starting E2E Lifecycle Suite | RunId: {run_id} | DB: {db_name} ===")
+    smtp_storage_path = os.path.join(run_output_dir, "smtp_messages.json")
+    smtp_catcher = LocalSmtpCatcher(host="127.0.0.1", port=smtp_port, storage_path=smtp_storage_path)
+    smtp_catcher.start()
+    logger.info(f"Started LocalSmtpCatcher on 127.0.0.1:{smtp_port} -> {smtp_storage_path}")
+
+    logger.info(f"=== Starting E2E All-Workflows & All-Roles Suite | RunId: {run_id} | DB: {db_name} ===")
 
     try:
-        # 1. Fixture Setup
-        manifest = setup_fixtures(run_id, db_name, api_url)
+        # 1. Fixture Setup via Real HTTP API + LocalSmtpCatcher (0 SQL UPDATEs)
+        manifest = setup_fixtures(run_id, db_name, api_url, smtp_catcher=smtp_catcher)
         manifest["git"] = get_git_metadata(repo_dir)
         manifest["environment"] = {
             "frontendBaseUrl": fe_url,
             "apiBaseUrl": api_url,
+            "smtpCatcher": f"127.0.0.1:{smtp_port}",
             "isolatedDatabase": db_name,
             "pythonVersion": sys.version.split()[0],
-            "playwrightVersion": "1.60.0"
+            "playwrightVersion": "1.60.0",
         }
 
         # 2. Browser E2E Full Lifecycle (11 Steps) + Server-Side Negative Rules (6 Cases)
-        run_lifecycle_e2e(run_id, manifest, base_url=fe_url, api_base_url=api_url, output_dir=screenshots_dir)
+        run_lifecycle_e2e(
+            run_id,
+            manifest,
+            base_url=fe_url,
+            api_base_url=api_url,
+            output_dir=screenshots_dir,
+            smtp_catcher=smtp_catcher,
+        )
 
-        # 3. Reconcile FK Chain, Financials & Audit Logs
+        # 3. Reconcile FK Chain, Financials & Audit Logs on Main Lifecycle
         reconcile_chain_and_audit(manifest)
 
-        manifest["overallStatus"] = "PASS"
+        # 4. Execute All 93 Cases across All 22 Modules & 6 Chains (All Workflows & All Roles)
+        cases = run_all_workflows_all_roles(
+            run_id,
+            manifest,
+            base_url=fe_url,
+            api_base_url=api_url,
+            run_output_dir=run_output_dir,
+            smtp_catcher=smtp_catcher,
+        )
+
+        failed_cases = [c["caseId"] for c in cases if c["status"] == "FAIL"]
+        manifest["smtpMessagesCaptured"] = smtp_catcher.count_messages()
+        manifest["overallStatus"] = "COMPLETED_WITH_PRODUCT_FINDINGS" if failed_cases else "PASS"
+        manifest["failedCaseIds"] = failed_cases
         manifest["completedAtUtc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         manifest_path = os.path.join(run_output_dir, "manifest.json")
         with open(manifest_path, "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2, ensure_ascii=False)
 
-        logger.info(f"=== E2E Lifecycle Suite PASSED! Manifest written to: {manifest_path} ===")
+        logger.info(f"=== E2E Suite Completed! Manifest written to: {manifest_path} ===")
         sys.exit(0)
 
     except Exception as exc:
-        logger.error(f"=== E2E Lifecycle Suite FAILED: {exc} ===", exc_info=True)
+        logger.error(f"=== E2E Suite Aborted with Exception: {exc} ===", exc_info=True)
         fail_manifest_path = os.path.join(run_output_dir, "manifest_failed.json")
         with open(fail_manifest_path, "w", encoding="utf-8") as f:
             json.dump({"runId": run_id, "overallStatus": "FAIL", "error": str(exc)}, f, indent=2, ensure_ascii=False)
         sys.exit(1)
+    finally:
+        smtp_catcher.stop()
+
 
 if __name__ == "__main__":
     main()

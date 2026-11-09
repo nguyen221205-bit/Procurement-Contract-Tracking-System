@@ -854,10 +854,10 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<PackageEvaluatorDto>.Fail("Không tìm thấy gói thầu.");
             }
 
-            // Kiểm tra quyền sở hữu gói thầu: Chỉ người tạo gói hoặc Admin mới được phân công chuyên gia
-            if (!isAdmin && package.CreatedBy != currentUserId)
+            // Kiểm tra quyền sở hữu gói thầu: Chỉ người tạo gói hoặc Admin hoặc Manager đơn vị mới được phân công chuyên gia
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, currentUserId, isAdmin))
             {
-                return ApiResponse<PackageEvaluatorDto>.Fail("Chỉ người tạo gói thầu (Bên mời thầu) hoặc Admin mới có quyền phân công chuyên gia chấm thầu.");
+                return ApiResponse<PackageEvaluatorDto>.Forbidden("Chỉ người tạo gói thầu (Bên mời thầu) hoặc Admin mới có quyền phân công chuyên gia chấm thầu.");
             }
 
             if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
@@ -988,10 +988,10 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Không tìm thấy gói thầu.");
             }
 
-            // Kiểm tra quyền sở hữu gói thầu: Chỉ người tạo gói hoặc Admin mới được xóa chuyên gia
-            if (!isAdmin && package.CreatedBy != currentUserId)
+            // Kiểm tra quyền sở hữu gói thầu: Chỉ người tạo gói hoặc Admin hoặc Manager đơn vị mới được xóa chuyên gia
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, currentUserId, isAdmin))
             {
-                return ApiResponse<bool>.Fail("Chỉ người tạo gói thầu (Bên mời thầu) hoặc Admin mới có quyền xóa chuyên gia khỏi gói thầu.");
+                return ApiResponse<bool>.Forbidden("Chỉ người tạo gói thầu (Bên mời thầu) hoặc Admin mới có quyền xóa chuyên gia khỏi gói thầu.");
             }
 
             if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)
@@ -1046,10 +1046,10 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<PackageEvaluatorDto>.Fail("Không tìm thấy gói thầu.");
             }
 
-            // Kiểm tra quyền sở hữu gói thầu: Chỉ người tạo gói hoặc Admin mới được thay thế chuyên gia
-            if (!isAdmin && package.CreatedBy != currentUserId)
+            // Kiểm tra quyền sở hữu gói thầu: Chỉ người tạo gói hoặc Admin hoặc Manager đơn vị mới được thay thế chuyên gia
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, currentUserId, isAdmin))
             {
-                return ApiResponse<PackageEvaluatorDto>.Fail("Chỉ người tạo gói thầu (Bên mời thầu) hoặc Admin mới có quyền thay thế chuyên gia chấm thầu.");
+                return ApiResponse<PackageEvaluatorDto>.Forbidden("Chỉ người tạo gói thầu (Bên mời thầu) hoặc Admin mới có quyền thay thế chuyên gia chấm thầu.");
             }
 
             if (package.Status == BidPackageStatus.Awarded || package.Status == BidPackageStatus.Contracted)

@@ -32,7 +32,7 @@ namespace ProcurementSystem.API.Controllers
         /// <summary>
         /// Lấy danh sách Bên mời thầu (phân trang, tìm kiếm từ khóa, mã số thuế, loại hình, trạng thái duyệt)
         /// </summary>
-        /// <remarks>Quyền hạn: Chỉ Admin.</remarks>
+        /// <remarks>Quyền hạn: Admin xem toàn bộ; Procurement chỉ xem đơn vị của mình.</remarks>
         [HttpGet]
         [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(ApiResponse<PaginatedList<ProcuringEntityDto>>), StatusCodes.Status200OK)]
@@ -41,14 +41,16 @@ namespace ProcurementSystem.API.Controllers
         public async Task<ActionResult<ApiResponse<PaginatedList<ProcuringEntityDto>>>> GetProcuringEntities(
             [FromQuery] ProcuringEntityFilterParams filter)
         {
-            var result = await _procuringEntityService.GetProcuringEntitiesAsync(filter);
+            var currentUserId = GetCurrentUserId();
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _procuringEntityService.GetProcuringEntitiesAsync(filter, currentUserId, isAdmin);
             return Ok(result);
         }
 
         /// <summary>
         /// Xem chi tiết hồ sơ Bên mời thầu theo ID
         /// </summary>
-        /// <remarks>Quyền hạn: Chỉ Admin.</remarks>
+        /// <remarks>Quyền hạn: Admin hoặc Thành viên thuộc đơn vị.</remarks>
         [HttpGet("{id:int}")]
         [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(ApiResponse<ProcuringEntityDto>), StatusCodes.Status200OK)]
@@ -57,9 +59,15 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<ProcuringEntityDto>), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<ApiResponse<ProcuringEntityDto>>> GetProcuringEntityById(int id)
         {
-            var result = await _procuringEntityService.GetProcuringEntityByIdAsync(id);
+            var currentUserId = GetCurrentUserId();
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _procuringEntityService.GetProcuringEntityByIdAsync(id, currentUserId, isAdmin);
             if (!result.Success)
             {
+                if (result.StatusCode == StatusCodes.Status403Forbidden)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, result);
+                }
                 return NotFound(result);
             }
             return Ok(result);
@@ -181,8 +189,7 @@ namespace ProcurementSystem.API.Controllers
             if (User.IsInRole("Procurement") && !User.IsInRole("Admin"))
             {
                 var currentUserId = GetCurrentUserId();
-                var entityResult = await _procuringEntityService.GetProcuringEntityByIdAsync(id);
-                if (!entityResult.Success || entityResult.Data == null || entityResult.Data.UserId != currentUserId)
+                if (!currentUserId.HasValue || !await _procuringEntityService.CanAccessEntityAsync(id, currentUserId.Value, isAdmin: false))
                 {
                     return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<string>.Fail("Bạn không có quyền xem tệp quyết định thành lập của bên mời thầu khác."));
                 }
@@ -200,7 +207,7 @@ namespace ProcurementSystem.API.Controllers
         /// <summary>
         /// Tải hoặc xem trước tệp Quyết định bổ nhiệm người đứng đầu của Bên mời thầu (nếu có)
         /// </summary>
-        /// <remarks>Quyền hạn: Admin, Procurement (đại diện bên mời thầu sở hữu hồ sơ).</remarks>
+        /// <remarks>Quyền hạn: Admin, Procurement (thành viên bên mời thầu sở hữu hồ sơ).</remarks>
         [HttpGet("{id:int}/appointment-file")]
         [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
@@ -212,8 +219,7 @@ namespace ProcurementSystem.API.Controllers
             if (User.IsInRole("Procurement") && !User.IsInRole("Admin"))
             {
                 var currentUserId = GetCurrentUserId();
-                var entityResult = await _procuringEntityService.GetProcuringEntityByIdAsync(id);
-                if (!entityResult.Success || entityResult.Data == null || entityResult.Data.UserId != currentUserId)
+                if (!currentUserId.HasValue || !await _procuringEntityService.CanAccessEntityAsync(id, currentUserId.Value, isAdmin: false))
                 {
                     return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<string>.Fail("Bạn không có quyền xem tệp quyết định bổ nhiệm của bên mời thầu khác."));
                 }

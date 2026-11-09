@@ -34,14 +34,15 @@ namespace ProcurementSystem.Infrastructure.Services
         {
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-            // 0. Xác thực mã OTP email (cố định purpose RegisterProcuringEntity, tránh ghi đè thông báo số lần thử còn lại)
-            // 0. Xác thực mã OTP email công vụ (nếu có cung cấp - tạm thời ẩn/bỏ qua bắt buộc)
-            if (!string.IsNullOrWhiteSpace(request.OtpCode))
+            // 0. Bắt buộc xác thực mã OTP email công vụ (cố định purpose RegisterProcuringEntity, tránh ghi đè thông báo số lần thử còn lại)
+            if (string.IsNullOrWhiteSpace(request.OtpCode))
             {
-                if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterProcuringEntity", out var otpError))
-                {
-                    return ApiResponse<ProcuringEntityRegisterResponse>.Fail(otpError);
-                }
+                return ApiResponse<ProcuringEntityRegisterResponse>.Fail("Mã xác thực OTP không được để trống.", statusCode: 400);
+            }
+
+            if (!_otpService.VerifyOtp(normalizedEmail, request.OtpCode, "RegisterProcuringEntity", out var otpError))
+            {
+                return ApiResponse<ProcuringEntityRegisterResponse>.Fail(otpError, statusCode: 400);
             }
 
             // 1. Kiểm tra email đã tồn tại trong hệ thống chưa

@@ -15,6 +15,12 @@ class ApiClient:
         res = self.session.get(url, timeout=10)
         return res
 
+    def send_otp(self, email, purpose="RegisterContractor"):
+        url = f"{self.base_url}/api/auth/send-otp"
+        payload = {"email": email, "purpose": purpose}
+        res = self.session.post(url, json=payload, timeout=10)
+        return res
+
     def login(self, email, password):
         url = f"{self.base_url}/api/auth/login"
         payload = {"email": email, "password": password}
@@ -25,7 +31,14 @@ class ApiClient:
             raise RuntimeError(f"Login failed for {email}: {data.get('message')}")
         return data["data"]["token"], data["data"]["user"]
 
-    def register_procuring_entity(self, full_name, email, password, org_name, tax_code, pdf_path):
+    def login_full(self, email, password):
+        url = f"{self.base_url}/api/auth/login"
+        payload = {"email": email, "password": password}
+        res = self.session.post(url, json=payload, timeout=10)
+        res.raise_for_status()
+        return res.json()["data"]
+
+    def register_procuring_entity(self, full_name, email, password, org_name, tax_code, pdf_path, otp_code=None):
         url = f"{self.base_url}/api/auth/register-procuring-entity"
         data = {
             "FullName": full_name,
@@ -41,6 +54,8 @@ class ApiClient:
             "RepresentativeTitle": "Giám đốc Ban QLDA",
             "RepresentativePhone": "0901234567"
         }
+        if otp_code is not None:
+            data["OtpCode"] = otp_code
         with open(pdf_path, "rb") as f:
             files = {"EstablishmentDecisionFile": ("QuyetDinhThanhLap.pdf", f, "application/pdf")}
             res = self.session.post(url, data=data, files=files, timeout=15)
@@ -73,13 +88,13 @@ class ApiClient:
         res.raise_for_status()
         return res.json()["data"]
 
-    def request_signing_authority(self, proc_token, entity_id, user_id, doc_num, valid_from, valid_to, notes):
+    def request_signing_authority(self, proc_token, entity_id, user_id, doc_num, valid_from, valid_to, notes, scope="EntityWide"):
         url = f"{self.base_url}/api/procuring-entities/{entity_id}/signing-authorities"
         headers = {"Authorization": f"Bearer {proc_token}"}
         payload = {
             "userId": user_id,
             "authorityType": 0, # DisbursementApproval = 0
-            "scope": "EntityWide",
+            "scope": scope,
             "validFrom": valid_from,
             "validTo": valid_to,
             "decisionNumber": doc_num,
@@ -97,7 +112,7 @@ class ApiClient:
         res.raise_for_status()
         return res.json()["data"]
 
-    def register_contractor(self, full_name, email, password, company_name, tax_code, pdf_path):
+    def register_contractor(self, full_name, email, password, company_name, tax_code, pdf_path, otp_code=None):
         url = f"{self.base_url}/api/auth/register-contractor"
         data = {
             "FullName": full_name,
@@ -108,6 +123,8 @@ class ApiClient:
             "TaxCode": tax_code,
             "Address": "Tầng 5, Tòa nhà Innovation, Quận Cầu Giấy, Hà Nội"
         }
+        if otp_code is not None:
+            data["OtpCode"] = otp_code
         with open(pdf_path, "rb") as f:
             files = {"BusinessLicenseFile": ("GiayPhepKinhDoanh.pdf", f, "application/pdf")}
             res = self.session.post(url, data=data, files=files, timeout=15)

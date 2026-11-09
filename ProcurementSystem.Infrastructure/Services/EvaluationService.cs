@@ -69,7 +69,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 var package = await _unitOfWork.Repository<BidPackage>().GetByIdAsync(packageId);
                 if (package == null)
                     return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Không tìm thấy gói thầu.");
-                if (!isAdmin && package.CreatedBy != userId)
+                if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, userId, isAdmin))
                     return ApiResponse<List<EvaluationCriteriaDto>>.Forbidden("Bạn không phụ trách gói thầu này.");
                 if (package.Status != BidPackageStatus.Open && package.Status != BidPackageStatus.Closed)
                     return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Chỉ được thay tiêu chí trước khi bắt đầu chấm điểm.");
@@ -77,10 +77,13 @@ namespace ProcurementSystem.Infrastructure.Services
                 var current = await _unitOfWork.Repository<EvaluationCriteria>().Query()
                     .Where(c => c.BidPackageId == packageId).OrderBy(c => c.Id).ToListAsync();
                 var expected = request.ExpectedCriteria.OrderBy(c => c.Id).ToList();
-                if (current.Count != expected.Count || current.Where((c, i) => c.Id != expected[i].Id
-                    || c.Name != expected[i].Name || c.MaxScore != expected[i].MaxScore
-                    || c.Weight != expected[i].Weight || c.IsPriceCriteria != expected[i].IsPriceCriteria).Any())
-                    return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Bộ tiêu chí đã thay đổi. Vui lòng tải lại trước khi áp dụng mẫu.", statusCode: 409);
+                if (expected.Count > 0)
+                {
+                    if (current.Count != expected.Count || current.Where((c, i) => c.Id != expected[i].Id
+                        || c.Name != expected[i].Name || c.MaxScore != expected[i].MaxScore
+                        || c.Weight != expected[i].Weight || c.IsPriceCriteria != expected[i].IsPriceCriteria).Any())
+                        return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Bộ tiêu chí đã thay đổi. Vui lòng tải lại trước khi áp dụng mẫu.", statusCode: 409);
+                }
                 if (await _unitOfWork.Repository<EvaluationScore>().Query()
                     .AnyAsync(s => s.Criteria.BidPackageId == packageId))
                     return ApiResponse<List<EvaluationCriteriaDto>>.Fail("Không thể thay bộ tiêu chí đã có điểm chấm.");
@@ -113,9 +116,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<EvaluationCriteriaDto>.Fail("Không tìm thấy gói thầu.");
             }
 
-            if (!isAdmin && package.CreatedBy != userId)
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, userId, isAdmin))
             {
-                return ApiResponse<EvaluationCriteriaDto>.Fail("Bạn không có quyền tạo tiêu chí cho gói thầu này.");
+                return ApiResponse<EvaluationCriteriaDto>.Forbidden("Bạn không có quyền tạo tiêu chí cho gói thầu này.");
             }
 
             // Chỉ cho phép thêm tiêu chí khi gói thầu chưa chuyển sang giai đoạn chấm điểm hoặc ký hợp đồng
@@ -203,9 +206,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<EvaluationCriteriaDto>.Fail("Không tìm thấy tiêu chí đánh giá.");
             }
 
-            if (!isAdmin && criteria.BidPackage.CreatedBy != userId)
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, criteria.BidPackage, userId, isAdmin))
             {
-                return ApiResponse<EvaluationCriteriaDto>.Fail("Bạn không có quyền chỉnh sửa tiêu chí này.");
+                return ApiResponse<EvaluationCriteriaDto>.Forbidden("Bạn không có quyền chỉnh sửa tiêu chí này.");
             }
 
             if (criteria.BidPackage.Status != BidPackageStatus.Open && criteria.BidPackage.Status != BidPackageStatus.Closed)
@@ -297,9 +300,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Không tìm thấy tiêu chí đánh giá.");
             }
 
-            if (!isAdmin && criteria.BidPackage.CreatedBy != userId)
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, criteria.BidPackage, userId, isAdmin))
             {
-                return ApiResponse<bool>.Fail("Bạn không có quyền xóa tiêu chí này.");
+                return ApiResponse<bool>.Forbidden("Bạn không có quyền xóa tiêu chí này.");
             }
 
             if (criteria.BidPackage.Status != BidPackageStatus.Open && criteria.BidPackage.Status != BidPackageStatus.Closed)
@@ -719,9 +722,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Không tìm thấy gói thầu.");
             }
 
-            if (!isAdmin && package.CreatedBy != userId)
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, userId, isAdmin))
             {
-                return ApiResponse<bool>.Fail("Bạn không có quyền phê duyệt kết quả đánh giá cho gói thầu này.");
+                return ApiResponse<bool>.Forbidden("Bạn không có quyền phê duyệt kết quả đánh giá cho gói thầu này.");
             }
 
             if (package.Status == BidPackageStatus.Contracted)
@@ -911,9 +914,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Không tìm thấy gói thầu.");
             }
 
-            if (!isAdmin && package.CreatedBy != userId)
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, package, userId, isAdmin))
             {
-                return ApiResponse<bool>.Fail("Bạn không có quyền thu hồi kết quả trao thầu cho gói thầu này.");
+                return ApiResponse<bool>.Forbidden("Bạn không có quyền thu hồi kết quả trao thầu cho gói thầu này.");
             }
 
             // Kiểm tra các hợp đồng liên quan đến gói thầu
@@ -1080,9 +1083,9 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<bool>.Fail("Không tìm thấy hồ sơ dự thầu.");
             }
 
-            if (!isAdmin && submission.BidPackage.CreatedBy != userId)
+            if (!await PackageWriteAuthorization.CanWriteAsync(_unitOfWork, submission.BidPackage, userId, isAdmin))
             {
-                return ApiResponse<bool>.Fail("Bạn không có quyền loại bỏ hồ sơ dự thầu này.");
+                return ApiResponse<bool>.Forbidden("Bạn không có quyền loại bỏ hồ sơ dự thầu này.");
             }
 
             if (submission.BidPackage.Status != BidPackageStatus.Closed && submission.BidPackage.Status != BidPackageStatus.Evaluating)
@@ -1521,9 +1524,16 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 if (isInternalStaff)
                 {
-                    if (package.CreatedBy != currentUserId)
+                    var canView = package.CreatedBy == currentUserId;
+                    if (!canView && package.ProcuringEntityId.HasValue)
                     {
-                        return ApiResponse<BidEvaluationReportDto>.Fail("Bạn chỉ có quyền xem Báo cáo Đánh giá của gói thầu do chính mình phụ trách.");
+                        var peId = package.ProcuringEntityId.Value;
+                        canView = await _unitOfWork.Repository<ProcuringEntityMember>().Query().AsNoTracking()
+                            .AnyAsync(m => m.ProcuringEntityId == peId && m.UserId == currentUserId && m.Status == MemberStatus.Active);
+                    }
+                    if (!canView)
+                    {
+                        return ApiResponse<BidEvaluationReportDto>.Forbidden("Bạn chỉ có quyền xem Báo cáo Đánh giá của gói thầu do đơn vị mình phụ trách.");
                     }
                 }
                 else

@@ -1843,6 +1843,7 @@ namespace ProcurementSystem.Infrastructure.Services
         {
             var contract = await _unitOfWork.Repository<Contract>()
                 .Query()
+                .Include(c => c.BidPackage)
                 .Include(c => c.Guarantees)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == contractId);
@@ -1851,9 +1852,19 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<List<ContractGuaranteeDto>>.Fail("Không tìm thấy hợp đồng.");
             }
 
-            if (isInternalStaff && !isAdmin && contract.BidPackage?.CreatedBy != userId)
+            if (isInternalStaff && !isAdmin)
             {
-                return ApiResponse<List<ContractGuaranteeDto>>.Forbidden("Bạn chỉ có quyền xem bảo lãnh của hợp đồng do chính mình phụ trách.");
+                var canAccess = contract.BidPackage?.CreatedBy == userId;
+                if (!canAccess && contract.BidPackage?.ProcuringEntityId != null)
+                {
+                    var entityId = contract.BidPackage.ProcuringEntityId.Value;
+                    canAccess = await _unitOfWork.Repository<ProcuringEntityMember>().Query().AsNoTracking()
+                        .AnyAsync(m => m.ProcuringEntityId == entityId && m.UserId == userId && m.Status == MemberStatus.Active);
+                }
+                if (!canAccess)
+                {
+                    return ApiResponse<List<ContractGuaranteeDto>>.Forbidden("Bạn chỉ có quyền xem bảo lãnh của hợp đồng do chính mình phụ trách.");
+                }
             }
 
             if (!isInternalStaff)
@@ -2117,6 +2128,7 @@ namespace ProcurementSystem.Infrastructure.Services
         {
             var contract = await _unitOfWork.Repository<Contract>()
                 .Query()
+                .Include(c => c.BidPackage)
                 .Include(c => c.Addenda)
                     .ThenInclude(a => a.Creator)
                 .Include(c => c.Addenda)
@@ -2128,9 +2140,19 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<List<ContractAddendumDto>>.Fail("Không tìm thấy hợp đồng.");
             }
 
-            if (isInternalStaff && !isAdmin && contract.BidPackage?.CreatedBy != userId)
+            if (isInternalStaff && !isAdmin)
             {
-                return ApiResponse<List<ContractAddendumDto>>.Forbidden("Bạn chỉ có quyền xem phụ lục của hợp đồng do chính mình phụ trách.");
+                var canAccess = contract.BidPackage?.CreatedBy == userId;
+                if (!canAccess && contract.BidPackage?.ProcuringEntityId != null)
+                {
+                    var entityId = contract.BidPackage.ProcuringEntityId.Value;
+                    canAccess = await _unitOfWork.Repository<ProcuringEntityMember>().Query().AsNoTracking()
+                        .AnyAsync(m => m.ProcuringEntityId == entityId && m.UserId == userId && m.Status == MemberStatus.Active);
+                }
+                if (!canAccess)
+                {
+                    return ApiResponse<List<ContractAddendumDto>>.Forbidden("Bạn chỉ có quyền xem phụ lục của hợp đồng do chính mình phụ trách.");
+                }
             }
 
             if (!isInternalStaff)

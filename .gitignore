@@ -94,3 +94,8 @@ scripts/test_e2e_procurement_lifecycle.py
 .codegraph
 
 *.lnk
+
+# Python test cache & E2E runs
+__pycache__/
+*.py[cod]
+scripts/testing/lifecycle-e2e/runs/
