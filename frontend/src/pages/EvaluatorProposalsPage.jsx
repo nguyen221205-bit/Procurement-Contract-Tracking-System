@@ -102,7 +102,7 @@ export const EvaluatorProposalsPage = () => {
     try {
       toast.loading('Đang mở tệp chứng chỉ...', { id: 'quick-cert' });
       const response = await evaluatorProposalApi.downloadCertificateFile(proposalId);
-      const fileBlob = new Blob([response], { type: 'application/pdf' });
+      const fileBlob = response instanceof Blob ? response : new Blob([response], { type: 'application/pdf' });
       const fileUrl = window.URL.createObjectURL(fileBlob);
       window.open(fileUrl, '_blank');
       toast.success('Đã mở tệp chứng chỉ!', { id: 'quick-cert' });

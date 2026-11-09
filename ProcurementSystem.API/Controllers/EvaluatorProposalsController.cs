@@ -177,12 +177,28 @@ namespace ProcurementSystem.API.Controllers
             var userRole = GetCurrentUserRole() ?? string.Empty;
 
             var result = await _proposalService.GetCertificateFileForDownloadAsync(id, userId, userRole);
-            if (!result.Success || result.Data == default)
+            if (!result.Success || result.Data == null)
             {
                 return NotFound(ApiResponse<string>.Fail(result.Message));
             }
 
-            return PhysicalFile(result.Data.PhysicalPath, result.Data.ContentType, result.Data.FileName);
+            var downloadResult = result.Data;
+            if (downloadResult.IsRedirect)
+            {
+                return Redirect(downloadResult.RedirectUrl!);
+            }
+
+            if (downloadResult.IsStream)
+            {
+                return File(downloadResult.FileStream!, downloadResult.ContentType, downloadResult.FileName);
+            }
+
+            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp chứng chỉ không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(downloadResult.PhysicalPath!, downloadResult.ContentType, downloadResult.FileName);
         }
 
         private int? GetCurrentUserId()

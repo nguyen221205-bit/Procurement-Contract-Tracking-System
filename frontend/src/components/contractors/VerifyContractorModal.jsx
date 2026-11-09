@@ -39,7 +39,7 @@ export const VerifyContractorModal = ({
       setDownloadingFile(true);
       toast.loading('Đang mở tệp Giấy phép kinh doanh...', { id: 'view-license' });
       const response = await contractorApi.downloadLicenseFile(contractor.id);
-      const fileBlob = new Blob([response], { type: 'application/pdf' });
+      const fileBlob = response instanceof Blob ? response : new Blob([response], { type: 'application/pdf' });
       const fileUrl = window.URL.createObjectURL(fileBlob);
       window.open(fileUrl, '_blank');
       toast.success('Đã mở tệp GPKD!', { id: 'view-license' });

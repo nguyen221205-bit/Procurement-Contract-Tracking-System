@@ -43,7 +43,7 @@ export const VerifyProcuringEntityModal = ({
       setDownloadingFile(true);
       toast.loading('Đang mở tệp Quyết định thành lập...', { id: 'view-est' });
       const response = await procuringEntityApi.downloadEstablishmentFile(entity.id);
-      const fileBlob = new Blob([response], { type: 'application/pdf' });
+      const fileBlob = response instanceof Blob ? response : new Blob([response], { type: 'application/pdf' });
       const fileUrl = window.URL.createObjectURL(fileBlob);
       window.open(fileUrl, '_blank');
       toast.success('Đã mở tệp tài liệu!', { id: 'view-est' });
@@ -60,7 +60,7 @@ export const VerifyProcuringEntityModal = ({
       setDownloadingFile(true);
       toast.loading('Đang mở tệp Quyết định bổ nhiệm...', { id: 'view-app' });
       const response = await procuringEntityApi.downloadAppointmentFile(entity.id);
-      const fileBlob = new Blob([response], { type: 'application/pdf' });
+      const fileBlob = response instanceof Blob ? response : new Blob([response], { type: 'application/pdf' });
       const fileUrl = window.URL.createObjectURL(fileBlob);
       window.open(fileUrl, '_blank');
       toast.success('Đã mở tệp tài liệu!', { id: 'view-app' });

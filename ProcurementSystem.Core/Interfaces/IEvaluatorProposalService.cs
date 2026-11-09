@@ -41,7 +41,7 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Tải về hoặc xem tệp Chứng chỉ nghiệp vụ / Bằng cấp chuyên môn của đề xuất
         /// </summary>
-        Task<ApiResponse<(string PhysicalPath, string ContentType, string FileName)>> GetCertificateFileForDownloadAsync(
+        Task<ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>> GetCertificateFileForDownloadAsync(
             int id, int currentUserId, string currentUserRole);
     }
 }

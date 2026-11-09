@@ -201,7 +201,22 @@ namespace ProcurementSystem.API.Controllers
                 return NotFound(ApiResponse<string>.Fail("Tệp Quyết định thành lập không tồn tại hoặc đã bị xóa."));
             }
 
-            return PhysicalFile(file.Value.PhysicalPath, file.Value.ContentType, file.Value.FileName);
+            if (file.IsRedirect)
+            {
+                return Redirect(file.RedirectUrl!);
+            }
+
+            if (file.IsStream)
+            {
+                return File(file.FileStream!, file.ContentType, file.FileName);
+            }
+
+            if (!System.IO.File.Exists(file.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp Quyết định thành lập không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(file.PhysicalPath!, file.ContentType, file.FileName);
         }
 
         /// <summary>
@@ -231,7 +246,22 @@ namespace ProcurementSystem.API.Controllers
                 return NotFound(ApiResponse<string>.Fail("Tệp Quyết định bổ nhiệm không tồn tại hoặc đã bị xóa."));
             }
 
-            return PhysicalFile(file.Value.PhysicalPath, file.Value.ContentType, file.Value.FileName);
+            if (file.IsRedirect)
+            {
+                return Redirect(file.RedirectUrl!);
+            }
+
+            if (file.IsStream)
+            {
+                return File(file.FileStream!, file.ContentType, file.FileName);
+            }
+
+            if (!System.IO.File.Exists(file.PhysicalPath))
+            {
+                return NotFound(ApiResponse<string>.Fail("Tệp Quyết định bổ nhiệm không tồn tại trên hệ thống lưu trữ."));
+            }
+
+            return PhysicalFile(file.PhysicalPath!, file.ContentType, file.FileName);
         }
 
         // ==========================================
