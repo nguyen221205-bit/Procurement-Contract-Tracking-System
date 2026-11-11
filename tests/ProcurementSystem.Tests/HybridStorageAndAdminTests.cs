@@ -1,9 +1,12 @@
 using System.Text;
+using Amazon.S3;
+using Amazon.S3.Model;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 using ProcurementSystem.Core.DTOs.Common;
 using ProcurementSystem.Infrastructure.Data;
 using ProcurementSystem.Infrastructure.Services;
@@ -13,6 +16,7 @@ namespace ProcurementSystem.Tests
 {
     public class HybridStorageAndAdminTests : IDisposable
     {
+        private const string ValidMasterKey = "Yj794nLSArXvXh23bxXrCi40ZK4a0/M5lQLBxl8cge0=";
         private readonly List<string> _tempFilesToCleanup = new();
         private readonly FileStorageService _localService;
         private readonly FileCryptoCompressionService _cryptoService;
@@ -25,7 +29,7 @@ namespace ProcurementSystem.Tests
                 Encryption = new StorageEncryptionConfig
                 {
                     Enabled = true,
-                    MasterKey = "Yj794nLSArXvXh23bxXrCi40ZK4a0/M5lQLBxl8cge0="
+                    MasterKey = ValidMasterKey
                 }
             });
             _cryptoService = new FileCryptoCompressionService(cryptoOptions, NullLogger<FileCryptoCompressionService>.Instance);
@@ -289,5 +293,161 @@ namespace ProcurementSystem.Tests
             Assert.False(response.Success);
             Assert.Contains("chưa được cấu hình", response.Message);
         }
+
+        #region R-B01 & R-B02 New Unit Tests
+
+        [Fact]
+        public async Task StorageSettings_WhenProviderLocal_AndNoMasterKey_ServicesResolveAndWorkProperly()
+        {
+            // R-B01: Khi Provider = "Local" và không có MasterKey (Encryption.Enabled = false, MasterKey = "")
+            var settings = Options.Create(new StorageSettings
+            {
+                Provider = "Local",
+                Encryption = new StorageEncryptionConfig
+                {
+                    Enabled = false,
+                    MasterKey = ""
+                }
+            });
+
+            var crypto = new FileCryptoCompressionService(settings, NullLogger<FileCryptoCompressionService>.Instance);
+            var local = new FileStorageService();
+            var supabase = new SupabaseStorageService(settings, crypto, NullLogger<SupabaseStorageService>.Instance);
+            var hybrid = new HybridFileStorageService(local, supabase, settings, NullLogger<HybridFileStorageService>.Instance);
+
+            // Hoạt động bình thường qua DI mà không throw
+            Assert.NotNull(hybrid);
+            var file = CreateMockFormFile("di_test.pdf", "%PDF-1.4 DI Content Without Key");
+            var storedPath = await hybrid.SaveFileAsync(file, "test_di");
+
+            Assert.NotNull(storedPath);
+            Assert.False(hybrid.IsCloudPath(storedPath));
+
+            var physicalPath = local.GetPhysicalFilePath(storedPath);
+            Assert.True(File.Exists(physicalPath));
+            _tempFilesToCleanup.Add(physicalPath);
+        }
+
+        [Fact]
+        public void StorageSettings_WhenProviderLocal_AndEncryptionEnabledWithoutMasterKey_ServicesResolveProperly()
+        {
+            // R-B01: Khi Provider = "Local", nếu Encryption:Enabled vô tình bật nhưng MasterKey rỗng
+            var settings = Options.Create(new StorageSettings
+            {
+                Provider = "Local",
+                Encryption = new StorageEncryptionConfig
+                {
+                    Enabled = true,
+                    MasterKey = ""
+                }
+            });
+
+            var crypto = new FileCryptoCompressionService(settings, NullLogger<FileCryptoCompressionService>.Instance);
+            var local = new FileStorageService();
+            var supabase = new SupabaseStorageService(settings, crypto, NullLogger<SupabaseStorageService>.Instance);
+            var hybrid = new HybridFileStorageService(local, supabase, settings, NullLogger<HybridFileStorageService>.Instance);
+
+            // Khởi tạo thành công, không ném ngoại lệ
+            Assert.NotNull(crypto);
+            Assert.NotNull(hybrid);
+        }
+
+        [Fact]
+        public async Task SupabaseStorageService_ResolveDownloadAsync_WhenEncryptionDisabled_ButFileIsEncrypted_DecryptsSuccessfully()
+        {
+            // R-B02: Tệp cũ trên Supabase đã được mã hóa (header PSEN).
+            // Cấu hình hiện tại: Encryption.Enabled = false (để ghi file mới dạng plaintext), nhưng MasterKey vẫn được cung cấp.
+            var settings = Options.Create(new StorageSettings
+            {
+                Provider = "Supabase",
+                Supabase = new SupabaseStorageConfig
+                {
+                    BucketName = "procurement-documents"
+                },
+                Encryption = new StorageEncryptionConfig
+                {
+                    Enabled = false, // TẮT mã hóa chiều GHI
+                    MasterKey = ValidMasterKey // Nhưng có khóa để giải mã chiều ĐỌC file cũ
+                }
+            });
+
+            var originalContent = "%PDF-1.4 Nội dung tài liệu đấu thầu bảo mật cũ trên Supabase Cloud";
+            using var rawStream = new MemoryStream(Encoding.UTF8.GetBytes(originalContent));
+            using var encryptedStream = await _cryptoService.ProcessForStorageAsync(rawStream);
+            var encryptedBytes = ((MemoryStream)encryptedStream).ToArray();
+
+            // Mock IAmazonS3 trả về ciphertext stream của tệp PSEN
+            var mockS3 = new Mock<IAmazonS3>();
+            mockS3.Setup(s => s.GetObjectAsync(It.Is<GetObjectRequest>(r => r.Key == "contracts/old_encrypted.pdf"), default))
+                  .ReturnsAsync(new GetObjectResponse
+                  {
+                      ResponseStream = new MemoryStream(encryptedBytes)
+                  });
+
+            var supabaseService = new SupabaseStorageService(
+                settings,
+                _cryptoService,
+                NullLogger<SupabaseStorageService>.Instance,
+                mockS3.Object);
+
+            // Act: Gọi ResolveDownloadAsync
+            using var downloadResult = await supabaseService.ResolveDownloadAsync("supabase://contracts/old_encrypted.pdf", "old_encrypted.pdf");
+
+            // Assert: Hệ thống tự động nhận diện header PSEN và giải mã thành công thành plaintext stream!
+            Assert.NotNull(downloadResult);
+            Assert.False(downloadResult.IsRedirect);
+            Assert.NotNull(downloadResult.FileStream);
+
+            using var reader = new StreamReader(downloadResult.FileStream, Encoding.UTF8);
+            var decryptedContent = await reader.ReadToEndAsync();
+            Assert.Equal(originalContent, decryptedContent);
+        }
+
+        [Fact]
+        public async Task SupabaseStorageService_ResolveDownloadAsync_WhenFileIsEncrypted_AndMasterKeyMissing_ThrowsInvalidOperationException()
+        {
+            // R-B02: Tệp trên Supabase có header PSEN nhưng hệ thống không có MasterKey
+            var settings = Options.Create(new StorageSettings
+            {
+                Provider = "Supabase",
+                Supabase = new SupabaseStorageConfig
+                {
+                    BucketName = "procurement-documents"
+                },
+                Encryption = new StorageEncryptionConfig
+                {
+                    Enabled = false,
+                    MasterKey = "" // Thiếu MasterKey
+                }
+            });
+
+            var originalContent = "%PDF-1.4 Dữ liệu mẫu cần giải mã";
+            using var rawStream = new MemoryStream(Encoding.UTF8.GetBytes(originalContent));
+            using var encryptedStream = await _cryptoService.ProcessForStorageAsync(rawStream);
+            var encryptedBytes = ((MemoryStream)encryptedStream).ToArray();
+
+            var cryptoWithoutKey = new FileCryptoCompressionService(settings, NullLogger<FileCryptoCompressionService>.Instance);
+
+            var mockS3 = new Mock<IAmazonS3>();
+            mockS3.Setup(s => s.GetObjectAsync(It.IsAny<GetObjectRequest>(), default))
+                  .ReturnsAsync(new GetObjectResponse
+                  {
+                      ResponseStream = new MemoryStream(encryptedBytes)
+                  });
+
+            var supabaseService = new SupabaseStorageService(
+                settings,
+                cryptoWithoutKey,
+                NullLogger<SupabaseStorageService>.Instance,
+                mockS3.Object);
+
+            // Act & Assert: Phải ném InvalidOperationException, TUYỆT ĐỐI KHÔNG redirect Pre-signed URL
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                supabaseService.ResolveDownloadAsync("supabase://contracts/enc_doc.pdf", "enc_doc.pdf"));
+
+            Assert.Contains("MasterKey", ex.Message);
+        }
+
+        #endregion
     }
 }

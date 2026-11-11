@@ -54,12 +54,11 @@ namespace ProcurementSystem.Core.DTOs.Auth
         public string? RepresentativePhone { get; set; }
 
         /// <summary>
-        /// Mã OTP xác thực email công vụ (6 chữ số)
+        /// Mã OTP xác thực email công vụ (bắt buộc, 6 chữ số)
         /// </summary>
-        /// <summary>
-        /// Mã OTP xác thực email công vụ (Tùy chọn - Tạm thời ẩn bắt buộc)
-        /// </summary>
-        public string? OtpCode { get; set; }
+        [Required(ErrorMessage = "Mã xác thực OTP là bắt buộc.")]
+        [RegularExpression(@"^\d{6}$", ErrorMessage = "Mã xác thực OTP phải gồm đúng 6 chữ số.")]
+        public string OtpCode { get; set; } = string.Empty;
 
         /// <summary>
         /// File scan Quyết định thành lập / Giấy phép kinh doanh (PDF, JPG, PNG - Tối đa 15MB)

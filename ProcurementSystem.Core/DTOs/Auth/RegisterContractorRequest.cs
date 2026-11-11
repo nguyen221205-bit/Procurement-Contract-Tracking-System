@@ -33,12 +33,11 @@ namespace ProcurementSystem.Core.DTOs.Auth
         public string? Address { get; set; }
 
         /// <summary>
-        /// Mã OTP xác thực email (6 chữ số)
+        /// Mã OTP xác thực email (bắt buộc, 6 chữ số)
         /// </summary>
-        /// <summary>
-        /// Mã OTP xác thực email (Tùy chọn - Tạm thời ẩn bắt buộc)
-        /// </summary>
-        public string? OtpCode { get; set; }
+        [Required(ErrorMessage = "Mã xác thực OTP là bắt buộc.")]
+        [RegularExpression(@"^\d{6}$", ErrorMessage = "Mã xác thực OTP phải gồm đúng 6 chữ số.")]
+        public string OtpCode { get; set; } = string.Empty;
 
         /// <summary>
         /// File Giấy phép kinh doanh (PDF, JPG, PNG - Tối đa 10MB)

@@ -23,11 +23,8 @@ namespace ProcurementSystem.Infrastructure.Services
             IOptions<StorageSettings> settings,
             IFileCryptoCompressionService cryptoService,
             ILogger<SupabaseStorageService> logger)
+            : this(settings, cryptoService, logger, null)
         {
-            _settings = settings.Value;
-            _cryptoService = cryptoService;
-            _logger = logger;
-
             var supabase = _settings.Supabase;
             if (!string.IsNullOrWhiteSpace(supabase.Endpoint) &&
                 !string.IsNullOrWhiteSpace(supabase.AccessKeyId) &&
@@ -52,6 +49,18 @@ namespace ProcurementSystem.Infrastructure.Services
                     _s3Client = null;
                 }
             }
+        }
+
+        public SupabaseStorageService(
+            IOptions<StorageSettings> settings,
+            IFileCryptoCompressionService cryptoService,
+            ILogger<SupabaseStorageService> logger,
+            IAmazonS3? s3Client)
+        {
+            _settings = settings.Value;
+            _cryptoService = cryptoService;
+            _logger = logger;
+            _s3Client = s3Client;
         }
 
         public bool IsConfigured => _s3Client != null;
@@ -229,86 +238,50 @@ namespace ProcurementSystem.Infrastructure.Services
             var key = ExtractKey(storedPath);
             var finalContentType = contentType ?? "application/pdf";
 
-            // Nếu cấu hình S3 client hợp lệ và có thể kết nối
+            // R-B02: Luôn đọc qua 1 luồng thống nhất, không phụ thuộc cờ _settings.Encryption?.Enabled chiều ghi.
+            // Tệp mã hóa ("PSEN") khi giải mã thất bại (sai khóa, thiếu MasterKey, dữ liệu cắt cụt) phải fail-closed ngay, không fallback.
             if (_s3Client != null)
             {
-                // Trường hợp 1: Tính năng mã hóa được bật -> kéo file mã hóa về, giải mã + giải nén và stream
-                if (_settings.Encryption?.Enabled == true)
+                MemoryStream? downloadedMemStream = null;
+                try
                 {
-                    try
+                    var getRequest = new GetObjectRequest
                     {
-                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                        var getRequest = new GetObjectRequest
-                        {
-                            BucketName = _settings.Supabase.BucketName,
-                            Key = key
-                        };
+                        BucketName = _settings.Supabase.BucketName,
+                        Key = key
+                    };
 
-                        using var getResponse = await _s3Client.GetObjectAsync(getRequest, cts.Token);
-                        var encryptedMemStream = new MemoryStream();
-                        await getResponse.ResponseStream.CopyToAsync(encryptedMemStream, cts.Token);
-                        encryptedMemStream.Position = 0;
-
-                        // Giải mã AES-256 và giải nén GZip
-                        var restoredStream = await _cryptoService.RestoreFromStorageAsync(encryptedMemStream);
-
-                        // Kiểm tra tính toàn vẹn: Tệp PDF phải có kích thước >= 500 bytes và header bắt đầu bằng %PDF
-                        if (restoredStream.Length >= 500)
-                        {
-                            var headerCheck = new byte[4];
-                            restoredStream.Position = 0;
-                            await restoredStream.ReadAsync(headerCheck, 0, 4);
-                            restoredStream.Position = 0;
-
-                            if (headerCheck[0] == 0x25 && headerCheck[1] == 0x50 && headerCheck[2] == 0x44 && headerCheck[3] == 0x46)
-                            {
-                                return FileDownloadResult.FromStream(restoredStream, originalFileName, finalContentType);
-                            }
-                        }
-
-                        _logger.LogWarning("Tệp {Key} lấy từ Supabase Storage không phải là PDF hợp lệ (độ dài: {Len} bytes). Kích hoạt cơ chế Hybrid Fallback tự động sửa chữa.", key, restoredStream.Length);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Không thể giải mã tệp {Key} từ Supabase Storage. Chuyển sang cơ chế Hybrid Fallback tạo/lấy văn bản chuẩn.", key);
-                    }
+                    using var getResponse = await _s3Client.GetObjectAsync(getRequest).WaitAsync(TimeSpan.FromSeconds(3));
+                    downloadedMemStream = new MemoryStream();
+                    await getResponse.ResponseStream.CopyToAsync(downloadedMemStream).WaitAsync(TimeSpan.FromSeconds(3));
+                    downloadedMemStream.Position = 0;
                 }
-                else
+                catch (Exception ex)
                 {
-                    // Trường hợp 2: Không bật mã hóa -> Stream tệp trực tiếp từ Supabase S3 qua Backend proxy
+                    downloadedMemStream?.Dispose();
+                    downloadedMemStream = null;
+                    _logger.LogWarning(ex, "Không thể lấy tệp {Key} từ Supabase (Cloud Storage có thể bị Paused/Timeout/Lỗi). Kích hoạt cơ chế Hybrid Fallback.", key);
+                }
+
+                if (downloadedMemStream != null)
+                {
+                    Stream restoredStream;
                     try
                     {
-                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                        var getRequest = new GetObjectRequest
-                        {
-                            BucketName = _settings.Supabase.BucketName,
-                            Key = key
-                        };
-
-                        using var getResponse = await _s3Client.GetObjectAsync(getRequest, cts.Token);
-                        var memStream = new MemoryStream();
-                        await getResponse.ResponseStream.CopyToAsync(memStream, cts.Token);
-                        memStream.Position = 0;
-
-                        if (memStream.Length >= 500)
-                        {
-                            var headerCheck = new byte[4];
-                            memStream.Position = 0;
-                            await memStream.ReadAsync(headerCheck, 0, 4);
-                            memStream.Position = 0;
-
-                            if (headerCheck[0] == 0x25 && headerCheck[1] == 0x50 && headerCheck[2] == 0x44 && headerCheck[3] == 0x46)
-                            {
-                                return FileDownloadResult.FromStream(memStream, originalFileName, finalContentType);
-                            }
-                        }
-
-                        _logger.LogWarning("Tệp {Key} lấy từ Supabase Storage không phải là PDF hợp lệ (độ dài: {Len} bytes). Kích hoạt cơ chế Hybrid Fallback tự động sửa chữa.", key, memStream.Length);
+                        restoredStream = await _cryptoService.RestoreFromStorageAsync(downloadedMemStream);
                     }
-                    catch (Exception ex)
+                    finally
                     {
-                        _logger.LogWarning(ex, "Không thể lấy tệp {Key} dạng stream từ Supabase (Cloud Storage có thể bị Paused/Lỗi). Kích hoạt cơ chế Hybrid Fallback.", key);
+                        await downloadedMemStream.DisposeAsync();
                     }
+
+                    if (!await IsEmptyOrStubNoticeAsync(restoredStream))
+                    {
+                        return FileDownloadResult.FromStream(restoredStream, originalFileName, finalContentType);
+                    }
+
+                    await restoredStream.DisposeAsync();
+                    _logger.LogWarning("Tệp {Key} từ Supabase Storage rỗng hoặc là thông báo lỗi/stub (Project Paused). Kích hoạt cơ chế Hybrid Fallback.", key);
                 }
             }
 
@@ -360,6 +333,38 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             return FileDownloadResult.FromStream(new MemoryStream(validPdfBytes), originalFileName, "application/pdf");
+        }
+
+        private static async Task<bool> IsEmptyOrStubNoticeAsync(Stream stream)
+        {
+            if (stream.Length == 0)
+            {
+                return true;
+            }
+
+            if (stream.Length >= 2000)
+            {
+                return false;
+            }
+
+            var originalPos = stream.Position;
+            try
+            {
+                stream.Position = 0;
+                var buffer = new byte[Math.Min(1024, (int)stream.Length)];
+                var read = await stream.ReadAsync(buffer, 0, buffer.Length);
+                var sample = System.Text.Encoding.ASCII.GetString(buffer, 0, read);
+                var trimmedSample = sample.TrimStart();
+
+                return sample.Contains("Project Paused", StringComparison.OrdinalIgnoreCase)
+                    || sample.Contains("HE THONG DAU THAU DIEN TU", StringComparison.OrdinalIgnoreCase)
+                    || trimmedSample.StartsWith("<!DOCTYPE html", StringComparison.OrdinalIgnoreCase)
+                    || trimmedSample.StartsWith("<html", StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                stream.Position = originalPos;
+            }
         }
 
         private static byte[] GenerateAppropriateDocument(string key, string originalFileName)
