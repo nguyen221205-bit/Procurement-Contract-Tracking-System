@@ -14,6 +14,7 @@ import {
   Bell,
   History,
   Database,
+  KeyRound,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -21,7 +22,7 @@ const MENU_ITEMS = [
     name: 'Tổng quan',
     path: '/dashboard',
     icon: LayoutDashboard,
-    roles: [ROLES.ADMIN],
+    roles: [ROLES.ADMIN, ROLES.PROCUREMENT],
   },
   {
     name: 'Thông báo',
@@ -72,6 +73,12 @@ const MENU_ITEMS = [
     icon: Briefcase,
     procurementIcon: Users,
     roles: [ROLES.ADMIN, ROLES.PROCUREMENT],
+  },
+  {
+    name: 'Thẩm định Ủy quyền Ký',
+    path: '/admin/signing-authorities',
+    icon: KeyRound,
+    roles: [ROLES.ADMIN],
   },
   {
     name: 'Người dùng',
