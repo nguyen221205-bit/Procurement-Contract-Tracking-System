@@ -455,7 +455,7 @@ export const EvaluationPage = () => {
           }`}
         >
           <Columns3 className="w-4 h-4 text-indigo-500" />
-          <span>So sánh Song song (Side-by-Side)</span>
+          <span>So sánh Song song</span>
           <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
             Đối chiếu
           </span>
