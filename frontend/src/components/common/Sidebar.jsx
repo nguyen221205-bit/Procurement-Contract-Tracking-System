@@ -13,6 +13,7 @@ import {
   Briefcase,
   Bell,
   History,
+  Database,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -76,6 +77,12 @@ const MENU_ITEMS = [
     name: 'Người dùng',
     path: '/users',
     icon: Users,
+    roles: [ROLES.ADMIN],
+  },
+  {
+    name: 'Sao lưu & Phục hồi',
+    path: '/backup-restore',
+    icon: Database,
     roles: [ROLES.ADMIN],
   },
 ];

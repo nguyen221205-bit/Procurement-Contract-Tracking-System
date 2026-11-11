@@ -18,6 +18,7 @@ import EvaluatorProposalsPage from './pages/EvaluatorProposalsPage';
 import ProcuringEntitiesPage from './pages/ProcuringEntitiesPage';
 import NotificationsPage from './pages/NotificationsPage';
 import AuditLogsPage from './pages/AuditLogsPage';
+import BackupRestorePage from './pages/BackupRestorePage';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { ROLES } from './utils/constants';
@@ -87,6 +88,14 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
                     <AuditLogsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/backup-restore"
+                element={
+                  <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                    <BackupRestorePage />
                   </ProtectedRoute>
                 }
               />

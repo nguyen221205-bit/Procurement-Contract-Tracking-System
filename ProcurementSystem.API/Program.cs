@@ -57,6 +57,7 @@ builder.Services.AddScoped<FileStorageService>();
 builder.Services.AddScoped<SupabaseStorageService>();
 builder.Services.AddScoped<IFileStorageService, HybridFileStorageService>();
 builder.Services.AddScoped<IStorageMigrationService, StorageMigrationService>();
+builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IContractorAuthService, ContractorAuthService>();
 builder.Services.AddScoped<IContractorService, ContractorService>();
 builder.Services.AddScoped<IProcuringEntityAuthService, ProcuringEntityAuthService>();

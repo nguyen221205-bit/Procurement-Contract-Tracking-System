@@ -66,6 +66,13 @@ uploads/*
 **/uploads/*
 !**/uploads/.gitkeep
 
+# Backup files
+backups/*
+!backups/.gitkeep
+**/backups/*
+!**/backups/.gitkeep
+*.bak
+
 # Environment & Secret files
 .env
 appsettings.Development.json
