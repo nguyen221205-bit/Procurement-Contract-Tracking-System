@@ -319,7 +319,7 @@ export const ClarificationTab = ({
                     <div className="pt-2">
                       <button
                         type="button"
-                        onClick={() => previewSecureFile(`/api/clarifications/attachments/download?filePath=${encodeURIComponent(item.questionAttachmentUrl)}`, 'Tep_dinh_kem_cau_hoi')}
+                        onClick={() => previewSecureFile(`/api/clarifications/attachments/download?clarificationId=${item.id}&filePath=${encodeURIComponent(item.questionAttachmentUrl)}`, 'Tep_dinh_kem_cau_hoi')}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-sky-50 text-sky-700 rounded-lg text-xs font-semibold transition cursor-pointer"
                       >
                         <Paperclip className="w-3.5 h-3.5 text-sky-600" />
@@ -351,7 +351,7 @@ export const ClarificationTab = ({
                       <div className="pt-2">
                         <button
                           type="button"
-                          onClick={() => previewSecureFile(`/api/clarifications/attachments/download?filePath=${encodeURIComponent(item.answerAttachmentUrl)}`, 'Van_ban_giai_trinh_phan_hoi')}
+                          onClick={() => previewSecureFile(`/api/clarifications/attachments/download?clarificationId=${item.id}&filePath=${encodeURIComponent(item.answerAttachmentUrl)}`, 'Van_ban_giai_trinh_phan_hoi')}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-200 hover:bg-emerald-100/60 text-emerald-800 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
                         >
                           <Paperclip className="w-3.5 h-3.5 text-emerald-600" />

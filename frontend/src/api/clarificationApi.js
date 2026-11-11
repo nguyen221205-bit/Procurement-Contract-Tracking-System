@@ -30,6 +30,14 @@ export const clarificationApi = {
   answerClarification: async (clarificationId, data) => {
     return await axiosClient.post(`/clarifications/${clarificationId}/answer`, data);
   },
+
+  // Đường dẫn tải về tệp đính kèm an toàn chống IDOR
+  getAttachmentDownloadUrl: (clarificationId, filePath) => {
+    const params = new URLSearchParams();
+    if (clarificationId) params.append('clarificationId', clarificationId);
+    if (filePath) params.append('filePath', filePath);
+    return `/api/clarifications/attachments/download?${params.toString()}`;
+  },
 };
 
 export default clarificationApi;

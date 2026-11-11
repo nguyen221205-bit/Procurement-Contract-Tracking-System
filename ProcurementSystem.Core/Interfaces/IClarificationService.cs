@@ -1,5 +1,6 @@
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Clarification;
+using ProcurementSystem.Core.DTOs.Common;
 using ProcurementSystem.Core.Enums;
 
 namespace ProcurementSystem.Core.Interfaces
@@ -49,5 +50,18 @@ namespace ProcurementSystem.Core.Interfaces
             bool isAdmin,
             bool isProcurement,
             bool isContractor);
+
+        /// <summary>
+        /// Tải về tệp đính kèm câu hỏi làm rõ HSMT hoặc giải trình HSDT có xác thực quyền hạn chống IDOR
+        /// </summary>
+        Task<FileDownloadResult> GetAttachmentForDownloadAsync(
+            string? filePath,
+            int? clarificationId,
+            int currentUserId,
+            bool isAdmin,
+            bool isProcurement,
+            bool isEvaluator,
+            bool isContractor);
     }
 }
+

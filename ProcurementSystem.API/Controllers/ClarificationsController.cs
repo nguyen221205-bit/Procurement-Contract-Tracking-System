@@ -172,59 +172,78 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
-        /// F5-8: Tải về tệp đính kèm làm rõ HSMT hoặc giải trình HSDT có xác thực
+        /// F5-8: Tải về tệp đính kèm làm rõ HSMT hoặc giải trình HSDT có xác thực quyền hạn chống IDOR
         /// </summary>
         [HttpGet("clarifications/attachments/download")]
         [Authorize]
-        public async Task<IActionResult> DownloadAttachment([FromQuery] string filePath)
+        public async Task<IActionResult> DownloadAttachment(
+            [FromQuery] string? filePath = null,
+            [FromQuery] int? clarificationId = null)
         {
-            if (string.IsNullOrWhiteSpace(filePath))
+            var userId = GetCurrentUserId();
+            if (userId <= 0)
             {
-                return BadRequest(ApiResponse<string>.Fail("Đường dẫn tệp tin không hợp lệ."));
+                return Unauthorized(ApiResponse<string>.Fail("Vui lòng đăng nhập.", statusCode: 401));
             }
 
-            var originalFileName = Path.GetFileName(filePath);
-            var ext = Path.GetExtension(originalFileName).ToLowerInvariant();
-            var contentType = ext switch
-            {
-                ".pdf" => "application/pdf",
-                ".doc" => "application/msword",
-                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                ".xls" => "application/vnd.ms-excel",
-                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ".png" => "image/png",
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".zip" => "application/zip",
-                ".rar" => "application/x-rar-compressed",
-                _ => "application/octet-stream"
-            };
+            var isAdmin = User.IsInRole("Admin");
+            var isProcurement = User.IsInRole("Procurement");
+            var isEvaluator = User.IsInRole("Evaluator");
+            var isContractor = User.IsInRole("Contractor");
 
-            ProcurementSystem.Core.DTOs.Common.FileDownloadResult downloadResult;
             try
             {
-                downloadResult = await _fileStorageService.ResolveDownloadAsync(filePath, originalFileName, contentType);
+                var downloadResult = await _clarificationService.GetAttachmentForDownloadAsync(
+                    filePath,
+                    clarificationId,
+                    userId,
+                    isAdmin,
+                    isProcurement,
+                    isEvaluator,
+                    isContractor);
+
+                if (downloadResult.IsRedirect)
+                {
+                    return Redirect(downloadResult.RedirectUrl!);
+                }
+
+                if (downloadResult.IsStream)
+                {
+                    return File(downloadResult.FileStream!, downloadResult.ContentType, downloadResult.FileName);
+                }
+
+                if (!string.IsNullOrEmpty(downloadResult.PhysicalPath) && System.IO.File.Exists(downloadResult.PhysicalPath))
+                {
+                    var stream = new FileStream(downloadResult.PhysicalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    return File(stream, downloadResult.ContentType, downloadResult.FileName);
+                }
+
+                return NotFound(ApiResponse<string>.Fail("Không tìm thấy tệp đính kèm trên hệ thống lưu trữ.", statusCode: 404));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ApiResponse<string>.Fail(ex.Message, statusCode: 404));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, ApiResponse<string>.Forbidden(ex.Message));
             }
             catch (Exception ex)
             {
-                return BadRequest(ApiResponse<string>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}"));
+                return BadRequest(ApiResponse<string>.Fail($"Lỗi khi tải tệp đính kèm: {ex.Message}", statusCode: 400));
             }
+        }
 
-            if (downloadResult.IsRedirect)
-            {
-                return Redirect(downloadResult.RedirectUrl!);
-            }
-
-            if (downloadResult.IsStream)
-            {
-                return File(downloadResult.FileStream!, contentType, originalFileName);
-            }
-
-            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
-            {
-                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ."));
-            }
-
-            return PhysicalFile(downloadResult.PhysicalPath!, contentType, originalFileName);
+        /// <summary>
+        /// F5-8: Tải về tệp đính kèm làm rõ theo định danh bản ghi làm rõ (ID)
+        /// </summary>
+        [HttpGet("clarifications/{id:int}/attachment/download")]
+        [Authorize]
+        public async Task<IActionResult> DownloadAttachmentById(
+            int id,
+            [FromQuery] string? filePath = null)
+        {
+            return await DownloadAttachment(filePath, id);
         }
 
         private int GetCurrentUserId()

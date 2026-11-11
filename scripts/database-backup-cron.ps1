@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Kịch bản tự động sao lưu cơ sở dữ liệu và tệp đính kèm theo lịch định kỳ (Scheduled Backup Job)
     Áp dụng cho môi trường phát triển & sản xuất Hệ thống Quản lý Đấu thầu & Theo dõi Hợp đồng.
@@ -37,6 +37,47 @@ $uploadsDir = Join-Path $projectRoot "uploads"
 # Đảm bảo các thư mục tồn tại
 if (-not (Test-Path $dbBackupDir)) { New-Item -ItemType Directory -Path $dbBackupDir -Force | Out-Null }
 if (-not (Test-Path $docsBackupDir)) { New-Item -ItemType Directory -Path $docsBackupDir -Force | Out-Null }
+
+# Tự động nạp cấu hình kết nối từ biến môi trường hoặc appsettings.json nếu dùng mật khẩu mặc định
+if ($SqlPassword -eq "123") {
+    $envConn = $env:PROCUREMENT_DB_CONN
+    $appsettingsDev = Join-Path $projectRoot "ProcurementSystem.API\appsettings.Development.json"
+    $appsettingsProd = Join-Path $projectRoot "ProcurementSystem.API\appsettings.json"
+    
+    $resolvedConn = $null
+    if (-not [string]::IsNullOrWhiteSpace($envConn)) {
+        $resolvedConn = $envConn
+    } elseif (Test-Path $appsettingsDev) {
+        try {
+            $json = Get-Content $appsettingsDev -Raw | ConvertFrom-Json
+            $resolvedConn = $json.ConnectionStrings.DefaultConnection
+        } catch {
+            # Bỏ qua nếu lỗi đọc tệp
+        }
+    } elseif (Test-Path $appsettingsProd) {
+        try {
+            $json = Get-Content $appsettingsProd -Raw | ConvertFrom-Json
+            $resolvedConn = $json.ConnectionStrings.DefaultConnection
+        } catch {
+            # Bỏ qua nếu lỗi đọc tệp
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($resolvedConn)) {
+        if ($resolvedConn -match "Server=([^;]+)") { $ServerInstance = $matches[1] }
+        elseif ($resolvedConn -match "Data Source=([^;]+)") { $ServerInstance = $matches[1] }
+        
+        if ($resolvedConn -match "Database=([^;]+)") { $DatabaseName = $matches[1] }
+        elseif ($resolvedConn -match "Initial Catalog=([^;]+)") { $DatabaseName = $matches[1] }
+        
+        if ($resolvedConn -match "User Id=([^;]+)") { $SqlUser = $matches[1] }
+        elseif ($resolvedConn -match "User ID=([^;]+)") { $SqlUser = $matches[1] }
+        elseif ($resolvedConn -match "Uid=([^;]+)") { $SqlUser = $matches[1] }
+        
+        if ($resolvedConn -match "Password=([^;]+)") { $SqlPassword = $matches[1] }
+        elseif ($resolvedConn -match "Pwd=([^;]+)") { $SqlPassword = $matches[1] }
+    }
+}
 
 function Write-BackupLog {
     param ([string]$Message, [string]$Level = "INFO")

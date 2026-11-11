@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Clarification;
+using ProcurementSystem.Core.DTOs.Common;
 using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
@@ -11,13 +12,32 @@ namespace ProcurementSystem.Infrastructure.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly INotificationService _notificationService;
+        private readonly IFileStorageService _fileStorageService;
 
         public ClarificationService(
             IUnitOfWork unitOfWork,
-            INotificationService notificationService)
+            INotificationService notificationService,
+            IFileStorageService fileStorageService)
         {
             _unitOfWork = unitOfWork;
             _notificationService = notificationService;
+            _fileStorageService = fileStorageService;
+        }
+
+        private async Task<bool> IsActiveEntityStaffAsync(int? procuringEntityId, int userId)
+        {
+            if (!procuringEntityId.HasValue || procuringEntityId.Value <= 0)
+            {
+                return false;
+            }
+
+            return await _unitOfWork.Repository<ProcuringEntityMember>()
+                .Query()
+                .AsNoTracking()
+                .AnyAsync(m => m.ProcuringEntityId == procuringEntityId.Value &&
+                               m.UserId == userId &&
+                               m.Status == MemberStatus.Active &&
+                               (m.RoleInEntity == ProcuringEntityMemberRole.Manager || m.RoleInEntity == ProcuringEntityMemberRole.Officer));
         }
 
         public async Task<ApiResponse<List<BidClarificationDto>>> GetClarificationsAsync(
@@ -54,16 +74,20 @@ namespace ProcurementSystem.Infrastructure.Services
             // - HSMT (PackageClarification): Công khai cho toàn bộ người dùng
             // - HSDT (SubmissionClarification): 
             //   + Admin: xem toàn bộ
-            //   + Procurement: chỉ xem nếu chính là chủ sở hữu gói thầu (package.CreatedBy == userId)
+            //   + Procurement: xem nếu là thành viên đang hoạt động (Manager/Officer) của Bên mời thầu sở hữu gói thầu hoặc người tạo gói
             //   + Evaluator: chỉ xem nếu thuộc Tổ chuyên gia (BidPackageEvaluator) của gói thầu
             //   + Contractor: chỉ xem hồ sơ của chính doanh nghiệp mình
             //   + Các đối tượng khác: bị ẩn toàn bộ SubmissionClarification, chỉ xem PackageClarification
             bool canViewPrivateSubmissionClarifications = isAdmin;
             if (!canViewPrivateSubmissionClarifications)
             {
-                if (isProcurement && package.CreatedBy == userId)
+                if (isProcurement)
                 {
-                    canViewPrivateSubmissionClarifications = true;
+                    var isEntityStaff = await IsActiveEntityStaffAsync(package.ProcuringEntityId, userId);
+                    if (isEntityStaff || package.CreatedBy == userId)
+                    {
+                        canViewPrivateSubmissionClarifications = true;
+                    }
                 }
                 else if (isEvaluator)
                 {
@@ -166,7 +190,25 @@ namespace ProcurementSystem.Infrastructure.Services
             await _unitOfWork.SaveChangesAsync();
 
             // Gửi thông báo & SignalR đến Bên mời thầu phụ trách và Admin
-            var recipients = new List<int> { package.CreatedBy };
+            var recipients = new List<int>();
+            if (package.CreatedBy > 0)
+            {
+                recipients.Add(package.CreatedBy);
+            }
+
+            if (package.ProcuringEntityId.HasValue)
+            {
+                var activeStaffIds = await _unitOfWork.Repository<ProcuringEntityMember>()
+                    .Query()
+                    .AsNoTracking()
+                    .Where(m => m.ProcuringEntityId == package.ProcuringEntityId.Value &&
+                                m.Status == MemberStatus.Active &&
+                                (m.RoleInEntity == ProcuringEntityMemberRole.Manager || m.RoleInEntity == ProcuringEntityMemberRole.Officer))
+                    .Select(m => m.UserId)
+                    .ToListAsync();
+
+                recipients.AddRange(activeStaffIds);
+            }
 
             var adminUserIds = await _unitOfWork.Repository<UserRole>()
                 .Query()
@@ -227,7 +269,8 @@ namespace ProcurementSystem.Infrastructure.Services
             // F5-3: Kiểm tra thẩm quyền người gửi
             if (!isAdmin)
             {
-                bool isOwner = package.CreatedBy == evaluatorOrProcurementUserId;
+                bool isEntityStaff = await IsActiveEntityStaffAsync(package.ProcuringEntityId, evaluatorOrProcurementUserId);
+                bool isOwner = isEntityStaff || (package.CreatedBy == evaluatorOrProcurementUserId);
                 bool isPackageEvaluator = await _unitOfWork.Repository<BidPackageEvaluator>()
                     .ExistsAsync(pe => pe.BidPackageId == packageId && pe.EvaluatorId == evaluatorOrProcurementUserId);
 
@@ -347,10 +390,15 @@ namespace ProcurementSystem.Infrastructure.Services
                     return ApiResponse<BidClarificationDto>.Fail("Chỉ Bên mời thầu hoặc Admin mới có thẩm quyền phản hồi làm rõ HSMT.");
                 }
 
-                // F5-3: Bên mời thầu phải là chủ sở hữu gói thầu
-                if (!isAdmin && clarification.BidPackage.CreatedBy != currentUserId)
+                // F5-3: Bên mời thầu phải thuộc đơn vị sở hữu gói thầu hoặc chính là người tạo
+                if (!isAdmin)
                 {
-                    return ApiResponse<BidClarificationDto>.Forbidden("Bạn chỉ có thẩm quyền phản hồi làm rõ HSMT cho gói thầu do chính mình phụ trách.");
+                    bool isEntityStaff = await IsActiveEntityStaffAsync(clarification.BidPackage?.ProcuringEntityId, currentUserId);
+                    bool isOwner = isEntityStaff || (clarification.BidPackage?.CreatedBy == currentUserId);
+                    if (!isOwner)
+                    {
+                        return ApiResponse<BidClarificationDto>.Forbidden("Bạn chỉ có thẩm quyền phản hồi làm rõ HSMT cho gói thầu do Bên mời thầu của mình phụ trách.");
+                    }
                 }
             }
             else if (clarification.Type == ClarificationType.SubmissionClarification)
@@ -385,8 +433,8 @@ namespace ProcurementSystem.Infrastructure.Services
                 : "Văn bản giải trình HSDT từ Nhà thầu";
 
             var notifMessage = clarification.Type == ClarificationType.PackageClarification
-                ? $"Bên mời thầu đã phản hồi câu hỏi làm rõ HSMT gói thầu [{clarification.BidPackage.Code}]: '{clarification.Title}'"
-                : $"Nhà thầu ({clarification.BidSubmission?.Contractor?.CompanyName}) đã nộp văn bản giải trình HSDT gói thầu [{clarification.BidPackage.Code}]: '{clarification.Title}'";
+                ? $"Bên mời thầu đã phản hồi câu hỏi làm rõ HSMT gói thầu [{clarification.BidPackage?.Code}]: '{clarification.Title}'"
+                : $"Nhà thầu ({clarification.BidSubmission?.Contractor?.CompanyName}) đã nộp văn bản giải trình HSDT gói thầu [{clarification.BidPackage?.Code}]: '{clarification.Title}'";
 
             // F5-3: Với làm rõ HSMT công khai, thông báo cho người hỏi và toàn bộ nhà thầu đã nộp HSDT
             if (clarification.Type == ClarificationType.PackageClarification)
@@ -430,8 +478,8 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 Id = clarification.Id,
                 BidPackageId = clarification.BidPackageId,
-                BidPackageCode = clarification.BidPackage.Code,
-                BidPackageName = clarification.BidPackage.Name,
+                BidPackageCode = clarification.BidPackage?.Code ?? string.Empty,
+                BidPackageName = clarification.BidPackage?.Name ?? string.Empty,
                 BidSubmissionId = clarification.BidSubmissionId,
                 ContractorName = clarification.BidSubmission?.Contractor?.CompanyName,
                 Type = clarification.Type,
@@ -451,6 +499,98 @@ namespace ProcurementSystem.Infrastructure.Services
                 Status = clarification.Status,
                 StatusName = "Đã phản hồi"
             }, "Gửi phản hồi / giải trình thành công.");
+        }
+
+        public async Task<FileDownloadResult> GetAttachmentForDownloadAsync(
+            string? filePath,
+            int? clarificationId,
+            int currentUserId,
+            bool isAdmin,
+            bool isProcurement,
+            bool isEvaluator,
+            bool isContractor)
+        {
+            BidClarification? clarification = null;
+
+            if (clarificationId.HasValue && clarificationId.Value > 0)
+            {
+                clarification = await _unitOfWork.Repository<BidClarification>()
+                    .Query()
+                    .Include(c => c.BidPackage)
+                    .Include(c => c.BidSubmission)
+                        .ThenInclude(s => s!.Contractor)
+                    .FirstOrDefaultAsync(c => c.Id == clarificationId.Value);
+            }
+
+            if (clarification == null && !string.IsNullOrWhiteSpace(filePath))
+            {
+                var trimmedPath = filePath.Trim();
+                clarification = await _unitOfWork.Repository<BidClarification>()
+                    .Query()
+                    .Include(c => c.BidPackage)
+                    .Include(c => c.BidSubmission)
+                        .ThenInclude(s => s!.Contractor)
+                    .FirstOrDefaultAsync(c => c.QuestionAttachmentUrl == trimmedPath || c.AnswerAttachmentUrl == trimmedPath);
+            }
+
+            if (clarification == null)
+            {
+                throw new KeyNotFoundException("Không tìm thấy bản ghi làm rõ hoặc tệp đính kèm tương ứng trong hệ thống.");
+            }
+
+            string? targetFilePath = filePath?.Trim();
+            if (string.IsNullOrWhiteSpace(targetFilePath))
+            {
+                targetFilePath = clarification.AnswerAttachmentUrl ?? clarification.QuestionAttachmentUrl;
+            }
+
+            if (string.IsNullOrWhiteSpace(targetFilePath))
+            {
+                throw new KeyNotFoundException("Bản ghi làm rõ không chứa đường dẫn tệp đính kèm.");
+            }
+
+            if (targetFilePath != clarification.QuestionAttachmentUrl && targetFilePath != clarification.AnswerAttachmentUrl)
+            {
+                throw new UnauthorizedAccessException("Tệp yêu cầu không khớp với tệp đính kèm của bản ghi làm rõ này.");
+            }
+
+            if (!isAdmin)
+            {
+                if (clarification.Type == ClarificationType.SubmissionClarification)
+                {
+                    bool isOwnerContractor = isContractor &&
+                        clarification.BidSubmission?.Contractor?.UserId == currentUserId;
+
+                    bool isAssignedEvaluator = isEvaluator && await _unitOfWork.Repository<BidPackageEvaluator>()
+                        .ExistsAsync(pe => pe.BidPackageId == clarification.BidPackageId && pe.EvaluatorId == currentUserId);
+
+                    bool isEntityStaff = isProcurement && await IsActiveEntityStaffAsync(clarification.BidPackage?.ProcuringEntityId, currentUserId);
+                    bool isPackageCreator = isProcurement && clarification.BidPackage?.CreatedBy == currentUserId;
+
+                    if (!isOwnerContractor && !isAssignedEvaluator && !isEntityStaff && !isPackageCreator)
+                    {
+                        throw new UnauthorizedAccessException("Bạn không có quyền truy cập hoặc tải về tệp đính kèm của giải trình HSDT riêng tư này.");
+                    }
+                }
+            }
+
+            var originalFileName = Path.GetFileName(targetFilePath);
+            var ext = Path.GetExtension(originalFileName).ToLowerInvariant();
+            var contentType = ext switch
+            {
+                ".pdf" => "application/pdf",
+                ".doc" => "application/msword",
+                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".xls" => "application/vnd.ms-excel",
+                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".zip" => "application/zip",
+                ".rar" => "application/x-rar-compressed",
+                _ => "application/octet-stream"
+            };
+
+            return await _fileStorageService.ResolveDownloadAsync(targetFilePath, originalFileName, contentType);
         }
     }
 }
