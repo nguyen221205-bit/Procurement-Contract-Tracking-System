@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +25,14 @@ namespace ProcurementSystem.API.Controllers
             _reportService = reportService;
         }
 
+        private int? GetCurrentUserId()
+        {
+            var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            return int.TryParse(claim, out var userId) ? userId : null;
+        }
+
+        private bool IsCurrentUserAdmin() => User.IsInRole("Admin");
+
         /// <summary>
         /// Báo cáo thống kê tổng hợp cấp Quản lý (Management Procurement &amp; Contract Dashboard)
         /// </summary>
@@ -35,7 +44,7 @@ namespace ProcurementSystem.API.Controllers
         /// - **Chỉ số Giải ngân Mốc thanh toán:** Tổng số mốc nghiệm thu, số mốc hoàn thành, giá trị đã giải ngân và tỷ lệ giải ngân dòng tiền.
         /// - **Hợp đồng mới nhất:** Danh sách tóm tắt các hợp đồng phát sinh gần nhất.
         /// 
-        /// **Yêu cầu quyền hạn:** Bắt buộc đăng nhập với vai trò **Admin** hoặc **Procurement**.
+        /// **Yêu cầu quyền hạn:** Bắt buộc đăng nhập với vai trò **Admin** hoặc **Procurement** (Procurement chỉ xem dữ liệu thuộc đơn vị mình).
         /// </remarks>
         /// <response code="200">Truy xuất thành công dữ liệu Dashboard với cấu trúc ProcurementDashboardDto chuẩn.</response>
         /// <response code="401">Chưa xác thực danh tính (Thiếu hoặc Token JWT không hợp lệ/hết hạn).</response>
@@ -47,7 +56,11 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<ApiResponse<ProcurementDashboardDto>>> GetDashboard()
         {
-            var result = await _reportService.GetDashboardMetricsAsync();
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+                return Unauthorized(ApiResponse<ProcurementDashboardDto>.Fail("Không xác định được danh tính người dùng từ Token.", statusCode: 401));
+
+            var result = await _reportService.GetDashboardMetricsAsync(currentUserId.Value, IsCurrentUserAdmin());
             return Ok(result);
         }
 
@@ -66,15 +79,19 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
-        /// Xuất danh sách toàn bộ hợp đồng ra file CSV (Excel tương thích tiếng Việt có dấu với UTF-8 BOM)
+        /// Xuất danh sách hợp đồng theo phạm vi quyền hạn ra file CSV (Excel tương thích tiếng Việt có dấu với UTF-8 BOM)
         /// </summary>
-        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        /// <remarks>Quyền hạn: Admin (toàn hệ thống), Procurement (theo đơn vị sở hữu).</remarks>
         [HttpGet("contracts/export")]
         [Authorize(Roles = "Admin,Procurement")]
         [Produces("text/csv")]
         public async Task<IActionResult> ExportContractsCsv()
         {
-            var csvBytes = await _reportService.ExportContractsCsvAsync();
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+                return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính người dùng từ Token.", statusCode: 401));
+
+            var csvBytes = await _reportService.ExportContractsCsvAsync(currentUserId.Value, IsCurrentUserAdmin());
             var fileName = $"Danh_sach_hop_dong_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
             return File(csvBytes, "text/csv; charset=utf-8", fileName);
         }
@@ -94,15 +111,19 @@ namespace ProcurementSystem.API.Controllers
         }
 
         /// <summary>
-        /// Xuất danh sách toàn bộ hợp đồng ra file Excel định dạng .xlsx
+        /// Xuất danh sách hợp đồng theo phạm vi quyền hạn ra file Excel định dạng .xlsx
         /// </summary>
-        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        /// <remarks>Quyền hạn: Admin (toàn hệ thống), Procurement (theo đơn vị sở hữu).</remarks>
         [HttpGet("contracts/export-excel")]
         [Authorize(Roles = "Admin,Procurement")]
         [Produces("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
         public async Task<IActionResult> ExportContractsExcel()
         {
-            var excelBytes = await _reportService.ExportContractsExcelAsync();
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+                return Unauthorized(ApiResponse<string>.Fail("Không xác định được danh tính người dùng từ Token.", statusCode: 401));
+
+            var excelBytes = await _reportService.ExportContractsExcelAsync(currentUserId.Value, IsCurrentUserAdmin());
             var fileName = $"Danh_sach_hop_dong_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
             return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
         }
@@ -110,7 +131,7 @@ namespace ProcurementSystem.API.Controllers
         /// <summary>
         /// Báo cáo thống kê mua sắm theo năm và phân loại gói thầu (R3-10)
         /// </summary>
-        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        /// <remarks>Quyền hạn: Admin (toàn hệ thống), Procurement (theo đơn vị sở hữu).</remarks>
         [HttpGet("procurement-summary")]
         [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(ApiResponse<ProcurementSummaryReportDto>), StatusCodes.Status200OK)]
@@ -118,7 +139,11 @@ namespace ProcurementSystem.API.Controllers
             [FromQuery] int? year,
             [FromQuery] BidPackageType? type)
         {
-            var result = await _reportService.GetProcurementSummaryReportAsync(year, type);
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+                return Unauthorized(ApiResponse<ProcurementSummaryReportDto>.Fail("Không xác định được danh tính người dùng từ Token.", statusCode: 401));
+
+            var result = await _reportService.GetProcurementSummaryReportAsync(year, type, currentUserId.Value, IsCurrentUserAdmin());
             return Ok(result);
         }
 
@@ -138,14 +163,18 @@ namespace ProcurementSystem.API.Controllers
         /// <summary>
         /// Báo cáo tỷ lệ mốc hoàn thành đúng tiến độ và danh sách hợp đồng sắp đến hạn (R3-10)
         /// </summary>
-        /// <remarks>Quyền hạn: Admin, Procurement.</remarks>
+        /// <remarks>Quyền hạn: Admin (toàn hệ thống), Procurement (theo đơn vị sở hữu).</remarks>
         [HttpGet("contracts-progress")]
         [Authorize(Roles = "Admin,Procurement")]
         [ProducesResponseType(typeof(ApiResponse<ContractProgressReportDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<ApiResponse<ContractProgressReportDto>>> GetContractsProgress(
             [FromQuery] int daysAhead = 30)
         {
-            var result = await _reportService.GetContractProgressReportAsync(daysAhead);
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+                return Unauthorized(ApiResponse<ContractProgressReportDto>.Fail("Không xác định được danh tính người dùng từ Token.", statusCode: 401));
+
+            var result = await _reportService.GetContractProgressReportAsync(daysAhead, currentUserId.Value, IsCurrentUserAdmin());
             return Ok(result);
         }
     }

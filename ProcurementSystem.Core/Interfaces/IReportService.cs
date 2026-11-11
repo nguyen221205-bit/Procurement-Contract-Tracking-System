@@ -9,7 +9,7 @@ namespace ProcurementSystem.Core.Interfaces
         /// Lấy toàn bộ chỉ số thống kê tổng hợp cấp quản trị (Dashboard Metrics):
         /// Tiến độ gói thầu, hiệu quả tài chính đấu thầu, tổng giá trị hợp đồng và tiến độ giải ngân mốc thanh toán
         /// </summary>
-        Task<ApiResponse<ProcurementDashboardDto>> GetDashboardMetricsAsync();
+        Task<ApiResponse<ProcurementDashboardDto>> GetDashboardMetricsAsync(int? requestingUserId = null, bool isAdmin = false);
 
         /// <summary>
         /// Xuất danh sách toàn bộ nhà thầu ra tệp CSV (UTF-8 BOM hỗ trợ mở trực tiếp bằng Excel tiếng Việt)
@@ -17,9 +17,9 @@ namespace ProcurementSystem.Core.Interfaces
         Task<byte[]> ExportContractorsCsvAsync();
 
         /// <summary>
-        /// Xuất danh sách toàn bộ hợp đồng ra tệp CSV (UTF-8 BOM hỗ trợ mở trực tiếp bằng Excel tiếng Việt)
+        /// Xuất danh sách hợp đồng theo phạm vi quyền hạn ra tệp CSV (UTF-8 BOM hỗ trợ mở trực tiếp bằng Excel tiếng Việt)
         /// </summary>
-        Task<byte[]> ExportContractsCsvAsync();
+        Task<byte[]> ExportContractsCsvAsync(int? requestingUserId = null, bool isAdmin = false);
 
         /// <summary>
         /// Xuất danh sách toàn bộ nhà thầu ra tệp Excel định dạng .xlsx
@@ -27,14 +27,18 @@ namespace ProcurementSystem.Core.Interfaces
         Task<byte[]> ExportContractorsExcelAsync();
 
         /// <summary>
-        /// Xuất danh sách toàn bộ hợp đồng ra tệp Excel định dạng .xlsx
+        /// Xuất danh sách hợp đồng theo phạm vi quyền hạn ra tệp Excel định dạng .xlsx
         /// </summary>
-        Task<byte[]> ExportContractsExcelAsync();
+        Task<byte[]> ExportContractsExcelAsync(int? requestingUserId = null, bool isAdmin = false);
 
         /// <summary>
         /// Báo cáo thống kê mua sắm theo năm và phân loại gói thầu (R3-10)
         /// </summary>
-        Task<ApiResponse<ProcurementSummaryReportDto>> GetProcurementSummaryReportAsync(int? year = null, ProcurementSystem.Core.Enums.BidPackageType? type = null);
+        Task<ApiResponse<ProcurementSummaryReportDto>> GetProcurementSummaryReportAsync(
+            int? year = null,
+            ProcurementSystem.Core.Enums.BidPackageType? type = null,
+            int? requestingUserId = null,
+            bool isAdmin = false);
 
         /// <summary>
         /// Báo cáo tỷ lệ trúng/trượt thầu và năng lực thực tế của các nhà thầu (R3-10)
@@ -44,6 +48,9 @@ namespace ProcurementSystem.Core.Interfaces
         /// <summary>
         /// Báo cáo tỷ lệ hoàn thành mốc đúng tiến độ và danh sách hợp đồng sắp đến hạn (R3-10)
         /// </summary>
-        Task<ApiResponse<ContractProgressReportDto>> GetContractProgressReportAsync(int daysAhead = 30);
+        Task<ApiResponse<ContractProgressReportDto>> GetContractProgressReportAsync(
+            int daysAhead = 30,
+            int? requestingUserId = null,
+            bool isAdmin = false);
     }
 }

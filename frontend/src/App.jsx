@@ -19,6 +19,7 @@ import ProcuringEntitiesPage from './pages/ProcuringEntitiesPage';
 import NotificationsPage from './pages/NotificationsPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import BackupRestorePage from './pages/BackupRestorePage';
+import PendingSigningAuthoritiesPage from './pages/PendingSigningAuthoritiesPage';
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { ROLES } from './utils/constants';
@@ -40,7 +41,7 @@ function App() {
               <Route
                 path="/dashboard"
                 element={
-                  <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                  <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.PROCUREMENT]}>
                     <DashboardPage />
                   </ProtectedRoute>
                 }
@@ -96,6 +97,14 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
                     <BackupRestorePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/signing-authorities"
+                element={
+                  <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                    <PendingSigningAuthoritiesPage />
                   </ProtectedRoute>
                 }
               />

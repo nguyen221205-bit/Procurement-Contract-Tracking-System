@@ -17,12 +17,73 @@ namespace ProcurementSystem.Infrastructure.Services
             _unitOfWork = unitOfWork;
         }
 
-        public async Task<ApiResponse<ProcurementDashboardDto>> GetDashboardMetricsAsync()
+        private readonly record struct ReportScope(bool IsUnrestricted, List<int> AllowedEntityIds)
         {
+            public bool IsEmptyNonAdmin => !IsUnrestricted && AllowedEntityIds.Count == 0;
+        }
+
+        private async Task<ReportScope> ResolveReportScopeAsync(int? requestingUserId, bool isAdmin)
+        {
+            if (isAdmin)
+            {
+                return new ReportScope(true, new List<int>());
+            }
+
+            if (!requestingUserId.HasValue || requestingUserId.Value <= 0)
+            {
+                return new ReportScope(false, new List<int>());
+            }
+
+            var entityIds = await _unitOfWork.Repository<ProcuringEntityMember>()
+                .Query()
+                .AsNoTracking()
+                .Where(m => m.UserId == requestingUserId.Value && m.Status == MemberStatus.Active)
+                .Select(m => m.ProcuringEntityId)
+                .Distinct()
+                .ToListAsync();
+
+            return new ReportScope(false, entityIds);
+        }
+
+        private IQueryable<Contract> BuildScopedContractsQuery(ReportScope scope)
+        {
+            var query = _unitOfWork.Repository<Contract>()
+                .Query()
+                .Include(c => c.BidPackage)
+                .AsNoTracking();
+
+            if (!scope.IsUnrestricted)
+            {
+                query = query.Where(c =>
+                    c.BidPackage != null &&
+                    c.BidPackage.ProcuringEntityId.HasValue &&
+                    scope.AllowedEntityIds.Contains(c.BidPackage.ProcuringEntityId.Value));
+            }
+
+            return query;
+        }
+
+        public async Task<ApiResponse<ProcurementDashboardDto>> GetDashboardMetricsAsync(int? requestingUserId = null, bool isAdmin = false)
+        {
+            var scope = await ResolveReportScopeAsync(requestingUserId, isAdmin);
+            if (scope.IsEmptyNonAdmin)
+            {
+                return ApiResponse<ProcurementDashboardDto>.Ok(
+                    new ProcurementDashboardDto(),
+                    "Lấy dữ liệu thống kê tổng hợp (Dashboard) thành công.");
+            }
+
             // 1. Thống kê gói thầu
             var packagesQuery = _unitOfWork.Repository<BidPackage>()
                 .Query()
                 .AsNoTracking();
+
+            if (!scope.IsUnrestricted)
+            {
+                packagesQuery = packagesQuery.Where(bp =>
+                    bp.ProcuringEntityId.HasValue &&
+                    scope.AllowedEntityIds.Contains(bp.ProcuringEntityId.Value));
+            }
 
             var totalPackages = await packagesQuery.CountAsync();
             var openPackages = await packagesQuery.CountAsync(bp => bp.Status == BidPackageStatus.Open);
@@ -37,20 +98,37 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Query()
                 .AsNoTracking();
 
+            if (!scope.IsUnrestricted)
+            {
+                submissionsQuery = submissionsQuery.Where(s =>
+                    s.BidPackage != null &&
+                    s.BidPackage.ProcuringEntityId.HasValue &&
+                    scope.AllowedEntityIds.Contains(s.BidPackage.ProcuringEntityId.Value));
+            }
+
             var totalSubmissions = await submissionsQuery.CountAsync();
             var evaluatedSubmissions = await submissionsQuery.CountAsync(s => s.Status == BidSubmissionStatus.Evaluated || s.Status == BidSubmissionStatus.Selected || s.Status == BidSubmissionStatus.Rejected);
             var selectedSubmissions = await submissionsQuery.CountAsync(s => s.Status == BidSubmissionStatus.Selected);
 
-            var totalContractors = await _unitOfWork.Repository<Contractor>()
+            var contractorsQuery = _unitOfWork.Repository<Contractor>()
                 .Query()
-                .AsNoTracking()
-                .CountAsync();
+                .AsNoTracking();
+
+            if (!scope.IsUnrestricted)
+            {
+                contractorsQuery = contractorsQuery.Where(c =>
+                    c.BidSubmissions.Any(s =>
+                        s.BidPackage.ProcuringEntityId.HasValue &&
+                        scope.AllowedEntityIds.Contains(s.BidPackage.ProcuringEntityId.Value)) ||
+                    c.Contracts.Any(ct =>
+                        ct.BidPackage.ProcuringEntityId.HasValue &&
+                        scope.AllowedEntityIds.Contains(ct.BidPackage.ProcuringEntityId.Value)));
+            }
+
+            var totalContractors = await contractorsQuery.CountAsync();
 
             // 3. Thống kê hợp đồng
-            var contractsQuery = _unitOfWork.Repository<Contract>()
-                .Query()
-                .Include(c => c.BidPackage)
-                .AsNoTracking();
+            var contractsQuery = BuildScopedContractsQuery(scope);
 
             var totalContracts = await contractsQuery.CountAsync();
             var draftContracts = await contractsQuery.CountAsync(c => c.Status == ContractStatus.Draft);
@@ -71,6 +149,15 @@ namespace ProcurementSystem.Infrastructure.Services
                 .Query()
                 .AsNoTracking();
 
+            if (!scope.IsUnrestricted)
+            {
+                milestonesQuery = milestonesQuery.Where(m =>
+                    m.Contract != null &&
+                    m.Contract.BidPackage != null &&
+                    m.Contract.BidPackage.ProcuringEntityId.HasValue &&
+                    scope.AllowedEntityIds.Contains(m.Contract.BidPackage.ProcuringEntityId.Value));
+            }
+
             var totalMilestones = await milestonesQuery.CountAsync();
             var completedMilestones = await milestonesQuery.CountAsync(m => m.Status == MilestoneStatus.Completed);
             var pendingMilestones = await milestonesQuery.CountAsync(m => m.Status == MilestoneStatus.Pending || m.Status == MilestoneStatus.InProgress);
@@ -83,13 +170,10 @@ namespace ProcurementSystem.Infrastructure.Services
             var disbursementRate = totalContractValue > 0 ? Math.Round((totalDisbursedAmount / totalContractValue) * 100, 2) : 0;
 
             // 5. Danh sách hợp đồng gần đây (Top 5)
-            var recentContracts = await _unitOfWork.Repository<Contract>()
-                .Query()
-                .Include(c => c.BidPackage)
+            var recentContracts = await contractsQuery
                 .Include(c => c.Contractor)
                 .OrderByDescending(c => c.CreatedAt)
                 .Take(5)
-                .AsNoTracking()
                 .Select(c => new RecentContractItemDto
                 {
                     ContractId = c.Id,
@@ -180,15 +264,23 @@ namespace ProcurementSystem.Infrastructure.Services
             return memoryStream.ToArray();
         }
 
-        public async Task<byte[]> ExportContractsCsvAsync()
+        private async Task<List<Contract>> GetScopedContractsForExportAsync(int? requestingUserId, bool isAdmin)
         {
-            var contracts = await _unitOfWork.Repository<Contract>()
-                .Query()
-                .Include(c => c.BidPackage)
+            var scope = await ResolveReportScopeAsync(requestingUserId, isAdmin);
+            if (scope.IsEmptyNonAdmin)
+            {
+                return new List<Contract>();
+            }
+
+            return await BuildScopedContractsQuery(scope)
                 .Include(c => c.Contractor)
                 .OrderByDescending(c => c.CreatedAt)
-                .AsNoTracking()
                 .ToListAsync();
+        }
+
+        public async Task<byte[]> ExportContractsCsvAsync(int? requestingUserId = null, bool isAdmin = false)
+        {
+            var contracts = await GetScopedContractsForExportAsync(requestingUserId, isAdmin);
 
             using var memoryStream = new MemoryStream();
             using (var writer = new StreamWriter(memoryStream, new System.Text.UTF8Encoding(true)))
@@ -278,15 +370,9 @@ namespace ProcurementSystem.Infrastructure.Services
             return memoryStream.ToArray();
         }
 
-        public async Task<byte[]> ExportContractsExcelAsync()
+        public async Task<byte[]> ExportContractsExcelAsync(int? requestingUserId = null, bool isAdmin = false)
         {
-            var contracts = await _unitOfWork.Repository<Contract>()
-                .Query()
-                .Include(c => c.BidPackage)
-                .Include(c => c.Contractor)
-                .OrderByDescending(c => c.CreatedAt)
-                .AsNoTracking()
-                .ToListAsync();
+            var contracts = await GetScopedContractsForExportAsync(requestingUserId, isAdmin);
 
             using var workbook = new XLWorkbook();
             var worksheet = workbook.Worksheets.Add("Danh sách hợp đồng");
@@ -339,24 +425,45 @@ namespace ProcurementSystem.Infrastructure.Services
             return memoryStream.ToArray();
         }
 
-        public async Task<ApiResponse<ProcurementSummaryReportDto>> GetProcurementSummaryReportAsync(int? year = null, BidPackageType? type = null)
+        public async Task<ApiResponse<ProcurementSummaryReportDto>> GetProcurementSummaryReportAsync(
+            int? year = null,
+            BidPackageType? type = null,
+            int? requestingUserId = null,
+            bool isAdmin = false)
         {
-            var query = _unitOfWork.Repository<BidPackage>()
-                .Query()
-                .Include(bp => bp.Contracts)
-                .AsNoTracking();
+            var scope = await ResolveReportScopeAsync(requestingUserId, isAdmin);
+            List<BidPackage> packages;
 
-            if (year.HasValue)
+            if (scope.IsEmptyNonAdmin)
             {
-                query = query.Where(bp => bp.CreatedAt.Year == year.Value);
+                packages = new List<BidPackage>();
             }
-
-            if (type.HasValue)
+            else
             {
-                query = query.Where(bp => bp.Type == type.Value);
-            }
+                var query = _unitOfWork.Repository<BidPackage>()
+                    .Query()
+                    .Include(bp => bp.Contracts)
+                    .AsNoTracking();
 
-            var packages = await query.ToListAsync();
+                if (!scope.IsUnrestricted)
+                {
+                    query = query.Where(bp =>
+                        bp.ProcuringEntityId.HasValue &&
+                        scope.AllowedEntityIds.Contains(bp.ProcuringEntityId.Value));
+                }
+
+                if (year.HasValue)
+                {
+                    query = query.Where(bp => bp.CreatedAt.Year == year.Value);
+                }
+
+                if (type.HasValue)
+                {
+                    query = query.Where(bp => bp.Type == type.Value);
+                }
+
+                packages = await query.ToListAsync();
+            }
 
             var totalPackages = packages.Count;
             var totalBudget = packages.Sum(p => p.Budget);
@@ -487,16 +594,38 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<ContractorPerformanceReportDto>.Ok(result);
         }
 
-        public async Task<ApiResponse<ContractProgressReportDto>> GetContractProgressReportAsync(int daysAhead = 30)
+        public async Task<ApiResponse<ContractProgressReportDto>> GetContractProgressReportAsync(
+            int daysAhead = 30,
+            int? requestingUserId = null,
+            bool isAdmin = false)
         {
+            var scope = await ResolveReportScopeAsync(requestingUserId, isAdmin);
             var now = DateTime.UtcNow;
             var targetFutureDate = now.AddDays(daysAhead);
 
-            var milestones = await _unitOfWork.Repository<ContractMilestone>()
-                .Query()
-                .Include(m => m.Acceptances)
-                .AsNoTracking()
-                .ToListAsync();
+            List<ContractMilestone> milestones;
+            if (scope.IsEmptyNonAdmin)
+            {
+                milestones = new List<ContractMilestone>();
+            }
+            else
+            {
+                var milestonesQuery = _unitOfWork.Repository<ContractMilestone>()
+                    .Query()
+                    .Include(m => m.Acceptances)
+                    .AsNoTracking();
+
+                if (!scope.IsUnrestricted)
+                {
+                    milestonesQuery = milestonesQuery.Where(m =>
+                        m.Contract != null &&
+                        m.Contract.BidPackage != null &&
+                        m.Contract.BidPackage.ProcuringEntityId.HasValue &&
+                        scope.AllowedEntityIds.Contains(m.Contract.BidPackage.ProcuringEntityId.Value));
+                }
+
+                milestones = await milestonesQuery.ToListAsync();
+            }
 
             var totalMilestones = milestones.Count;
             var completedMilestones = milestones.Count(m => m.Status == MilestoneStatus.Completed);
@@ -537,14 +666,13 @@ namespace ProcurementSystem.Infrastructure.Services
                 : 100m;
 
             // Hợp đồng sắp hết hạn và quá hạn
-            var activeContracts = await _unitOfWork.Repository<Contract>()
-                .Query()
-                .Include(c => c.BidPackage)
-                .Include(c => c.Contractor)
-                .Include(c => c.Milestones)
-                .Where(c => c.Status == ContractStatus.Active)
-                .AsNoTracking()
-                .ToListAsync();
+            var activeContracts = scope.IsEmptyNonAdmin
+                ? new List<Contract>()
+                : await BuildScopedContractsQuery(scope)
+                    .Include(c => c.Contractor)
+                    .Include(c => c.Milestones)
+                    .Where(c => c.Status == ContractStatus.Active)
+                    .ToListAsync();
 
             var expiringContractItems = new List<ExpiringContractItemDto>();
 

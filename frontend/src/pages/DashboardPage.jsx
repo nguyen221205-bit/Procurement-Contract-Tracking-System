@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { reportApi } from '../api/reportApi';
+import { procuringEntityApi } from '../api/procuringEntityApi';
+import { useAuth } from '../context/AuthContext';
+import { ROLES } from '../utils/constants';
 import StatCard from '../components/dashboard/StatCard';
 import FinancialCharts from '../components/dashboard/FinancialCharts';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -20,12 +23,18 @@ import {
   CheckCircle2,
   Clock,
   ExternalLink,
-  ShieldAlert
+  ShieldAlert,
+  ShieldCheck
 } from 'lucide-react';
 
 export const DashboardPage = () => {
   const navigate = useNavigate();
+  const { hasRole } = useAuth();
+  const isAdmin = hasRole(ROLES.ADMIN);
+  const isScopedProcurement = hasRole(ROLES.PROCUREMENT) && !isAdmin;
+
   const [stats, setStats] = useState(null);
+  const [entityProfile, setEntityProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -40,7 +49,21 @@ export const DashboardPage = () => {
     setError('');
 
     try {
-      const response = await reportApi.getDashboard();
+      const profilePromise = isScopedProcurement
+        ? procuringEntityApi.getMyProfile().catch(() => null)
+        : Promise.resolve(null);
+
+      const [response, profileRes] = await Promise.all([
+        reportApi.getDashboard(),
+        profilePromise,
+      ]);
+
+      if (profileRes && profileRes.success && profileRes.data) {
+        setEntityProfile(profileRes.data);
+      } else {
+        setEntityProfile(null);
+      }
+
       if (response && response.success && response.data) {
         setStats(response.data);
         setLastUpdated(new Date());
@@ -57,7 +80,7 @@ export const DashboardPage = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [isScopedProcurement]);
 
   if (loading) {
     return (
@@ -112,12 +135,34 @@ export const DashboardPage = () => {
     <div className="space-y-6">
       {/* 1. Header Điều hành & Hành động */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-1">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center space-x-2">
+        <div className="space-y-1.5">
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-2.5">
             <span>Tổng quan Điều hành & Tài chính</span>
+            {isAdmin && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200 tracking-normal">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Toàn hệ thống</span>
+              </span>
+            )}
+            {isScopedProcurement && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-normal">
+                <Building2 className="w-3.5 h-3.5" />
+                <span>
+                  {entityProfile?.organizationName
+                    ? `Đơn vị: ${entityProfile.organizationName}`
+                    : 'Phạm vi: Bên mời thầu'}
+                </span>
+              </span>
+            )}
           </h2>
-          <div className="flex items-center space-x-2 text-xs text-slate-500 mt-1">
-            <span>Chỉ số tài chính, tiến độ thực hiện và hiệu quả đấu thầu</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+            <span>
+              {isScopedProcurement
+                ? entityProfile?.organizationName
+                  ? `Số liệu riêng của ${entityProfile.organizationName}${entityProfile.taxCode ? ` (MST: ${entityProfile.taxCode})` : ''}`
+                  : 'Tài khoản chưa gắn Bên mời thầu đang hoạt động (dữ liệu trống an toàn)'
+                : 'Chỉ số tài chính, tiến độ thực hiện và hiệu quả đấu thầu'}
+            </span>
             <span>•</span>
             <span className="inline-flex items-center space-x-1 text-slate-400 font-mono">
               <Clock className="w-3 h-3" />
@@ -148,12 +193,30 @@ export const DashboardPage = () => {
         </div>
       </div>
 
+      {isScopedProcurement && (
+        <div className="px-4 py-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200/80 text-xs text-indigo-900 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>
+              {entityProfile?.organizationName ? (
+                <>
+                  Bạn đang xem bảng điều khiển độc lập của Bên mời thầu{' '}
+                  <strong>{entityProfile.organizationName}</strong>. Dữ liệu gói thầu, hợp đồng và giải ngân của các đơn vị khác được cách ly hoàn toàn.
+                </>
+              ) : (
+                'Tài khoản của bạn hiện chưa là thành viên đang hoạt động của Bên mời thầu nào, nên các chỉ số thống kê hiển thị bằng 0 để đảm bảo cách ly dữ liệu.'
+              )}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 2. Bộ 4 Thẻ KPI Tài chính chính */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Ngân sách dự toán"
           value={formatVND(stats?.totalEstimatedBudget)}
-          subtext={`${stats?.totalPackages || 0} gói thầu toàn hệ thống`}
+          subtext={`${stats?.totalPackages || 0} gói thầu ${isScopedProcurement ? 'của đơn vị' : 'toàn hệ thống'}`}
           icon={Coins}
           color="sky"
         />
@@ -297,7 +360,7 @@ export const DashboardPage = () => {
               <span>Hợp đồng kinh tế gần đây</span>
             </h4>
             <p className="text-xs text-slate-400 mt-0.5">
-              {stats?.recentContracts?.length || 0} hợp đồng mới nhất phát sinh trên hệ thống
+              {stats?.recentContracts?.length || 0} hợp đồng mới nhất {isScopedProcurement ? 'của đơn vị' : 'phát sinh trên hệ thống'}
             </p>
           </div>
 
@@ -370,7 +433,9 @@ export const DashboardPage = () => {
               ) : (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-slate-400">
-                    Chưa có hợp đồng nào được ghi nhận trên hệ thống.
+                    {isScopedProcurement
+                      ? 'Đơn vị chưa có hợp đồng nào được ghi nhận.'
+                      : 'Chưa có hợp đồng nào được ghi nhận trên hệ thống.'}
                   </td>
                 </tr>
               )}
