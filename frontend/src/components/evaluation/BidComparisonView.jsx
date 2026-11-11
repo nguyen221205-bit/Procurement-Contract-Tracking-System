@@ -39,6 +39,14 @@ export const BidComparisonView = ({
   onFinalizeClick,
   isAdminOrProcurement = false,
 }) => {
+  const isAwarded =
+    packageData?.status === 'Awarded' ||
+    packageData?.status === 'Contracted' ||
+    packageData?.status === 'ContractSigned' ||
+    packageData?.status === 3 ||
+    packageData?.status === 4 ||
+    summary?.isFinalized === true;
+
   // Sắp xếp danh sách nhà thầu theo thứ hạng (hoặc tổng điểm giảm dần)
   const sortedRankings = useMemo(() => {
     return [...rankings].sort((a, b) => {
@@ -204,7 +212,7 @@ export const BidComparisonView = ({
           Chưa đủ hồ sơ để so sánh trực quan
         </h3>
         <p className="text-xs text-slate-500 leading-relaxed">
-          Gói thầu hiện có {sortedRankings.length} hồ sơ dự thầu. Tính năng So sánh Song song (Side-by-Side Comparison) yêu cầu tối thiểu 2 hồ sơ nộp thầu để thực hiện đối chiếu các tiêu chí kỹ thuật và tài chính.
+          Gói thầu hiện có {sortedRankings.length} hồ sơ dự thầu. Tính năng So sánh Song song yêu cầu tối thiểu 2 hồ sơ nộp thầu để thực hiện đối chiếu các tiêu chí kỹ thuật và tài chính.
         </p>
       </div>
     );
@@ -238,7 +246,7 @@ export const BidComparisonView = ({
                 <Columns3 className="w-4 h-4" />
               </span>
               <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                So sánh Đối đầu Song song (Side-by-Side Comparison)
+                So sánh Đối đầu Song song
               </h2>
               <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">
                 Đang chọn: {selectedSubmissions.length} / {sortedRankings.length} nhà thầu

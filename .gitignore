@@ -106,3 +106,8 @@ scripts/test_e2e_procurement_lifecycle.py
 __pycache__/
 *.py[cod]
 scripts/testing/lifecycle-e2e/runs/
+
+# Database backup artifacts
+scripts/backups/
+*.bak
+
