@@ -279,7 +279,7 @@ namespace ProcurementSystem.Tests
 
             var fileStorage = new FileStorageService();
             var contractService = new ContractService(new UnitOfWork(db), fileStorage, new FakeContractorService(), new FakeNotificationService());
-            var controller = new ContractsController(contractService, new UnitOfWork(db), fileStorage);
+            var controller = new ContractsController(contractService);
 
             // 1. Legitimate Officer of Entity A -> Allowed 200 OK
             controller.ControllerContext = new ControllerContext

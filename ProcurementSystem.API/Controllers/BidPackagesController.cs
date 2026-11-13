@@ -2,11 +2,11 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using ProcurementSystem.API.Extensions;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.BidPackage;
 using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
-using ProcurementSystem.Infrastructure.Entities;
 
 namespace ProcurementSystem.API.Controllers
 {
@@ -20,17 +20,10 @@ namespace ProcurementSystem.API.Controllers
     public class BidPackagesController : ControllerBase
     {
         private readonly IBidPackageService _bidPackageService;
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly IFileStorageService _fileStorageService;
 
-        public BidPackagesController(
-            IBidPackageService bidPackageService,
-            IUnitOfWork unitOfWork,
-            IFileStorageService fileStorageService)
+        public BidPackagesController(IBidPackageService bidPackageService)
         {
             _bidPackageService = bidPackageService;
-            _unitOfWork = unitOfWork;
-            _fileStorageService = fileStorageService;
         }
 
         [HttpGet("creatable-entities")]
@@ -91,7 +84,12 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<BidPackageDto>), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<ApiResponse<BidPackageDto>>> GetBidPackageById(int id)
         {
-            var result = await _bidPackageService.GetBidPackageByIdAsync(id);
+            var currentUserId = GetCurrentUserId();
+            var isAdmin = User.IsInRole("Admin");
+            var result = await _bidPackageService.GetBidPackageByIdAsync(
+                id,
+                currentUserId > 0 ? currentUserId : null,
+                isAdmin);
             if (!result.Success) return NotFound(result);
             return Ok(result);
         }
@@ -346,42 +344,8 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DownloadBidDocument(int documentId)
         {
-            var document = await _unitOfWork.Repository<BidDocument>().GetByIdAsync(documentId);
-            if (document == null)
-            {
-                return NotFound(ApiResponse<string>.Fail("Không tìm thấy tài liệu mời thầu."));
-            }
-
-            var ext = Path.GetExtension(document.FileName).ToLowerInvariant();
-            var contentType = ext switch
-            {
-                ".pdf" => "application/pdf",
-                ".doc" => "application/msword",
-                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                ".xls" => "application/vnd.ms-excel",
-                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ".zip" => "application/zip",
-                ".rar" => "application/x-rar-compressed",
-                _ => "application/octet-stream"
-            };
-
-            var downloadResult = await _fileStorageService.ResolveDownloadAsync(document.FilePath, document.FileName, contentType);
-            if (downloadResult.IsRedirect)
-            {
-                return Redirect(downloadResult.RedirectUrl!);
-            }
-
-            if (downloadResult.IsStream)
-            {
-                return File(downloadResult.FileStream!, contentType, document.FileName);
-            }
-
-            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
-            {
-                return NotFound(ApiResponse<string>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ."));
-            }
-
-            return PhysicalFile(downloadResult.PhysicalPath!, contentType, document.FileName);
+            var result = await _bidPackageService.GetBidDocumentForDownloadAsync(documentId);
+            return result.ToFileActionResult(this, "Không tìm thấy tài liệu mời thầu.");
         }
 
         /// <summary>

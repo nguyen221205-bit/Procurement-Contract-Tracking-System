@@ -25,6 +25,7 @@ namespace ProcurementSystem.Core.DTOs.BidPackage
         public bool IsCommitteeValid { get; set; }
         public bool CanStartEvaluation { get; set; }
         public bool CanEditCommittee { get; set; }
+        public bool CanManagePackage { get; set; }
         public bool RequiresEarlyCloseReason { get; set; }
         public List<string> EvaluationBlockingReasons { get; set; } = new();
     }

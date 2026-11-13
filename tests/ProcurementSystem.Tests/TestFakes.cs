@@ -47,6 +47,8 @@ namespace ProcurementSystem.Tests
             Task.FromResult(ApiResponse<PaginatedList<ContractorDto>>.Ok(new PaginatedList<ContractorDto>(new List<ContractorDto>(), 0, 1, 10)));
         public Task<ApiResponse<ContractorDto>> GetContractorByIdAsync(int id) =>
             Task.FromResult(ApiResponse<ContractorDto>.Ok(new ContractorDto()));
+        public Task<ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>> GetBusinessLicenseForDownloadAsync(int contractorId, int? currentUserId, bool isInternalStaff) =>
+            Task.FromResult(ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.NotFound());
         public Task<ApiResponse<ContractorDto>> GetCurrentContractorProfileAsync(int userId) =>
             Task.FromResult(ApiResponse<ContractorDto>.Ok(new ContractorDto()));
         public Task<ApiResponse<ContractorDto>> UpdateCurrentContractorProfileAsync(int userId, UpdateContractorProfileRequest request) =>

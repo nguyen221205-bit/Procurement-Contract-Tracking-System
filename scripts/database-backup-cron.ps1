@@ -38,11 +38,14 @@ $uploadsDir = Join-Path $projectRoot "uploads"
 if (-not (Test-Path $dbBackupDir)) { New-Item -ItemType Directory -Path $dbBackupDir -Force | Out-Null }
 if (-not (Test-Path $docsBackupDir)) { New-Item -ItemType Directory -Path $docsBackupDir -Force | Out-Null }
 
-# Tự động nạp cấu hình kết nối từ biến môi trường hoặc appsettings.json nếu dùng mật khẩu mặc định
+# Tự động nạp cấu hình kết nối từ biến môi trường, appsettings hoặc .env nếu dùng mật khẩu mặc định
 if ($SqlPassword -eq "123") {
     $envConn = $env:PROCUREMENT_DB_CONN
+    if ([string]::IsNullOrWhiteSpace($envConn)) { $envConn = $env:ConnectionStrings__DefaultConnection }
+    if ([string]::IsNullOrWhiteSpace($envConn)) { $envConn = $env:DB_CONNECTION_STRING }
     $appsettingsDev = Join-Path $projectRoot "ProcurementSystem.API\appsettings.Development.json"
     $appsettingsProd = Join-Path $projectRoot "ProcurementSystem.API\appsettings.json"
+    $rootDotEnv = Join-Path $projectRoot ".env"
     
     $resolvedConn = $null
     if (-not [string]::IsNullOrWhiteSpace($envConn)) {
@@ -60,6 +63,14 @@ if ($SqlPassword -eq "123") {
             $resolvedConn = $json.ConnectionStrings.DefaultConnection
         } catch {
             # Bỏ qua nếu lỗi đọc tệp
+        }
+    } elseif (Test-Path $rootDotEnv) {
+        foreach ($line in Get-Content $rootDotEnv -Encoding utf8) {
+            $trimmed = $line.Trim()
+            if ($trimmed -match '^(PROCUREMENT_DB_CONN|ConnectionStrings__DefaultConnection|DB_CONNECTION_STRING)\s*=\s*(.+)$') {
+                $resolvedConn = $matches[2].Trim().Trim('"').Trim("'")
+                if (-not [string]::IsNullOrWhiteSpace($resolvedConn)) { break }
+            }
         }
     }
 

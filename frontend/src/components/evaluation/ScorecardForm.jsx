@@ -24,49 +24,48 @@ import { bidSubmissionApi } from '../../api/bidSubmissionApi';
 import { formatCurrency, formatDate, formatNumber } from '../../utils/formatters';
 import { previewSecureFile, downloadSecureFile } from '../../utils/fileDownload';
 
+const FILE_TYPE_BADGE_RULES = [
+  {
+    code: 0,
+    keywords: ['quotation', 'báo giá', 'tài chính'],
+    label: 'Báo giá dự thầu',
+    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  },
+  {
+    code: 1,
+    keywords: ['capability', 'năng lực'],
+    label: 'Hồ sơ năng lực',
+    badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+  },
+  {
+    code: 2,
+    keywords: ['schedule', 'tiến độ', 'kỹ thuật'],
+    label: 'Đề xuất kỹ thuật & Tiến độ',
+    badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  },
+];
+
 /**
  * Hàm trợ giúp chuyển đổi loại tài liệu dự thầu sang tiếng Việt kèm style badge
- * - 0 hoặc 'Quotation': Báo giá dự thầu (emerald)
- * - 1 hoặc 'Capability': Hồ sơ năng lực (blue)
- * - 2 hoặc 'Schedule': Đề xuất kỹ thuật & Tiến độ (indigo / purple)
- * - 3 hoặc 'Other': Tài liệu khác (slate)
+ * sử dụng bảng quy tắc khai báo (Declarative Rule Array).
  */
 const getFileTypeBadge = (fileType, fileTypeName) => {
   const typeStr = String(fileTypeName ?? fileType ?? '').toLowerCase();
   const typeNum = Number(fileType);
 
-  if (
-    typeNum === 0 ||
-    typeStr.includes('quotation') ||
-    typeStr.includes('báo giá') ||
-    typeStr.includes('tài chính')
-  ) {
+  const matchedRule = FILE_TYPE_BADGE_RULES.find(
+    (rule) =>
+      typeNum === rule.code ||
+      rule.keywords.some((keyword) => typeStr.includes(keyword))
+  );
+
+  if (matchedRule) {
     return {
-      label: 'Báo giá dự thầu',
-      badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      label: matchedRule.label,
+      badgeClass: matchedRule.badgeClass,
     };
   }
-  if (
-    typeNum === 1 ||
-    typeStr.includes('capability') ||
-    typeStr.includes('năng lực')
-  ) {
-    return {
-      label: 'Hồ sơ năng lực',
-      badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
-    };
-  }
-  if (
-    typeNum === 2 ||
-    typeStr.includes('schedule') ||
-    typeStr.includes('tiến độ') ||
-    typeStr.includes('kỹ thuật')
-  ) {
-    return {
-      label: 'Đề xuất kỹ thuật & Tiến độ',
-      badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    };
-  }
+
   return {
     label: fileTypeName || 'Tài liệu khác',
     badgeClass: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -282,33 +281,34 @@ export const ScorecardForm = ({
     }
   };
 
+  const SUBMISSION_STATUS_RENDERERS = {
+    Selected: () => (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+        <Award className="w-3 h-3 mr-1 text-amber-600" /> Trúng thầu
+      </span>
+    ),
+    Evaluated: (score) => (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+        <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> Đã chấm ({formatNumber(score)})
+      </span>
+    ),
+    Rejected: () => (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800 border border-rose-300">
+        Không trúng thầu
+      </span>
+    ),
+  };
+
   const getStatusBadge = (status, totalScore) => {
-    switch (status) {
-      case 'Selected':
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-            <Award className="w-3 h-3 mr-1 text-amber-600" /> Trúng thầu
-          </span>
-        );
-      case 'Evaluated':
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
-            <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> Đã chấm ({formatNumber(totalScore)})
-          </span>
-        );
-      case 'Rejected':
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800 border border-rose-300">
-            Không trúng thầu
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-300">
-            <Clock className="w-3 h-3 mr-1 text-slate-500" /> Chờ chấm điểm
-          </span>
-        );
+    const renderer = SUBMISSION_STATUS_RENDERERS[status];
+    if (renderer) {
+      return renderer(totalScore);
     }
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-300">
+        <Clock className="w-3 h-3 mr-1 text-slate-500" /> Chờ chấm điểm
+      </span>
+    );
   };
 
   if (!submissions || submissions.length === 0) {

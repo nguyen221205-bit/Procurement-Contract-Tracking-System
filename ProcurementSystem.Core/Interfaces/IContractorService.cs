@@ -1,4 +1,5 @@
 using ProcurementSystem.Core.DTOs;
+using ProcurementSystem.Core.DTOs.Common;
 using ProcurementSystem.Core.DTOs.Contractor;
 
 namespace ProcurementSystem.Core.Interfaces
@@ -14,6 +15,11 @@ namespace ProcurementSystem.Core.Interfaces
         /// Xem chi tiết hồ sơ nhà thầu theo ID
         /// </summary>
         Task<ApiResponse<ContractorDto>> GetContractorByIdAsync(int id);
+
+        /// <summary>
+        /// Tải tệp Giấy phép đăng ký kinh doanh của nhà thầu có kiểm tra phân quyền
+        /// </summary>
+        Task<ApiResponse<FileDownloadResult>> GetBusinessLicenseForDownloadAsync(int contractorId, int? currentUserId, bool isInternalStaff);
 
         /// <summary>
         /// Lấy hồ sơ nhà thầu hiện tại theo UserId đăng nhập

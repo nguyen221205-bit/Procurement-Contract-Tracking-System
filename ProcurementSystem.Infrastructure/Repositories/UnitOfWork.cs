@@ -1,6 +1,7 @@
-using System.Collections;
+using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Data;
 
@@ -9,7 +10,7 @@ namespace ProcurementSystem.Infrastructure.Repositories
     public class UnitOfWork : IUnitOfWork
     {
         private readonly AppDbContext _context;
-        private readonly Hashtable _repositories = new();
+        private readonly ConcurrentDictionary<string, object> _repositories = new();
         private IDbContextTransaction? _transaction;
 
         public UnitOfWork(AppDbContext context)
@@ -20,14 +21,8 @@ namespace ProcurementSystem.Infrastructure.Repositories
         public IGenericRepository<T> Repository<T>() where T : class
         {
             var type = typeof(T).Name;
-
-            if (!_repositories.ContainsKey(type))
-            {
-                var repositoryInstance = new GenericRepository<T>(_context);
-                _repositories.Add(type, repositoryInstance);
-            }
-
-            return (IGenericRepository<T>)_repositories[type]!;
+            var instance = _repositories.GetOrAdd(type, _ => new GenericRepository<T>(_context));
+            return (IGenericRepository<T>)instance;
         }
 
         public async Task<int> SaveChangesAsync()
@@ -57,6 +52,32 @@ namespace ProcurementSystem.Infrastructure.Repositories
                 await _transaction.RollbackAsync();
                 await _transaction.DisposeAsync();
                 _transaction = null;
+            }
+        }
+
+        public async Task<ApiResponse<T>> ExecuteTransactionalAsync<T>(
+            Func<Task<ApiResponse<T>>> operation,
+            System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted)
+        {
+            await BeginTransactionAsync(isolationLevel);
+            try
+            {
+                var response = await operation();
+                if (response.Success)
+                {
+                    await CommitTransactionAsync();
+                }
+                else
+                {
+                    await RollbackTransactionAsync();
+                }
+
+                return response;
+            }
+            catch
+            {
+                await RollbackTransactionAsync();
+                throw;
             }
         }
 

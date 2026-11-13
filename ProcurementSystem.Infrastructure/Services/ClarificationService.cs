@@ -5,6 +5,7 @@ using ProcurementSystem.Core.DTOs.Common;
 using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
+using ProcurementSystem.Infrastructure.Utilities;
 
 namespace ProcurementSystem.Infrastructure.Services
 {
@@ -575,20 +576,7 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             var originalFileName = Path.GetFileName(targetFilePath);
-            var ext = Path.GetExtension(originalFileName).ToLowerInvariant();
-            var contentType = ext switch
-            {
-                ".pdf" => "application/pdf",
-                ".doc" => "application/msword",
-                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                ".xls" => "application/vnd.ms-excel",
-                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ".png" => "image/png",
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".zip" => "application/zip",
-                ".rar" => "application/x-rar-compressed",
-                _ => "application/octet-stream"
-            };
+            var contentType = ContentTypeResolver.ResolveByFileName(originalFileName);
 
             return await _fileStorageService.ResolveDownloadAsync(targetFilePath, originalFileName, contentType);
         }

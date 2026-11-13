@@ -7,67 +7,89 @@ using ProcurementSystem.Core.Interfaces;
 namespace ProcurementSystem.Infrastructure.Services
 {
     /// <summary>
-    /// Bộ định tuyến lưu trữ thông minh: Tự động chuyển đổi giữa Local Storage và Supabase Cloud Storage
-    /// Đảm bảo tính tương thích ngược cho dữ liệu cũ và an toàn tuyệt đối cho dữ liệu mới.
+    /// Bộ định tuyến lưu trữ thông minh (Strategy & Composite Router):
+    /// Tự động điều phối giữa các IFileStorageProvider (Local, Supabase hoặc nhà cung cấp mở rộng khác)
+    /// thông qua giao diện trừu tượng (tuân thủ SRP, OCP, LSP, ISP, DIP).
     /// </summary>
     public class HybridFileStorageService : IFileStorageService
     {
-        private readonly FileStorageService _localService;
-        private readonly SupabaseStorageService _supabaseService;
+        private readonly ILocalFileStorageProvider _localProvider;
+        private readonly ICloudFileStorageProvider _cloudProvider;
+        private readonly IReadOnlyList<IFileStorageProvider> _providers;
         private readonly StorageSettings _settings;
         private readonly ILogger<HybridFileStorageService> _logger;
 
         public HybridFileStorageService(
-            FileStorageService localService,
-            SupabaseStorageService supabaseService,
+            ILocalFileStorageProvider localProvider,
+            ICloudFileStorageProvider cloudProvider,
             IOptions<StorageSettings> settings,
-            ILogger<HybridFileStorageService> logger)
+            ILogger<HybridFileStorageService> logger,
+            IEnumerable<IFileStorageProvider>? registeredProviders = null)
         {
-            _localService = localService;
-            _supabaseService = supabaseService;
+            _localProvider = localProvider;
+            _cloudProvider = cloudProvider;
             _settings = settings.Value;
             _logger = logger;
+
+            var list = new List<IFileStorageProvider>();
+            if (registeredProviders != null)
+            {
+                list.AddRange(registeredProviders);
+            }
+
+            if (!list.Contains(cloudProvider))
+            {
+                list.Add(cloudProvider);
+            }
+
+            if (!list.Contains(localProvider))
+            {
+                list.Add(localProvider);
+            }
+
+            _providers = list;
         }
 
         public async Task<string> SaveFileAsync(IFormFile file, string subFolder)
         {
-            if (IsCloudProviderActive())
+            var preferredProvider = _providers.FirstOrDefault(p =>
+                p.ProviderName.Equals(_settings.Provider, StringComparison.OrdinalIgnoreCase) && p.IsAvailable);
+
+            if (preferredProvider != null && !ReferenceEquals(preferredProvider, _localProvider))
             {
                 try
                 {
-                    return await _supabaseService.SaveFileAsync(file, subFolder);
+                    return await preferredProvider.SaveFileAsync(file, subFolder);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Tải tệp lên Supabase Storage thất bại. Tự động chuyển hướng lưu cục bộ (Local Storage).");
+                    _logger.LogWarning(
+                        ex,
+                        "Tải tệp lên nhà cung cấp {Provider} thất bại. Tự động chuyển hướng lưu cục bộ (Local Storage).",
+                        preferredProvider.ProviderName);
                 }
             }
 
-            return await _localService.SaveFileAsync(file, subFolder);
+            return await _localProvider.SaveFileAsync(file, subFolder);
         }
 
         public void DeleteFile(string storedPath)
         {
             if (string.IsNullOrWhiteSpace(storedPath)) return;
 
-            if (IsCloudPath(storedPath))
-            {
-                _supabaseService.DeleteFile(storedPath);
-            }
-            else
-            {
-                _localService.DeleteFile(storedPath);
-            }
+            var handler = ResolveProviderForPath(storedPath);
+            handler.DeleteFile(storedPath);
         }
 
         public string GetPhysicalFilePath(string relativePath)
         {
             if (IsCloudPath(relativePath))
             {
-                throw new InvalidOperationException("Tệp này hiện được lưu trữ trên Supabase Cloud Storage. Không thể truy cập qua đường dẫn vật lý cục bộ. Vui lòng sử dụng phương thức ResolveDownloadAsync để nhận Pre-signed URL.");
+                throw new InvalidOperationException(
+                    "Tệp này hiện được lưu trữ trên Supabase Cloud Storage. Không thể truy cập qua đường dẫn vật lý cục bộ. Vui lòng sử dụng phương thức ResolveDownloadAsync để nhận Pre-signed URL.");
             }
 
-            return _localService.GetPhysicalFilePath(relativePath);
+            return _localProvider.GetPhysicalFilePath(relativePath);
         }
 
         public async Task<FileDownloadResult> ResolveDownloadAsync(string storedPath, string originalFileName, string? contentType = null)
@@ -75,36 +97,31 @@ namespace ProcurementSystem.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(storedPath))
                 throw new ArgumentException("Đường dẫn tệp không hợp lệ.", nameof(storedPath));
 
-            if (IsCloudPath(storedPath))
-            {
-                return await _supabaseService.ResolveDownloadAsync(storedPath, originalFileName, contentType);
-            }
-
-            return await _localService.ResolveDownloadAsync(storedPath, originalFileName, contentType);
+            var handler = ResolveProviderForPath(storedPath);
+            return await handler.ResolveDownloadAsync(storedPath, originalFileName, contentType);
         }
 
         public async Task<string> GetPreSignedUrlAsync(string storedPath, int expirationMinutes = 15)
         {
-            if (!IsCloudPath(storedPath))
+            if (IsCloudPath(storedPath))
             {
-                throw new NotSupportedException("Tệp lưu trữ cục bộ không hỗ trợ Pre-signed URL.");
+                return await _cloudProvider.GetPreSignedUrlAsync(storedPath, expirationMinutes);
             }
 
-            return await _supabaseService.GetPreSignedUrlAsync(storedPath, expirationMinutes);
+            var physicalPath = _localProvider.GetPhysicalFilePath(storedPath);
+            return new Uri(physicalPath).AbsoluteUri;
         }
 
         public bool IsCloudPath(string storedPath)
         {
             if (string.IsNullOrWhiteSpace(storedPath)) return false;
-            return storedPath.StartsWith("supabase://", StringComparison.OrdinalIgnoreCase)
-                || storedPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-                || storedPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+            return _cloudProvider.CanHandlePath(storedPath);
         }
 
-        private bool IsCloudProviderActive()
+        private IFileStorageProvider ResolveProviderForPath(string storedPath)
         {
-            return _settings.Provider.Equals("Supabase", StringComparison.OrdinalIgnoreCase)
-                && _supabaseService.IsConfigured;
+            var matched = _providers.FirstOrDefault(p => !ReferenceEquals(p, _localProvider) && p.CanHandlePath(storedPath));
+            return matched ?? _localProvider;
         }
     }
 }

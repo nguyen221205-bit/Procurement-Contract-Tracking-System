@@ -28,6 +28,11 @@ namespace ProcurementSystem.Core.Interfaces
         Task<ApiResponse<PaginatedList<BidSubmissionSummaryDto>>> GetMySubmissionsAsync(int userId, int pageNumber, int pageSize);
 
         /// <summary>
+        /// Nhà thầu kiểm tra hồ sơ dự thầu của chính mình tại một gói thầu cụ thể
+        /// </summary>
+        Task<ApiResponse<BidSubmissionSummaryDto?>> GetMySubmissionByPackageAsync(int bidPackageId, int userId);
+
+        /// <summary>
         /// Nhà thầu rút hồ sơ dự thầu trước thời hạn đóng thầu
         /// </summary>
         Task<ApiResponse<bool>> WithdrawSubmissionAsync(int submissionId, int userId);

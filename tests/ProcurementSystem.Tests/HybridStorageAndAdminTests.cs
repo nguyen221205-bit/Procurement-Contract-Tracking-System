@@ -449,5 +449,49 @@ namespace ProcurementSystem.Tests
         }
 
         #endregion
+
+        [Fact]
+        public async Task GetPreSignedUrlAsync_WhenLocalPath_ReturnsValidFileUriWithoutThrowing()
+        {
+            // Arrange (LSP: FileStorageService & HybridFileStorageService must not throw NotSupportedException on local paths)
+            var settings = Options.Create(new StorageSettings { Provider = "Local" });
+            var supabaseService = new SupabaseStorageService(settings, _cryptoService, NullLogger<SupabaseStorageService>.Instance);
+            var hybridService = new HybridFileStorageService(
+                _localService,
+                supabaseService,
+                settings,
+                NullLogger<HybridFileStorageService>.Instance);
+
+            var localRelativePath = "uploads/contracts/lsp_check.pdf";
+
+            // Act
+            var localUri = await _localService.GetPreSignedUrlAsync(localRelativePath, 15);
+            var hybridUri = await hybridService.GetPreSignedUrlAsync(localRelativePath, 15);
+
+            // Assert
+            Assert.StartsWith("file://", localUri, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(localUri, hybridUri);
+        }
+
+        [Fact]
+        public void DocumentSampleFallbackProvider_GeneratesValidPdfDocumentByCategory()
+        {
+            // Arrange (SRP: Sample generation isolated in IDocumentSampleFallbackProvider)
+            var sampleProvider = DocumentSampleFallbackProvider.Instance;
+
+            // Act
+            var contractPdf = sampleProvider.GenerateSampleDocumentBytes("contracts/hd-001.pdf", "hd-001.pdf");
+            var guaranteePdf = sampleProvider.GenerateSampleDocumentBytes("guarantees/bl-001.pdf", "bl-001.pdf");
+
+            // Assert: PDF header magic bytes 0x25 0x50 0x44 0x46
+            Assert.True(contractPdf.Length > 500);
+            Assert.Equal(0x25, contractPdf[0]);
+            Assert.Equal(0x50, contractPdf[1]);
+            Assert.Equal(0x44, contractPdf[2]);
+            Assert.Equal(0x46, contractPdf[3]);
+
+            Assert.True(guaranteePdf.Length > 500);
+            Assert.Equal(0x25, guaranteePdf[0]);
+        }
     }
 }

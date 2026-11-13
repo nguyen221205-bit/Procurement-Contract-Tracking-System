@@ -14,35 +14,34 @@ import {
 import { formatDateTime, formatRelativeTime } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
-// Hàm lấy màu sắc và nhãn theo Action
+const ACTION_BADGE_RULES = [
+  {
+    keywords: ['CREATE', 'ADD', 'REGISTER'],
+    bg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  },
+  {
+    keywords: ['UPDATE', 'EDIT', 'MODIFY'],
+    bg: 'bg-blue-50 text-blue-700 border-blue-200',
+  },
+  {
+    keywords: ['VERIFY', 'APPROVE', 'FINALIZE', 'AWARD'],
+    bg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  },
+  {
+    keywords: ['DELETE', 'REVOKE', 'DISQUALIFY', 'REJECT'],
+    bg: 'bg-rose-50 text-rose-700 border-rose-200',
+  },
+];
+
+// Hàm lấy màu sắc và nhãn theo Action thông qua bảng quy tắc khai báo (Declarative Rule Array)
 const getActionBadge = (action) => {
   const upper = (action || '').toUpperCase();
-  if (upper.includes('CREATE') || upper.includes('ADD') || upper.includes('REGISTER')) {
-    return {
-      bg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      label: action,
-    };
-  }
-  if (upper.includes('UPDATE') || upper.includes('EDIT') || upper.includes('MODIFY')) {
-    return {
-      bg: 'bg-blue-50 text-blue-700 border-blue-200',
-      label: action,
-    };
-  }
-  if (upper.includes('VERIFY') || upper.includes('APPROVE') || upper.includes('FINALIZE') || upper.includes('AWARD')) {
-    return {
-      bg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-      label: action,
-    };
-  }
-  if (upper.includes('DELETE') || upper.includes('REVOKE') || upper.includes('DISQUALIFY') || upper.includes('REJECT')) {
-    return {
-      bg: 'bg-rose-50 text-rose-700 border-rose-200',
-      label: action,
-    };
-  }
+  const matchedRule = ACTION_BADGE_RULES.find((rule) =>
+    rule.keywords.some((keyword) => upper.includes(keyword))
+  );
+
   return {
-    bg: 'bg-slate-100 text-slate-700 border-slate-200',
+    bg: matchedRule ? matchedRule.bg : 'bg-slate-100 text-slate-700 border-slate-200',
     label: action || 'UNKNOWN',
   };
 };
