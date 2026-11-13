@@ -5,6 +5,7 @@ using ProcurementSystem.Core.DTOs.BidSubmission;
 using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
+using ProcurementSystem.Infrastructure.Utilities;
 
 namespace ProcurementSystem.Infrastructure.Services
 {
@@ -344,30 +345,8 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Gói thầu đã đóng/chấm điểm: Kiểm soát IDOR chi tiết theo quyền hạn
-            var hasAccess = false;
-            if (isAdmin)
-            {
-                hasAccess = true;
-            }
-            else if (isProcurement && submission.BidPackage.CreatedBy == userId)
-            {
-                // Bên mời thầu phụ trách gói thầu này
-                hasAccess = true;
-            }
-            else if (isEvaluator)
-            {
-                // Chỉ chuyên gia được phân công vào tổ chuyên gia của gói thầu
-                var isAssigned = await _unitOfWork.Repository<BidPackageEvaluator>()
-                    .ExistsAsync(pe => pe.BidPackageId == submission.BidPackageId && pe.EvaluatorId == userId);
-                if (isAssigned)
-                {
-                    hasAccess = true;
-                }
-            }
-            else if (isOwner)
-            {
-                hasAccess = true;
-            }
+            var (hasAccess, isAuthorizedProcurement) = await EvaluatePostCloseSubmissionAccessAsync(
+                submission.BidPackage, userId, isAdmin, isProcurement, isEvaluator, isOwner);
 
             if (!hasAccess)
             {
@@ -375,18 +354,7 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             var dto = MapToDto(submission);
-
-            // Bảo mật điểm số chấm thầu:
-            // Khi gói thầu đang Evaluating: Ẩn TotalScore và Rank tạm thời với Evaluator và Contractor
-            if (submission.BidPackage.Status == BidPackageStatus.Evaluating)
-            {
-                if (!isAdmin && !(isProcurement && submission.BidPackage.CreatedBy == userId))
-                {
-                    dto.TotalScore = null;
-                    dto.Rank = null;
-                }
-            }
-            else if (submission.BidPackage.Status == BidPackageStatus.Closed || submission.BidPackage.Status == BidPackageStatus.Open)
+            if (ShouldMaskEvaluationOutcome(submission.BidPackage.Status, isAdmin, isAuthorizedProcurement))
             {
                 dto.TotalScore = null;
                 dto.Rank = null;
@@ -422,29 +390,8 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // Kiểm soát IDOR: Kiểm tra quyền xem danh sách hồ sơ của gói thầu
-            var hasAccess = false;
-            if (isAdmin)
-            {
-                hasAccess = true;
-            }
-            else if (isProcurement && bidPackage.CreatedBy == userId)
-            {
-                hasAccess = true;
-            }
-            else if (isEvaluator)
-            {
-                var isAssigned = await _unitOfWork.Repository<BidPackageEvaluator>()
-                    .ExistsAsync(pe => pe.BidPackageId == bidPackageId && pe.EvaluatorId == userId);
-                if (isAssigned)
-                {
-                    hasAccess = true;
-                }
-            }
-            else if (!isInternalStaff)
-            {
-                // Nhà thầu chỉ xem hồ sơ của chính mình
-                hasAccess = true;
-            }
+            var (hasAccess, isAuthorizedProcurement) = await EvaluatePostCloseSubmissionAccessAsync(
+                bidPackage, userId, isAdmin, isProcurement, isEvaluator, allowExternalOrOwnerAccess: !isInternalStaff);
 
             if (!hasAccess)
             {
@@ -482,20 +429,7 @@ namespace ProcurementSystem.Infrastructure.Services
 
             var result = submissions.Select(MapToSummaryDto).ToList();
 
-            // Bảo mật điểm số chấm thầu:
-            // Khi gói thầu đang Evaluating: Ẩn TotalScore và Rank tạm thời với Evaluator và Contractor
-            if (bidPackage.Status == BidPackageStatus.Evaluating)
-            {
-                if (!isAdmin && !(isProcurement && bidPackage.CreatedBy == userId))
-                {
-                    foreach (var item in result)
-                    {
-                        item.TotalScore = null;
-                        item.Rank = null;
-                    }
-                }
-            }
-            else if (bidPackage.Status == BidPackageStatus.Closed || bidPackage.Status == BidPackageStatus.Open)
+            if (ShouldMaskEvaluationOutcome(bidPackage.Status, isAdmin, isAuthorizedProcurement))
             {
                 foreach (var item in result)
                 {
@@ -549,6 +483,46 @@ namespace ProcurementSystem.Infrastructure.Services
                 query, pageNumber, pageSize);
 
             return ApiResponse<PaginatedList<BidSubmissionSummaryDto>>.Ok(paginatedResult);
+        }
+
+        public async Task<ApiResponse<BidSubmissionSummaryDto?>> GetMySubmissionByPackageAsync(
+            int bidPackageId, int userId)
+        {
+            var contractor = await _unitOfWork.Repository<Contractor>()
+                .Query()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.UserId == userId);
+
+            if (contractor == null)
+            {
+                return ApiResponse<BidSubmissionSummaryDto?>.Ok(null);
+            }
+
+            var submission = await _unitOfWork.Repository<BidSubmission>()
+                .Query()
+                .Include(bs => bs.BidPackage)
+                .Include(bs => bs.Contractor)
+                .Include(bs => bs.SubmissionFiles)
+                .AsNoTracking()
+                .Where(bs => bs.BidPackageId == bidPackageId && bs.ContractorId == contractor.Id)
+                .OrderByDescending(bs => bs.SubmittedAt)
+                .FirstOrDefaultAsync();
+
+            if (submission == null)
+            {
+                return ApiResponse<BidSubmissionSummaryDto?>.Ok(null);
+            }
+
+            var dto = MapToSummaryDto(submission);
+            if (submission.BidPackage != null &&
+                submission.BidPackage.Status != BidPackageStatus.Awarded &&
+                submission.BidPackage.Status != BidPackageStatus.Contracted)
+            {
+                dto.TotalScore = null;
+                dto.Rank = null;
+            }
+
+            return ApiResponse<BidSubmissionSummaryDto?>.Ok(dto);
         }
 
         public async Task<ApiResponse<bool>> WithdrawSubmissionAsync(int submissionId, int userId)
@@ -705,29 +679,8 @@ namespace ProcurementSystem.Infrastructure.Services
             }
             else
             {
-                // Gói thầu đã đóng/chấm điểm: Kiểm soát IDOR chi tiết
-                var hasAccess = false;
-                if (isAdmin)
-                {
-                    hasAccess = true;
-                }
-                else if (isProcurement && file.BidSubmission.BidPackage.CreatedBy == userId)
-                {
-                    hasAccess = true;
-                }
-                else if (isEvaluator)
-                {
-                    var isAssigned = await _unitOfWork.Repository<BidPackageEvaluator>()
-                        .ExistsAsync(pe => pe.BidPackageId == file.BidSubmission.BidPackageId && pe.EvaluatorId == userId);
-                    if (isAssigned)
-                    {
-                        hasAccess = true;
-                    }
-                }
-                else if (isOwner)
-                {
-                    hasAccess = true;
-                }
+                var (hasAccess, _) = await EvaluatePostCloseSubmissionAccessAsync(
+                    file.BidSubmission.BidPackage, userId, isAdmin, isProcurement, isEvaluator, isOwner);
 
                 if (!hasAccess)
                 {
@@ -736,20 +689,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
             }
 
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            var contentType = ext switch
-            {
-                ".pdf" => "application/pdf",
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".png" => "image/png",
-                ".doc" => "application/msword",
-                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                ".xls" => "application/vnd.ms-excel",
-                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ".zip" => "application/zip",
-                ".rar" => "application/x-rar-compressed",
-                _ => "application/octet-stream"
-            };
+            var contentType = ContentTypeResolver.ResolveByFileName(file.FileName);
 
             ProcurementSystem.Core.DTOs.Common.FileDownloadResult downloadResult;
             try
@@ -761,42 +701,60 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<SubmissionFileDownloadDto>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}");
             }
 
-            if (downloadResult.IsRedirect)
-            {
-                return ApiResponse<SubmissionFileDownloadDto>.Ok(new SubmissionFileDownloadDto
-                {
-                    FileName = file.FileName,
-                    ContentType = contentType,
-                    IsRedirect = true,
-                    RedirectUrl = downloadResult.RedirectUrl
-                });
-            }
-
-            if (downloadResult.IsStream)
-            {
-                return ApiResponse<SubmissionFileDownloadDto>.Ok(new SubmissionFileDownloadDto
-                {
-                    FileName = file.FileName,
-                    ContentType = contentType,
-                    IsRedirect = false,
-                    FileStream = downloadResult.FileStream
-                });
-            }
-
-            if (!File.Exists(downloadResult.PhysicalPath))
+            if (!downloadResult.IsRedirect && !downloadResult.IsStream && !File.Exists(downloadResult.PhysicalPath))
             {
                 return ApiResponse<SubmissionFileDownloadDto>.Fail("Tệp tài liệu không tồn tại trên hệ thống lưu trữ.");
             }
 
-            var dto = new SubmissionFileDownloadDto
+            return ApiResponse<SubmissionFileDownloadDto>.Ok(new SubmissionFileDownloadDto
             {
                 FileName = file.FileName,
                 ContentType = contentType,
                 PhysicalPath = downloadResult.PhysicalPath,
-                IsRedirect = false
-            };
+                IsRedirect = downloadResult.IsRedirect,
+                RedirectUrl = downloadResult.RedirectUrl,
+                FileStream = downloadResult.FileStream
+            });
+        }
 
-            return ApiResponse<SubmissionFileDownloadDto>.Ok(dto);
+        private async Task<(bool HasAccess, bool IsAuthorizedProcurement)> EvaluatePostCloseSubmissionAccessAsync(
+            BidPackage bidPackage,
+            int userId,
+            bool isAdmin,
+            bool isProcurement,
+            bool isEvaluator,
+            bool allowExternalOrOwnerAccess)
+        {
+            var isAuthorizedProcurement = isProcurement &&
+                await PackageWriteAuthorization.CanWriteReadOnlyAsync(_unitOfWork, bidPackage, userId, isAdmin);
+
+            if (isAdmin || isAuthorizedProcurement || allowExternalOrOwnerAccess)
+            {
+                return (true, isAuthorizedProcurement);
+            }
+
+            if (!isEvaluator)
+            {
+                return (false, isAuthorizedProcurement);
+            }
+
+            var isAssignedEvaluator = await _unitOfWork.Repository<BidPackageEvaluator>()
+                .ExistsAsync(pe => pe.BidPackageId == bidPackage.Id && pe.EvaluatorId == userId);
+
+            return (isAssignedEvaluator, isAuthorizedProcurement);
+        }
+
+        private static bool ShouldMaskEvaluationOutcome(
+            BidPackageStatus status,
+            bool isAdmin,
+            bool isAuthorizedProcurement)
+        {
+            return status switch
+            {
+                BidPackageStatus.Open or BidPackageStatus.Closed => true,
+                BidPackageStatus.Evaluating => !isAdmin && !isAuthorizedProcurement,
+                _ => false
+            };
         }
     }
 }

@@ -9,41 +9,54 @@ import {
   SUBMISSION_STATUS_CONFIG,
 } from '../../utils/constants';
 
-export const StatusBadge = ({ status, type = 'auto' }) => {
-  let config = null;
+const CONFIG_BY_TYPE = {
+  contract: CONTRACT_STATUS_CONFIG,
+  milestone: MILESTONE_STATUS_CONFIG,
+  package: PACKAGE_STATUS_CONFIG,
+  role: ROLE_CONFIG,
+  contractor_verification: CONTRACTOR_VERIFICATION_CONFIG,
+  evaluator_proposal: EVALUATOR_PROPOSAL_CONFIG,
+  submission: SUBMISSION_STATUS_CONFIG,
+};
 
-  if (type === 'contract') {
-    config = CONTRACT_STATUS_CONFIG[status];
-  } else if (type === 'milestone') {
-    config = MILESTONE_STATUS_CONFIG[status];
-  } else if (type === 'package') {
-    config = PACKAGE_STATUS_CONFIG[status];
-  } else if (type === 'role') {
-    config = ROLE_CONFIG[status];
-  } else if (type === 'contractor_verification') {
-    config = CONTRACTOR_VERIFICATION_CONFIG[status];
-  } else if (type === 'evaluator_proposal') {
-    config = EVALUATOR_PROPOSAL_CONFIG[status];
-  } else if (type === 'submission') {
-    config = SUBMISSION_STATUS_CONFIG[status];
-  } else if (type === 'user_status') {
-    const isActive = status === true || status === 'true' || status === 'Active';
-    config = isActive
-      ? { label: 'Đang hoạt động', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
-      : { label: 'Đã bị khóa', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' };
-  } else {
-    // Auto lookup order: Submission -> Contract -> Package -> Milestone -> Role -> Contractor -> EvaluatorProposal
-    config =
-      SUBMISSION_STATUS_CONFIG[status] ||
-      CONTRACT_STATUS_CONFIG[status] ||
-      PACKAGE_STATUS_CONFIG[status] ||
-      MILESTONE_STATUS_CONFIG[status] ||
-      ROLE_CONFIG[status] ||
-      CONTRACTOR_VERIFICATION_CONFIG[status] ||
-      EVALUATOR_PROPOSAL_CONFIG[status];
+const AUTO_LOOKUP_CONFIGS = [
+  SUBMISSION_STATUS_CONFIG,
+  CONTRACT_STATUS_CONFIG,
+  PACKAGE_STATUS_CONFIG,
+  MILESTONE_STATUS_CONFIG,
+  ROLE_CONFIG,
+  CONTRACTOR_VERIFICATION_CONFIG,
+  EVALUATOR_PROPOSAL_CONFIG,
+];
+
+const resolveUserStatusConfig = (status) => {
+  const isActive = status === true || status === 'true' || status === 'Active';
+  return isActive
+    ? { label: 'Đang hoạt động', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+    : { label: 'Đã bị khóa', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' };
+};
+
+const resolveBadgeConfig = (status, type) => {
+  if (type === 'user_status') {
+    return resolveUserStatusConfig(status);
   }
 
-  const finalConfig = config || {
+  const typedDictionary = CONFIG_BY_TYPE[type];
+  if (typedDictionary) {
+    return typedDictionary[status];
+  }
+
+  for (const configMap of AUTO_LOOKUP_CONFIGS) {
+    if (configMap[status]) {
+      return configMap[status];
+    }
+  }
+
+  return null;
+};
+
+export const StatusBadge = ({ status, type = 'auto' }) => {
+  const finalConfig = resolveBadgeConfig(status, type) || {
     label: status || 'Không xác định',
     badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
   };
@@ -58,4 +71,3 @@ export const StatusBadge = ({ status, type = 'auto' }) => {
 };
 
 export default StatusBadge;
-

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ProcurementSystem.API.Extensions;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.Contractor;
 using ProcurementSystem.Core.Interfaces;
@@ -18,14 +19,10 @@ namespace ProcurementSystem.API.Controllers
     public class ContractorsController : ControllerBase
     {
         private readonly IContractorService _contractorService;
-        private readonly IFileStorageService _fileStorageService;
 
-        public ContractorsController(
-            IContractorService contractorService,
-            IFileStorageService fileStorageService)
+        public ContractorsController(IContractorService contractorService)
         {
             _contractorService = contractorService;
-            _fileStorageService = fileStorageService;
         }
 
         /// <summary>
@@ -177,15 +174,7 @@ namespace ProcurementSystem.API.Controllers
             }
 
             var result = await _contractorService.UpdateContractorRatingAsync(id, request);
-            if (!result.Success)
-            {
-                if (result.Message?.Contains("Không tìm thấy") == true)
-                {
-                    return NotFound(result);
-                }
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return result.ToActionResult(this);
         }
 
         /// <summary>
@@ -221,15 +210,7 @@ namespace ProcurementSystem.API.Controllers
 
             var reviewerId = GetCurrentUserId() ?? 0;
             var result = await _contractorService.VerifyContractorAsync(id, request, reviewerId);
-            if (!result.Success)
-            {
-                if (result.Message?.Contains("Không tìm thấy") == true)
-                {
-                    return NotFound(result);
-                }
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return result.ToActionResult(this);
         }
 
         /// <summary>
@@ -249,67 +230,9 @@ namespace ProcurementSystem.API.Controllers
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DownloadLicenseFile(int id)
         {
-            var contractorResult = await _contractorService.GetContractorByIdAsync(id);
-            if (!contractorResult.Success || contractorResult.Data == null)
-            {
-                return NotFound(ApiResponse<string>.Fail("Không tìm thấy thông tin nhà thầu."));
-            }
-
-            var contractor = contractorResult.Data;
-
-            // R4-7: Mở quyền cho chính chủ Nhà thầu xem lại GPKD của mình; Admin và cán bộ Procurement xem để đối chiếu năng lực
-            if (User.IsInRole("Contractor") && !User.IsInRole("Admin") && !User.IsInRole("Procurement"))
-            {
-                var currentUserId = GetCurrentUserId();
-                if (contractor.UserId != currentUserId)
-                {
-                    return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<string>.Fail("Bạn không có quyền xem tệp giấy phép kinh doanh của nhà thầu khác."));
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(contractor.BusinessLicenseFile))
-            {
-                return NotFound(ApiResponse<string>.Fail("Nhà thầu chưa tải lên tệp Giấy phép đăng ký kinh doanh."));
-            }
-
-            var originalFileName = Path.GetFileName(contractor.BusinessLicenseFile);
-            var ext = Path.GetExtension(originalFileName).ToLowerInvariant();
-            var contentType = ext switch
-            {
-                ".pdf" => "application/pdf",
-                ".png" => "image/png",
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".doc" => "application/msword",
-                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                _ => "application/octet-stream"
-            };
-
-            ProcurementSystem.Core.DTOs.Common.FileDownloadResult downloadResult;
-            try
-            {
-                downloadResult = await _fileStorageService.ResolveDownloadAsync(contractor.BusinessLicenseFile, originalFileName, contentType);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ApiResponse<string>.Fail($"Đường dẫn tệp không hợp lệ: {ex.Message}"));
-            }
-
-            if (downloadResult.IsRedirect)
-            {
-                return Redirect(downloadResult.RedirectUrl!);
-            }
-
-            if (downloadResult.IsStream)
-            {
-                return File(downloadResult.FileStream!, contentType, originalFileName);
-            }
-
-            if (!System.IO.File.Exists(downloadResult.PhysicalPath))
-            {
-                return NotFound(ApiResponse<string>.Fail("Tệp Giấy phép đăng ký kinh doanh không tồn tại trên hệ thống lưu trữ."));
-            }
-
-            return PhysicalFile(downloadResult.PhysicalPath!, contentType, originalFileName);
+            var isInternalStaff = User.IsInRole("Admin") || User.IsInRole("Procurement");
+            var result = await _contractorService.GetBusinessLicenseForDownloadAsync(id, GetCurrentUserId(), isInternalStaff);
+            return result.ToFileActionResult(this, "Không thể tải tệp giấy phép kinh doanh.");
         }
 
         /// <summary>
@@ -327,15 +250,7 @@ namespace ProcurementSystem.API.Controllers
         public async Task<ActionResult<ApiResponse<ContractorDto>>> RecalculateRating(int id)
         {
             var result = await _contractorService.RecalculateContractorRatingAsync(id);
-            if (!result.Success)
-            {
-                if (result.Message?.Contains("Không tìm thấy") == true)
-                {
-                    return NotFound(result);
-                }
-                return BadRequest(result);
-            }
-            return Ok(result);
+            return result.ToActionResult(this);
         }
 
         /// <summary>

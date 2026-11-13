@@ -19,8 +19,8 @@ namespace ProcurementSystem.Infrastructure.Services
 
         public string GenerateAccessToken(int userId, string email, string fullName, IEnumerable<string> roles, bool mustChangePassword = false)
         {
-            var secretKey = _configuration["JwtSettings:SecretKey"]
-                ?? throw new InvalidOperationException("Chưa cấu hình JwtSettings:SecretKey trong appsettings.json");
+            var secretKey = ResolveJwtSecretKey()
+                ?? throw new InvalidOperationException("Chưa cấu hình JwtSettings:SecretKey trong appsettings.json hoặc JWT_SECRET_KEY trong biến môi trường.");
 
             var issuer = _configuration["JwtSettings:Issuer"];
             var audience = _configuration["JwtSettings:Audience"];
@@ -64,8 +64,8 @@ namespace ProcurementSystem.Infrastructure.Services
 
         public ClaimsPrincipal? GetPrincipalFromExpiredToken(string token)
         {
-            var secretKey = _configuration["JwtSettings:SecretKey"]
-                ?? throw new InvalidOperationException("Chưa cấu hình JwtSettings:SecretKey");
+            var secretKey = ResolveJwtSecretKey()
+                ?? throw new InvalidOperationException("Chưa cấu hình JwtSettings:SecretKey hoặc JWT_SECRET_KEY");
 
             var tokenValidationParameters = new TokenValidationParameters
             {
@@ -92,6 +92,18 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 return null;
             }
+        }
+
+        private string? ResolveJwtSecretKey()
+        {
+            var configured = _configuration["JwtSettings:SecretKey"];
+            if (!string.IsNullOrWhiteSpace(configured))
+            {
+                return configured;
+            }
+
+            var fromEnv = Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
+            return string.IsNullOrWhiteSpace(fromEnv) ? null : fromEnv;
         }
     }
 }

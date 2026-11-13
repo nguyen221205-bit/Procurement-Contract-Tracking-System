@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ProcurementSystem.API.Extensions;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.ProcuringEntity;
 using ProcurementSystem.Core.Interfaces;
@@ -196,27 +197,7 @@ namespace ProcurementSystem.API.Controllers
             }
 
             var file = await _procuringEntityService.GetEstablishmentFileAsync(id);
-            if (file == null)
-            {
-                return NotFound(ApiResponse<string>.Fail("Tệp Quyết định thành lập không tồn tại hoặc đã bị xóa."));
-            }
-
-            if (file.IsRedirect)
-            {
-                return Redirect(file.RedirectUrl!);
-            }
-
-            if (file.IsStream)
-            {
-                return File(file.FileStream!, file.ContentType, file.FileName);
-            }
-
-            if (!System.IO.File.Exists(file.PhysicalPath))
-            {
-                return NotFound(ApiResponse<string>.Fail("Tệp Quyết định thành lập không tồn tại trên hệ thống lưu trữ."));
-            }
-
-            return PhysicalFile(file.PhysicalPath!, file.ContentType, file.FileName);
+            return file.ToFileActionResult(this, "Tệp Quyết định thành lập không tồn tại hoặc đã bị xóa.");
         }
 
         /// <summary>
@@ -241,27 +222,7 @@ namespace ProcurementSystem.API.Controllers
             }
 
             var file = await _procuringEntityService.GetAppointmentFileAsync(id);
-            if (file == null)
-            {
-                return NotFound(ApiResponse<string>.Fail("Tệp Quyết định bổ nhiệm không tồn tại hoặc đã bị xóa."));
-            }
-
-            if (file.IsRedirect)
-            {
-                return Redirect(file.RedirectUrl!);
-            }
-
-            if (file.IsStream)
-            {
-                return File(file.FileStream!, file.ContentType, file.FileName);
-            }
-
-            if (!System.IO.File.Exists(file.PhysicalPath))
-            {
-                return NotFound(ApiResponse<string>.Fail("Tệp Quyết định bổ nhiệm không tồn tại trên hệ thống lưu trữ."));
-            }
-
-            return PhysicalFile(file.PhysicalPath!, file.ContentType, file.FileName);
+            return file.ToFileActionResult(this, "Tệp Quyết định bổ nhiệm không tồn tại hoặc đã bị xóa.");
         }
 
         // ==========================================

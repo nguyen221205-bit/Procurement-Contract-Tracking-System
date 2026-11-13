@@ -38,5 +38,15 @@ namespace ProcurementSystem.Core.DTOs
         {
             return new ApiResponse<T> { Success = false, Message = message, StatusCode = 403 };
         }
+
+        public static ApiResponse<T> NotFound(string message = "Không tìm thấy dữ liệu.")
+        {
+            return new ApiResponse<T> { Success = false, Message = message, StatusCode = 404 };
+        }
+
+        public static ApiResponse<T> Conflict(string message = "Xung đột dữ liệu đồng thời.")
+        {
+            return new ApiResponse<T> { Success = false, Message = message, StatusCode = 409 };
+        }
     }
 }

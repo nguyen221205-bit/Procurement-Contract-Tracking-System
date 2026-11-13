@@ -10,7 +10,7 @@ import {
   Clock,
   AlertCircle,
   Info,
-  BellOff
+  BellOff,
 } from 'lucide-react';
 import notificationApi from '../../api/notificationApi';
 import { formatRelativeTime } from '../../utils/formatters';
@@ -18,6 +18,56 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import * as signalR from '@microsoft/signalr';
 import { playNotificationSound } from '../../utils/notificationSound';
+
+const NOTIFICATION_ROUTE_RULES = [
+  {
+    keywords: ['hợp đồng', 'tiến độ', 'nghiệm thu'],
+    route: '/contracts',
+  },
+  {
+    keywords: ['tổ chuyên gia', 'chấm thầu', 'xét thầu', 'giám khảo'],
+    route: '/evaluation',
+  },
+  {
+    keywords: ['gói thầu', 'dự thầu', 'mở thầu', 'đóng thầu'],
+    route: '/packages',
+  },
+];
+
+const NOTIFICATION_ICON_MAP = {
+  0: <Info className="w-4 h-4 text-sky-500" />,
+  1: <AlertTriangle className="w-4 h-4 text-amber-500" />,
+  2: <Clock className="w-4 h-4 text-rose-500" />,
+  3: <Clock className="w-4 h-4 text-rose-500" />,
+  4: <AlertCircle className="w-4 h-4 text-rose-600" />,
+  5: <CheckCheck className="w-4 h-4 text-emerald-600" />,
+};
+
+const DEFAULT_NOTIFICATION_ICON = NOTIFICATION_ICON_MAP[0];
+
+const resolveNotificationHubUrl = () => {
+  const apiBase = import.meta.env?.VITE_API_BASE_URL || 'http://localhost:5225/api';
+  const serverOrigin = apiBase.replace(/\/api\/?$/, '');
+  return `${serverOrigin}/hubs/notifications`;
+};
+
+const getTargetRoute = (notif) => {
+  if (!notif) return '/notifications';
+  if (notif.targetUrl && typeof notif.targetUrl === 'string') {
+    return notif.targetUrl;
+  }
+
+  const text = `${notif.title || ''} ${notif.message || ''}`.toLowerCase();
+  const matchedRule = NOTIFICATION_ROUTE_RULES.find((rule) =>
+    rule.keywords.some((kw) => text.includes(kw))
+  );
+  return matchedRule ? matchedRule.route : '/notifications';
+};
+
+const getNotificationIcon = (type) => {
+  const enumVal = tryEnumValue('NotificationType', type);
+  return NOTIFICATION_ICON_MAP[enumVal] || DEFAULT_NOTIFICATION_ICON;
+};
 
 export const NotificationBell = () => {
   const navigate = useNavigate();
@@ -28,23 +78,6 @@ export const NotificationBell = () => {
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Điều hướng thông minh theo ngữ cảnh nghiệp vụ của thông báo
-  const getTargetRoute = (notif) => {
-    if (!notif) return '/notifications';
-    const text = `${notif.title || ''} ${notif.message || ''}`.toLowerCase();
-    if (text.includes('hợp đồng') || text.includes('tiến độ') || text.includes('nghiệm thu')) {
-      return '/contracts';
-    }
-    if (text.includes('tổ chuyên gia') || text.includes('chấm thầu') || text.includes('xét thầu') || text.includes('giám khảo')) {
-      return '/evaluation';
-    }
-    if (text.includes('gói thầu') || text.includes('dự thầu') || text.includes('mở thầu') || text.includes('đóng thầu')) {
-      return '/packages';
-    }
-    return '/notifications';
-  };
-
-  // Lấy số lượng thông báo chưa đọc
   const fetchUnreadCount = async () => {
     try {
       const res = await notificationApi.getUnreadCount();
@@ -58,26 +91,19 @@ export const NotificationBell = () => {
     }
   };
 
-  // Lấy danh sách thông báo xem nhanh (6 thông báo mới nhất)
   const fetchRecentNotifications = async () => {
     setLoading(true);
     try {
       const res = await notificationApi.getNotifications(1, 6);
-      if (res && res.success && res.data?.items) {
-        setNotifications(res.data.items);
-      } else if (Array.isArray(res?.items)) {
-        setNotifications(res.items);
-      } else if (Array.isArray(res?.data)) {
-        setNotifications(res.data);
-      }
-    } catch (err) {
+      const items = res?.data?.items || res?.items || (Array.isArray(res?.data) ? res.data : []);
+      setNotifications(items);
+    } catch {
       toast.error('Không thể tải danh sách thông báo');
     } finally {
       setLoading(false);
     }
   };
 
-  // Khởi tạo SignalR Real-time Connection và HTTP Polling dự phòng khi đã đăng nhập
   useEffect(() => {
     if (!user) {
       setUnreadCount(0);
@@ -86,8 +112,7 @@ export const NotificationBell = () => {
 
     fetchUnreadCount();
 
-    // 1. Thiết lập kết nối SignalR thời gian thực (0 giây độ trễ)
-    const hubUrl = 'http://localhost:5225/hubs/notifications';
+    const hubUrl = resolveNotificationHubUrl();
     const connection = new signalR.HubConnectionBuilder()
       .withUrl(hubUrl, {
         accessTokenFactory: () => sessionStorage.getItem('token') || '',
@@ -99,16 +124,10 @@ export const NotificationBell = () => {
       .build();
 
     connection.on('ReceiveNotification', (newNotif) => {
-      // Tăng số lượng thông báo chưa đọc
       setUnreadCount((prev) => prev + 1);
-
-      // Cập nhật danh sách thông báo xem nhanh nếu đang mở dropdown hoặc đã load
       setNotifications((prev) => [newNotif, ...prev.slice(0, 5)]);
-
-      // Phát âm báo chuông nhẹ nhàng
       playNotificationSound();
 
-      // Hiển thị Toast nổi bật tức thì
       toast.custom(
         (t) => (
           <div
@@ -117,8 +136,7 @@ export const NotificationBell = () => {
             } max-w-md w-full bg-slate-900 border border-emerald-500/50 shadow-2xl rounded-xl pointer-events-auto flex ring-1 ring-black ring-opacity-5 p-4 cursor-pointer hover:border-emerald-400 transition-all`}
             onClick={() => {
               toast.dismiss(t.id);
-              const route = getTargetRoute(newNotif);
-              navigate(route);
+              navigate(getTargetRoute(newNotif));
             }}
           >
             <div className="flex items-start gap-3 w-full">
@@ -127,10 +145,14 @@ export const NotificationBell = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Thông báo mới</p>
+                  <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
+                    Thông báo mới
+                  </p>
                   <span className="text-[10px] text-slate-400">Vừa xong</span>
                 </div>
-                <p className="text-sm font-medium text-slate-100 truncate mt-0.5">{newNotif.title || 'Thông báo hệ thống'}</p>
+                <p className="text-sm font-medium text-slate-100 truncate mt-0.5">
+                  {newNotif.title || 'Thông báo hệ thống'}
+                </p>
                 <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">{newNotif.message}</p>
               </div>
             </div>
@@ -140,13 +162,10 @@ export const NotificationBell = () => {
       );
     });
 
-    connection
-      .start()
-      .catch((err) => {
-        console.debug('SignalR kết nối không thành công, tiếp tục cơ chế HTTP Polling:', err);
-      });
+    connection.start().catch((err) => {
+      console.debug('SignalR kết nối không thành công, tiếp tục cơ chế HTTP Polling:', err);
+    });
 
-    // 2. HTTP Polling dự phòng (30s) đảm bảo đồng bộ trạng thái khi mất mạng
     const interval = setInterval(fetchUnreadCount, 30000);
 
     const handleVisibility = () => {
@@ -163,7 +182,6 @@ export const NotificationBell = () => {
     };
   }, [user, navigate]);
 
-  // Xử lý đóng dropdown khi bấm ra ngoài
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -178,7 +196,6 @@ export const NotificationBell = () => {
     };
   }, [isOpen]);
 
-  // Khi mở dropdown -> nạp danh sách thông báo mới
   const handleToggle = () => {
     if (!isOpen) {
       fetchRecentNotifications();
@@ -186,7 +203,6 @@ export const NotificationBell = () => {
     setIsOpen(!isOpen);
   };
 
-  // Đánh dấu 1 thông báo là đã đọc và điều hướng thông minh
   const handleItemClick = async (notif) => {
     if (!notif.isRead) {
       try {
@@ -200,11 +216,9 @@ export const NotificationBell = () => {
       }
     }
     setIsOpen(false);
-    const targetRoute = getTargetRoute(notif);
-    navigate(targetRoute);
+    navigate(getTargetRoute(notif));
   };
 
-  // Đánh dấu tất cả là đã đọc
   const handleMarkAllRead = async (e) => {
     e.stopPropagation();
     try {
@@ -217,27 +231,8 @@ export const NotificationBell = () => {
     }
   };
 
-  // Render icon theo loại thông báo
-  const getIcon = (type) => {
-    switch (tryEnumValue('NotificationType', type)) {
-      case 1: // Warning
-        return <AlertTriangle className="w-4 h-4 text-amber-500" />;
-      case 2: // ContractExpiring
-      case 3: // DeadlineApproaching
-        return <Clock className="w-4 h-4 text-rose-500" />;
-      case 4: // ProgressOverdue
-        return <AlertCircle className="w-4 h-4 text-rose-600" />;
-      case 5: // Success
-        return <CheckCheck className="w-4 h-4 text-emerald-600" />;
-      case 0: // Info
-      default:
-        return <Info className="w-4 h-4 text-sky-500" />;
-    }
-  };
-
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Nút bấm Chuông */}
       <button
         type="button"
         onClick={handleToggle}
@@ -253,10 +248,8 @@ export const NotificationBell = () => {
         )}
       </button>
 
-      {/* Dropdown Popover */}
       {isOpen && (
         <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-          {/* Header */}
           <div className="px-4 py-3 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <span className="text-sm font-bold text-slate-800">Thông báo</span>
@@ -279,7 +272,6 @@ export const NotificationBell = () => {
             )}
           </div>
 
-          {/* Body */}
           <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100">
             {loading ? (
               <div className="py-10 flex flex-col items-center justify-center text-slate-400 space-y-2">
@@ -301,7 +293,7 @@ export const NotificationBell = () => {
                   }`}
                 >
                   <div className="mt-0.5 p-1.5 rounded-lg bg-slate-100 flex-shrink-0">
-                    {getIcon(n.type)}
+                    {getNotificationIcon(n.type)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -328,7 +320,6 @@ export const NotificationBell = () => {
             )}
           </div>
 
-          {/* Footer */}
           <div className="p-2.5 bg-slate-50/80 border-t border-slate-100 text-center">
             <button
               type="button"

@@ -6,15 +6,15 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ProcurementSystem.Core.DTOs.Common;
 using ProcurementSystem.Core.Interfaces;
-using ProcurementSystem.Infrastructure.Utilities;
 
 namespace ProcurementSystem.Infrastructure.Services
 {
-    public class SupabaseStorageService : IFileStorageService
+    public class SupabaseStorageService : IFileStorageService, ICloudFileStorageProvider
     {
         private readonly StorageSettings _settings;
         private readonly IFileCryptoCompressionService _cryptoService;
         private readonly ILogger<SupabaseStorageService> _logger;
+        private readonly IDocumentSampleFallbackProvider _sampleFallbackProvider;
         private readonly IAmazonS3? _s3Client;
         private readonly string[] _allowedExtensions = { ".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".rar" };
         private const long MaxFileSize = 50 * 1024 * 1024; // 50MB
@@ -22,11 +22,13 @@ namespace ProcurementSystem.Infrastructure.Services
         public SupabaseStorageService(
             IOptions<StorageSettings> settings,
             IFileCryptoCompressionService cryptoService,
-            ILogger<SupabaseStorageService> logger)
+            ILogger<SupabaseStorageService> logger,
+            IDocumentSampleFallbackProvider? sampleFallbackProvider = null)
         {
             _settings = settings.Value;
             _cryptoService = cryptoService;
             _logger = logger;
+            _sampleFallbackProvider = sampleFallbackProvider ?? DocumentSampleFallbackProvider.Instance;
 
             var supabase = _settings.Supabase;
             if (!string.IsNullOrWhiteSpace(supabase.Endpoint) &&
@@ -54,7 +56,13 @@ namespace ProcurementSystem.Infrastructure.Services
             }
         }
 
+        public string ProviderName => "Supabase";
+
         public bool IsConfigured => _s3Client != null;
+
+        public bool IsAvailable => IsConfigured;
+
+        public bool CanHandlePath(string storedPath) => IsCloudPath(storedPath);
 
         public async Task<(bool Success, string Message, List<string> Buckets)> TestAndEnsureBucketAsync()
         {
@@ -229,10 +237,8 @@ namespace ProcurementSystem.Infrastructure.Services
             var key = ExtractKey(storedPath);
             var finalContentType = contentType ?? "application/pdf";
 
-            // Nếu cấu hình S3 client hợp lệ và có thể kết nối
             if (_s3Client != null)
             {
-                // Trường hợp 1: Tính năng mã hóa được bật -> kéo file mã hóa về, giải mã + giải nén và stream
                 if (_settings.Encryption?.Enabled == true)
                 {
                     try
@@ -249,10 +255,8 @@ namespace ProcurementSystem.Infrastructure.Services
                         await getResponse.ResponseStream.CopyToAsync(encryptedMemStream, cts.Token);
                         encryptedMemStream.Position = 0;
 
-                        // Giải mã AES-256 và giải nén GZip
                         var restoredStream = await _cryptoService.RestoreFromStorageAsync(encryptedMemStream);
 
-                        // Kiểm tra tính toàn vẹn: Tệp PDF phải có kích thước >= 500 bytes và header bắt đầu bằng %PDF
                         if (restoredStream.Length >= 500)
                         {
                             var headerCheck = new byte[4];
@@ -275,7 +279,6 @@ namespace ProcurementSystem.Infrastructure.Services
                 }
                 else
                 {
-                    // Trường hợp 2: Không bật mã hóa -> Stream tệp trực tiếp từ Supabase S3 qua Backend proxy
                     try
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
@@ -313,38 +316,22 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             // =========================================================================
-            // HYBRID FALLBACK: Tìm file cục bộ hoặc tự động sinh tài liệu chuẩn hóa
+            // HYBRID FALLBACK: Tìm file cục bộ hoặc tự động sinh tài liệu chuẩn hóa qua IDocumentSampleFallbackProvider
             // =========================================================================
             var baseUploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
             var localRelativePath = key.Replace('/', Path.DirectorySeparatorChar);
             var localFullPath = Path.Combine(baseUploadsDir, localRelativePath);
 
-            // 1. Nếu tệp cục bộ tồn tại và có dung lượng hợp lệ (>= 500 bytes) và bắt đầu bằng %PDF và không phải notice cũ
-            if (File.Exists(localFullPath))
+            if (!_sampleFallbackProvider.NeedsFallbackGeneration(localFullPath))
             {
-                var fileInfo = new FileInfo(localFullPath);
-                if (fileInfo.Length >= 500)
-                {
-                    var headerBytes = new byte[Math.Min(1024, (int)fileInfo.Length)];
-                    using (var fs = File.OpenRead(localFullPath))
-                    {
-                        fs.Read(headerBytes, 0, headerBytes.Length);
-                    }
-                    var contentSample = System.Text.Encoding.ASCII.GetString(headerBytes);
-                    if (contentSample.StartsWith("%PDF") && !contentSample.Contains("Project Paused") && !contentSample.Contains("HE THONG DAU THAU DIEN TU"))
-                    {
-                        _logger.LogInformation("Tìm thấy tệp fallback cục bộ hợp lệ tại {Path}. Phục vụ stream tệp từ máy chủ nội bộ.", localFullPath);
-                        var localBytes = await File.ReadAllBytesAsync(localFullPath);
-                        return FileDownloadResult.FromStream(new MemoryStream(localBytes), originalFileName, finalContentType);
-                    }
-                }
+                _logger.LogInformation("Tìm thấy tệp fallback cục bộ hợp lệ tại {Path}. Phục vụ stream tệp từ máy chủ nội bộ.", localFullPath);
+                var localBytes = await File.ReadAllBytesAsync(localFullPath);
+                return FileDownloadResult.FromStream(new MemoryStream(localBytes), originalFileName, finalContentType);
             }
 
-            // 2. Tự động sinh văn bản hành chính / chứng từ đấu thầu thực tế chuẩn mực (iText7)
             _logger.LogInformation("Sinh tệp tài liệu hành chính chuẩn hóa thực tế cho {Key}.", key);
-            var validPdfBytes = GenerateAppropriateDocument(key, originalFileName);
+            var validPdfBytes = _sampleFallbackProvider.GenerateSampleDocumentBytes(key, originalFileName);
 
-            // Lưu bản sao vào localFullPath để các lần sau truy xuất nhanh
             try
             {
                 var targetDir = Path.GetDirectoryName(localFullPath);
@@ -360,99 +347,6 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             return FileDownloadResult.FromStream(new MemoryStream(validPdfBytes), originalFileName, "application/pdf");
-        }
-
-        private static byte[] GenerateAppropriateDocument(string key, string originalFileName)
-        {
-            var lowerKey = key.ToLowerInvariant();
-
-            // 1. Quyết định thành lập / Bổ nhiệm Bên mời thầu
-            if (lowerKey.Contains("procuring-entities") || lowerKey.Contains("establishment") || lowerKey.Contains("decision"))
-            {
-                return DocumentSampleGenerator.GenerateEstablishmentDecisionPdf(
-                    "Ban Quan ly Du an Dau tu va Mua sam Tap trung",
-                    "0100109106",
-                    "Nguyen Thi Chuyen Vien Mua Sam"
-                );
-            }
-
-            // 2. Chứng thư bảo lãnh thực hiện hợp đồng
-            if (lowerKey.Contains("guarantee") || lowerKey.Contains("bao-lanh"))
-            {
-                return DocumentSampleGenerator.GenerateGuaranteeDocumentPdf(
-                    "BL-VCB-2026-0899",
-                    "Ngan hang TMCP Ngoai thuong Viet Nam (Vietcombank)",
-                    117500000m,
-                    "HD-2026-PKG-SEC-2026-001-019",
-                    "CONG TY CO PHAN PHAN MEM ABC"
-                );
-            }
-
-            // 3. Bản scan Hợp đồng kinh tế
-            if (lowerKey.Contains("contract") || lowerKey.Contains("hop-dong"))
-            {
-                return DocumentSampleGenerator.GenerateContractScannedPdf(
-                    "HD-2026-PKG-SEC-2026-001-019",
-                    "Goi thau Nang cap Tuong lua & An ninh Mang Nam 2026",
-                    "CONG TY CO PHAN PHAN MEM ABC",
-                    2350000000m,
-                    "BAN QUAN LY DU AN DAU TU VA MUA SAM DOANH NGHIEP"
-                );
-            }
-
-            // 4. Giấy phép ĐKKD (GPKD)
-            if (lowerKey.Contains("contractor") || lowerKey.Contains("license") || lowerKey.Contains("gpkd"))
-            {
-                return DocumentSampleGenerator.GenerateBusinessLicensePdf(
-                    "NGAN HANG TMCP DAU TU VA PHAT TRIEN VIET NAM (BIDV)",
-                    "0100150619",
-                    "Nguyen Van Dai Dien BIDV",
-                    "Thap BIDV, so 194 Tran Quang Khai, Phuong Hoan Kiem, TP Ha Noi"
-                );
-            }
-
-            // 5. Chứng chỉ nghiệp vụ chuyên môn đấu thầu
-            if (lowerKey.Contains("evaluator") || lowerKey.Contains("certificate") || lowerKey.Contains("chung-chi"))
-            {
-                return DocumentSampleGenerator.GenerateEvaluatorCertificatePdf(
-                    "Phuong Dong",
-                    "Chung chi nghiep vu chuyen mon ve dau thau (Luat Dau thau 2023)"
-                );
-            }
-
-            // Mặc định: Bản scan hợp đồng hoàn chỉnh
-            return DocumentSampleGenerator.GenerateContractScannedPdf(
-                "HD-2026-PKG-2026-STANDARD",
-                "Goi thau Mua sam Trang thiet bi va Dich vu Cong nghe",
-                "CONG TY CO PHAN CONG NGHE & PHAN MEM VIET NAM",
-                1500000000m
-            );
-        }
-
-        private static MemoryStream GenerateNoticePdf(string fileName, string key)
-        {
-            var pdfString = "%PDF-1.4\n" +
-                "1 0 obj <</Type /Catalog /Pages 2 0 R>> endobj\n" +
-                "2 0 obj <</Type /Pages /Kids [3 0 R] /Count 1>> endobj\n" +
-                "3 0 obj <</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources <</Font <</F1 5 0 R>>>>>> endobj\n" +
-                "4 0 obj <</Length 260>> stream\n" +
-                "BT\n/F1 14 Tf\n50 720 Td\n(HE THONG DAU THAU DIEN TU - TAI LIEU LUU TRU) Tj\n" +
-                "0 -30 Td\n/F1 11 Tf\n(Tai lieu: " + EscapePdfString(fileName) + ") Tj\n" +
-                "0 -20 Td\n(Ma luu tru Cloud: " + EscapePdfString(key) + ") Tj\n" +
-                "0 -20 Td\n(Trang thai: Supabase Cloud Storage hien dang o che do Tam dung - Project Paused) Tj\n" +
-                "0 -20 Td\n(He thong da tu dong kich hoat che do bao ve Hybrid Storage de tiep tuc phuc vu.) Tj\n" +
-                "ET\n" +
-                "endstream\nendobj\n" +
-                "5 0 obj <</Type /Font /Subtype /Type1 /BaseFont /Helvetica>> endobj\n" +
-                "xref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000227 00000 n \n0000000540 00000 n \ntrailer <</Size 6 /Root 1 0 R>>\nstartxref\n610\n%%EOF";
-
-            return new MemoryStream(System.Text.Encoding.ASCII.GetBytes(pdfString));
-        }
-
-        private static string EscapePdfString(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return string.Empty;
-            return text.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
         }
 
         public Task<string> GetPreSignedUrlAsync(string storedPath, int expirationMinutes = 15)

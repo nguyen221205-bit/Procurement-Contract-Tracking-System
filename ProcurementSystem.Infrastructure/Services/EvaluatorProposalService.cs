@@ -5,6 +5,7 @@ using ProcurementSystem.Core.DTOs.EvaluatorProposal;
 using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
+using ProcurementSystem.Infrastructure.Utilities;
 
 namespace ProcurementSystem.Infrastructure.Services
 {
@@ -495,16 +496,7 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             var originalFileName = Path.GetFileName(proposal.CertificateFile);
-            var ext = Path.GetExtension(originalFileName).ToLowerInvariant();
-            var contentType = ext switch
-            {
-                ".pdf" => "application/pdf",
-                ".png" => "image/png",
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".doc" => "application/msword",
-                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                _ => "application/octet-stream"
-            };
+            var contentType = ContentTypeResolver.ResolveByFileName(originalFileName);
 
             ProcurementSystem.Core.DTOs.Common.FileDownloadResult downloadResult;
             try

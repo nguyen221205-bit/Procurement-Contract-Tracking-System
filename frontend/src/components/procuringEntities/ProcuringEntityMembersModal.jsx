@@ -105,7 +105,6 @@ export const ProcuringEntityMembersModal = ({
   );
   const canManage =
     isAdmin ||
-    entity?.userId === currentUser?.id ||
     isMemberManager ||
     Boolean(canManageProp && isAdmin);
 

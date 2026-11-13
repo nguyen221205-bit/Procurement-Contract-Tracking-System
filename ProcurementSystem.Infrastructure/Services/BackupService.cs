@@ -80,7 +80,7 @@ namespace ProcurementSystem.Infrastructure.Services
         {
             EnsureDirectoriesExist();
 
-            var connStr = _configuration.GetConnectionString("DefaultConnection");
+            var connStr = ResolveDefaultConnectionString();
             if (string.IsNullOrWhiteSpace(connStr))
             {
                 return ApiResponse<BackupItemDto>.Fail("Không tìm thấy chuỗi kết nối cơ sở dữ liệu DefaultConnection.", statusCode: 500);
@@ -250,7 +250,7 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<string>.Fail("Không tìm thấy tệp sao lưu yêu cầu trên máy chủ.", statusCode: 404);
             }
 
-            var connStr = _configuration.GetConnectionString("DefaultConnection");
+            var connStr = ResolveDefaultConnectionString();
             if (string.IsNullOrWhiteSpace(connStr))
             {
                 return ApiResponse<string>.Fail("Không tìm thấy chuỗi kết nối cơ sở dữ liệu DefaultConnection.", statusCode: 500);
@@ -415,6 +415,19 @@ namespace ProcurementSystem.Infrastructure.Services
             {
                 _logger.LogWarning(ex, "Không thể ghi AuditLog cho thao tác {Action}.", action);
             }
+        }
+
+        private string? ResolveDefaultConnectionString()
+        {
+            var configured = _configuration.GetConnectionString("DefaultConnection");
+            if (!string.IsNullOrWhiteSpace(configured))
+            {
+                return configured;
+            }
+
+            var fromEnv = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
+                ?? Environment.GetEnvironmentVariable("PROCUREMENT_DB_CONN");
+            return string.IsNullOrWhiteSpace(fromEnv) ? null : fromEnv;
         }
     }
 }

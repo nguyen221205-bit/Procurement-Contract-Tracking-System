@@ -11,6 +11,11 @@ export const bidSubmissionApi = {
     return await axiosClient.get('/my-submissions', { params });
   },
 
+  // Dành cho Contractor: Lấy hồ sơ dự thầu của chính mình trong 1 gói thầu cụ thể
+  getMySubmissionByPackage: async (bidPackageId) => {
+    return await axiosClient.get(`/bid-packages/${bidPackageId}/my-submission`);
+  },
+
   getSubmissionById: async (id) => {
     return await axiosClient.get(`/submissions/${id}`);
   },

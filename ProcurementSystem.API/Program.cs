@@ -15,6 +15,9 @@ using ProcurementSystem.Infrastructure.Interceptors;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.SignalR;
 using ProcurementSystem.Infrastructure.Hubs;
+using ProcurementSystem.API.Extensions;
+
+DotEnvLoader.LoadIfPresent();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -53,8 +56,13 @@ builder.Services.Configure<ProcurementSystem.Core.DTOs.Common.StorageSettings>(
 builder.Services.AddHttpClient<ITaxLookupService, TaxLookupService>();
 builder.Services.AddScoped<IPdfSecurityService, PdfSecurityService>();
 builder.Services.AddScoped<IFileCryptoCompressionService, FileCryptoCompressionService>();
+builder.Services.AddSingleton<IDocumentSampleFallbackProvider, DocumentSampleFallbackProvider>();
 builder.Services.AddScoped<FileStorageService>();
+builder.Services.AddScoped<ILocalFileStorageProvider>(sp => sp.GetRequiredService<FileStorageService>());
+builder.Services.AddScoped<IFileStorageProvider>(sp => sp.GetRequiredService<FileStorageService>());
 builder.Services.AddScoped<SupabaseStorageService>();
+builder.Services.AddScoped<ICloudFileStorageProvider>(sp => sp.GetRequiredService<SupabaseStorageService>());
+builder.Services.AddScoped<IFileStorageProvider>(sp => sp.GetRequiredService<SupabaseStorageService>());
 builder.Services.AddScoped<IFileStorageService, HybridFileStorageService>();
 builder.Services.AddScoped<IStorageMigrationService, StorageMigrationService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
@@ -79,8 +87,13 @@ builder.Services.AddScoped<IBidSubmissionService, BidSubmissionService>();
 builder.Services.AddScoped<IEvaluationService, EvaluationService>();
 builder.Services.AddScoped<IEvaluatorProposalService, EvaluatorProposalService>();
 
-// Contract Services
-builder.Services.AddScoped<IContractService, ContractService>();
+// Contract Services (ISP: Segregated Sub-Interfaces & Unified ContractService)
+builder.Services.AddScoped<ContractService>();
+builder.Services.AddScoped<IContractService>(sp => sp.GetRequiredService<ContractService>());
+builder.Services.AddScoped<IContractMilestoneAcceptanceService>(sp => sp.GetRequiredService<ContractService>());
+builder.Services.AddScoped<IContractGuaranteeService>(sp => sp.GetRequiredService<ContractService>());
+builder.Services.AddScoped<IContractAddendumService>(sp => sp.GetRequiredService<ContractService>());
+builder.Services.AddScoped<IContractorEvaluationService>(sp => sp.GetRequiredService<ContractService>());
 
 // Management & Reporting Services
 builder.Services.AddScoped<IReportService, ReportService>();

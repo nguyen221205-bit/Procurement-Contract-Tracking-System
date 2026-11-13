@@ -3,9 +3,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.BidPackage;
+using ProcurementSystem.Core.DTOs.Common;
 using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
+using ProcurementSystem.Infrastructure.Services.StateMachines;
+using ProcurementSystem.Infrastructure.Utilities;
 
 namespace ProcurementSystem.Infrastructure.Services
 {
@@ -53,22 +56,20 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidPackageDto>.Forbidden("Chỉ quản trị viên được xác nhận đối soát đơn vị sở hữu.");
             if (string.IsNullOrWhiteSpace(request.EvidenceReference) || string.IsNullOrWhiteSpace(request.Note))
                 return ApiResponse<BidPackageDto>.Fail("Cần tài liệu đối soát và nội dung xác nhận đơn vị sở hữu.");
-            await _unitOfWork.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
-            try
+
+            return await _unitOfWork.ExecuteTransactionalAsync(async () =>
             {
                 var package = await _unitOfWork.Repository<BidPackage>().Query().Include(p => p.Creator)
                     .Include(p => p.ProcuringEntity).FirstOrDefaultAsync(p => p.Id == id);
                 if (package == null || (!package.OwnershipNeedsReview && package.ProcuringEntityId != null) ||
                     package.ProcuringEntityId != request.ExpectedProcuringEntityId)
                 {
-                    await _unitOfWork.RollbackTransactionAsync();
-                    return ApiResponse<BidPackageDto>.Fail("Dữ liệu đối soát đã thay đổi hoặc không còn cần xác nhận.", statusCode: 409);
+                    return ApiResponse<BidPackageDto>.Conflict("Dữ liệu đối soát đã thay đổi hoặc không còn cần xác nhận.");
                 }
                 var entity = await _unitOfWork.Repository<ProcuringEntity>().Query()
                     .FirstOrDefaultAsync(p => p.Id == request.ProcuringEntityId && p.VerificationStatus == "Approved");
                 if (entity == null)
                 {
-                    await _unitOfWork.RollbackTransactionAsync();
                     return ApiResponse<BidPackageDto>.Fail("Đơn vị sở hữu chưa được thẩm định hợp lệ.");
                 }
                 var contradictoryDecision = await _unitOfWork.Repository<Acceptance>().Query().AnyAsync(a =>
@@ -76,8 +77,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     a.AppliedSigningAuthority != null && a.AppliedSigningAuthority.ProcuringEntityId != entity.Id);
                 if (contradictoryDecision)
                 {
-                    await _unitOfWork.RollbackTransactionAsync();
-                    return ApiResponse<BidPackageDto>.Fail("Đơn vị đề xuất mâu thuẫn với quyết định đã ký. Cần kiểm toán riêng.", statusCode: 409);
+                    return ApiResponse<BidPackageDto>.Conflict("Đơn vị đề xuất mâu thuẫn với quyết định đã ký. Cần kiểm toán riêng.");
                 }
                 var previousEntityId = package.ProcuringEntityId;
                 package.ProcuringEntityId = entity.Id;
@@ -85,16 +85,18 @@ namespace ProcurementSystem.Infrastructure.Services
                 package.OwnershipNeedsReview = false;
                 package.UpdatedAt = DateTime.UtcNow;
                 _unitOfWork.Repository<BidPackage>().UpdateScalar(package);
-                await _unitOfWork.Repository<AuditLog>().AddAsync(new AuditLog {
-                    UserId = userId, Action = "RESOLVE_PACKAGE_OWNERSHIP", EntityType = "BidPackage", EntityId = id,
+                await _unitOfWork.Repository<AuditLog>().AddAsync(new AuditLog
+                {
+                    UserId = userId,
+                    Action = "RESOLVE_PACKAGE_OWNERSHIP",
+                    EntityType = "BidPackage",
+                    EntityId = id,
                     OldValues = JsonSerializer.Serialize(new { ProcuringEntityId = previousEntityId }),
                     NewValues = JsonSerializer.Serialize(new { request.ProcuringEntityId, request.EvidenceReference, request.Note })
                 });
                 await _unitOfWork.SaveChangesAsync();
-                await _unitOfWork.CommitTransactionAsync();
                 return ApiResponse<BidPackageDto>.Ok(MapToBidPackageDto(package));
-            }
-            catch { await _unitOfWork.RollbackTransactionAsync(); throw; }
+            }, System.Data.IsolationLevel.Serializable);
         }
 
         public async Task<ApiResponse<PaginatedList<BidPackageSummaryDto>>> GetBidPackagesAsync(BidPackageFilterParams filter)
@@ -183,7 +185,7 @@ namespace ProcurementSystem.Infrastructure.Services
             return ApiResponse<PaginatedList<BidPackageSummaryDto>>.Ok(paginatedList);
         }
 
-        public async Task<ApiResponse<BidPackageDto>> GetBidPackageByIdAsync(int id)
+        public async Task<ApiResponse<BidPackageDto>> GetBidPackageByIdAsync(int id, int? currentUserId = null, bool isAdmin = false)
         {
             var package = await _unitOfWork.Repository<BidPackage>()
                 .Query()
@@ -200,6 +202,8 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             var dto = MapToBidPackageDto(package);
+            dto.CanManagePackage = isAdmin || (currentUserId.HasValue && currentUserId.Value > 0 &&
+                await PackageWriteAuthorization.CanWriteReadOnlyAsync(_unitOfWork, package, currentUserId.Value, isAdmin));
             var evaluatorCount = await _unitOfWork.Repository<BidPackageEvaluator>().CountAsync(e => e.BidPackageId == id);
             var criteriaWeights = await _unitOfWork.Repository<EvaluationCriteria>().Query().AsNoTracking()
                 .Where(c => c.BidPackageId == id).Select(c => c.Weight).ToListAsync();
@@ -435,162 +439,25 @@ namespace ProcurementSystem.Infrastructure.Services
                 return ApiResponse<BidPackageDto>.Ok(MapToBidPackageDto(package), "Trạng thái không thay đổi.");
             }
 
-            // State Machine Validation
-            if (package.Status == BidPackageStatus.Contracted || package.Status == BidPackageStatus.Awarded)
+            var utcNow = DateTime.UtcNow;
+            var transitionContext = new BidPackageTransitionContext(package, request, _unitOfWork, utcNow);
+            var validationResult = await BidPackageStateMachine.ValidateTransitionAsync(transitionContext);
+            if (!validationResult.IsValid)
             {
-                return ApiResponse<BidPackageDto>.Fail(
-                    $"Gói thầu hiện đang ở trạng thái '{package.Status}'. Không thể thay đổi trạng thái gói thầu một khi đã có kết quả trao thầu hoặc đã ký hợp đồng.");
+                return validationResult.IsForbidden
+                    ? ApiResponse<BidPackageDto>.Forbidden(validationResult.ErrorMessage ?? "Không có quyền thực hiện chuyển trạng thái.")
+                    : ApiResponse<BidPackageDto>.Fail(validationResult.ErrorMessage ?? "Chuyển trạng thái gói thầu không hợp lệ.");
             }
 
-            // Cấm người dùng tự kích hoạt thủ công trạng thái Awarded hoặc Contracted
-            if (request.NewStatus == BidPackageStatus.Awarded || request.NewStatus == BidPackageStatus.Contracted)
+            if (package.Status == BidPackageStatus.Closed &&
+                request.NewStatus == BidPackageStatus.Open &&
+                request.NewDeadline.HasValue)
             {
-                return ApiResponse<BidPackageDto>.Fail(
-                    $"Không thể chuyển trạng thái thủ công sang '{request.NewStatus}'. " +
-                    "Trạng thái 'Awarded' được hệ thống tự động thiết lập khi phê duyệt kết quả trao thầu; " +
-                    "trạng thái 'Contracted' được tự động thiết lập khi hợp đồng kinh tế chính thức có hiệu lực.");
-            }
-
-            // Kiểm tra quy tắc chuyển trạng thái hợp lệ
-            var isValidTransition = (package.Status, request.NewStatus) switch
-            {
-                // Từ Open có thể chuyển sang Closed (Đóng thầu)
-                (BidPackageStatus.Open, BidPackageStatus.Closed) => true,
-
-                // Từ Closed có thể chuyển sang Evaluating (Chấm điểm) hoặc mở lại Open (Gia hạn thầu)
-                (BidPackageStatus.Closed, BidPackageStatus.Evaluating) => true,
-                (BidPackageStatus.Closed, BidPackageStatus.Open) => true,
-
-                // Từ Evaluating chỉ được quay lại Closed nếu chưa có bất kỳ điểm chấm nào
-                (BidPackageStatus.Evaluating, BidPackageStatus.Closed) => true,
-
-                // F5-4: Mở khóa chuyển sang Cancelled (Hủy thầu) từ Draft, Open, Closed, Evaluating
-                                (BidPackageStatus.Open, BidPackageStatus.Cancelled) => true,
-                (BidPackageStatus.Closed, BidPackageStatus.Cancelled) => true,
-                (BidPackageStatus.Evaluating, BidPackageStatus.Cancelled) => true,
-
-                _ => false
-            };
-
-            if (!isValidTransition)
-            {
-                return ApiResponse<BidPackageDto>.Fail(
-                    $"Không thể chuyển trạng thái từ '{package.Status}' sang '{request.NewStatus}'. Quy trình bắt buộc: Đang mở -> Đã đóng -> Đang chấm -> Đã trao thầu -> Đã ký HĐ.");
-            }
-
-            // Kiểm tra bảo mật State Machine P0-1 (Khoản 4 Điều 131 NĐ 24/2024 & Điều 16 Luật Đấu thầu 2023):
-            if (request.NewStatus == BidPackageStatus.Open || request.NewStatus == BidPackageStatus.Closed)
-            {
-                var hasScores = await _unitOfWork.Repository<EvaluationScore>()
-                    .Query()
-                    .AnyAsync(es => es.Criteria.BidPackageId == id || es.BidSubmission.BidPackageId == id);
-
-                var hasWinner = await _unitOfWork.Repository<BidSubmission>()
-                    .Query()
-                    .AnyAsync(bs => bs.BidPackageId == id && (bs.Status == BidSubmissionStatus.Selected || bs.Status == BidSubmissionStatus.Rejected));
-
-                if (hasScores || hasWinner)
-                {
-                    return ApiResponse<BidPackageDto>.Fail(
-                        "Căn cứ Điều 16 Luật Đấu thầu 2023: Tuyệt đối không được phép mở lại hoặc quay lui trạng thái gói thầu " +
-                        "sau khi Tổ chuyên gia đã tiến hành đánh giá chấm điểm hoặc đã có kết quả trao thầu.");
-                }
-            }
-
-            // R2-1: Nếu gia hạn thầu Closed -> Open: Kiểm tra và cập nhật Deadline mới
-            if (package.Status == BidPackageStatus.Closed && request.NewStatus == BidPackageStatus.Open)
-            {
-                if (request.NewDeadline.HasValue)
-                {
-                    if (request.NewDeadline.Value <= DateTime.UtcNow)
-                    {
-                        return ApiResponse<BidPackageDto>.Fail("Thời hạn nộp thầu gia hạn mới (NewDeadline) phải lớn hơn thời điểm hiện tại.");
-                    }
-                    package.Deadline = request.NewDeadline.Value;
-                }
-                else if (package.Deadline <= DateTime.UtcNow)
-                {
-                    return ApiResponse<BidPackageDto>.Fail(
-                        "Gói thầu đã hết hạn nộp thầu. Để mở lại gói thầu (Closed -> Open), bắt buộc phải cung cấp thời hạn nộp thầu mới (NewDeadline) ở tương lai.");
-                }
-            }
-
-            // P2-3: Đóng thầu trước thời hạn (Deadline) bắt buộc phải có lý do
-            if (package.Status == BidPackageStatus.Open && request.NewStatus == BidPackageStatus.Closed)
-            {
-                if (package.Deadline > DateTime.UtcNow && string.IsNullOrWhiteSpace(request.Reason))
-                {
-                    return ApiResponse<BidPackageDto>.Fail(
-                        "Gói thầu chưa hết thời hạn nộp thầu. Nếu muốn đóng thầu trước thời hạn, bắt buộc phải cung cấp lý do/căn cứ pháp lý.");
-                }
-            }
-
-            // F5-4: Hủy thầu bắt buộc phải có lý do theo quy định Luật Đấu thầu 2023
-            if (request.NewStatus == BidPackageStatus.Cancelled)
-            {
-                if (string.IsNullOrWhiteSpace(request.Reason))
-                {
-                    return ApiResponse<BidPackageDto>.Fail("Hủy gói thầu bắt buộc phải có lý do / căn cứ pháp lý hủy thầu theo quy định của Luật Đấu thầu.");
-                }
-
-                var hasActiveContract = await _unitOfWork.Repository<Contract>()
-                    .Query()
-                    .AnyAsync(c => c.BidPackageId == id && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Completed));
-
-                if (hasActiveContract)
-                {
-                    return ApiResponse<BidPackageDto>.Fail("Không thể hủy gói thầu vì đã có hợp đồng kinh tế đang thực hiện hoặc đã hoàn thành.");
-                }
-            }
-
-            // Lựa chọn A: Bắt buộc tiêu chí phải đủ 100% trước khi bắt đầu giai đoạn Chấm điểm (Evaluating)
-            if (request.NewStatus == BidPackageStatus.Evaluating)
-            {
-                var criteriaList = await _unitOfWork.Repository<EvaluationCriteria>()
-                    .Query()
-                    .Where(c => c.BidPackageId == id)
-                    .ToListAsync();
-
-                if (!criteriaList.Any())
-                {
-                    return ApiResponse<BidPackageDto>.Fail("Không thể bắt đầu giai đoạn Chấm điểm. Gói thầu chưa được thiết lập bộ tiêu chí đánh giá.");
-                }
-
-                var totalWeight = criteriaList.Sum(c => c.Weight);
-                if (totalWeight != 100)
-                {
-                    return ApiResponse<BidPackageDto>.Fail(
-                        $"Không thể bắt đầu giai đoạn Chấm điểm. Tổng trọng số bộ tiêu chí phải đạt đúng 100% (Hiện tại: {totalWeight}%).");
-                }
-
-                // Kiểm tra điều kiện Tổ chuyên gia (Ban giám khảo) theo quy định Luật Đấu thầu: Tối thiểu 3 thành viên và là số lẻ
-                var evaluatorsCount = await _unitOfWork.Repository<BidPackageEvaluator>()
-                    .CountAsync(pe => pe.BidPackageId == id);
-
-                if (evaluatorsCount < 3 || evaluatorsCount % 2 == 0)
-                {
-                    return ApiResponse<BidPackageDto>.Fail(
-                        $"Không thể bắt đầu giai đoạn Chấm điểm. Tổ chuyên gia phải có tối thiểu 3 thành viên và số lượng thành viên phải là số lẻ (3, 5, 7,...) theo quy định của Luật Đấu thầu (Hiện tại: {evaluatorsCount} thành viên). Vui lòng phân công đủ giám khảo trước khi chuyển trạng thái.");
-                }
-
-                // Rào chặn nghiệp vụ (Căn cứ Điều 17 Luật Đấu thầu 2023): Không thể chấm điểm khi gói thầu không có hồ sơ dự thầu hợp lệ
-                var validSubmissionsCount = await _unitOfWork.Repository<BidSubmission>()
-                    .CountAsync(s => s.BidPackageId == id && s.Status != BidSubmissionStatus.Withdrawn);
-
-                if (validSubmissionsCount == 0)
-                {
-                    return ApiResponse<BidPackageDto>.Fail(
-                        "Không thể bắt đầu giai đoạn Chấm điểm vì gói thầu không có hồ sơ dự thầu nào được nộp (hoặc tất cả đã rút thầu). Căn cứ Điều 17 Luật Đấu thầu 2023, Bên mời thầu vui lòng báo cáo Người có thẩm quyền để xem xét hủy thầu hoặc gia hạn thời điểm đóng thầu.");
-                }
+                package.Deadline = request.NewDeadline.Value;
             }
 
             // Quy trình Thẩm quyền Phê duyệt (Approval Workflow) - Tránh Bên mời thầu (Procurement) lạm quyền
-            // Áp dụng cho: 1) Đóng thầu trước hạn, 2) Mở lại thầu / Gia hạn, 3) Hủy thầu
-            var isEarlyClose = package.Status == BidPackageStatus.Open && request.NewStatus == BidPackageStatus.Closed && package.Deadline > DateTime.UtcNow;
-            var isReopenOrExtend = package.Status == BidPackageStatus.Closed && request.NewStatus == BidPackageStatus.Open;
-            var isCancel = request.NewStatus == BidPackageStatus.Cancelled;
-
-            if (!isAdmin && (isEarlyClose || isReopenOrExtend || isCancel))
+            if (!isAdmin && BidPackageStateMachine.RequiresApprovalWorkflow(package, request.NewStatus, utcNow))
             {
                 if (string.IsNullOrWhiteSpace(request.Reason))
                 {
@@ -615,13 +482,12 @@ namespace ProcurementSystem.Infrastructure.Services
                     Reason = request.Reason.Trim(),
                     NewDeadline = request.NewDeadline,
                     Status = ApprovalStatus.Pending,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = utcNow
                 };
 
                 await _unitOfWork.Repository<PackageStatusApprovalRequest>().AddAsync(approvalReq);
                 await _unitOfWork.SaveChangesAsync();
 
-                // Gửi thông báo & SignalR đến toàn bộ Admin hệ thống
                 var adminUserIds = await _unitOfWork.Repository<UserRole>()
                     .Query()
                     .Include(ur => ur.Role)
@@ -630,13 +496,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     .Distinct()
                     .ToListAsync();
 
-                var actionLabel = request.NewStatus switch
-                {
-                    BidPackageStatus.Closed => "Đóng thầu trước thời hạn",
-                    BidPackageStatus.Open => "Mở lại / Gia hạn thời gian nộp thầu",
-                    BidPackageStatus.Cancelled => "Hủy gói thầu",
-                    _ => $"Chuyển trạng thái sang {request.NewStatus}"
-                };
+                var actionLabel = BidPackageStateMachine.GetApprovalActionLabel(request.NewStatus);
 
                 if (adminUserIds.Any())
                 {
@@ -806,6 +666,26 @@ namespace ProcurementSystem.Infrastructure.Services
             await _unitOfWork.SaveChangesAsync();
 
             return ApiResponse<bool>.Ok(true, "Xóa tài liệu mời thầu thành công.");
+        }
+
+        public async Task<ApiResponse<FileDownloadResult>> GetBidDocumentForDownloadAsync(int documentId)
+        {
+            var document = await _unitOfWork.Repository<BidDocument>().GetByIdAsync(documentId);
+            if (document == null)
+            {
+                return ApiResponse<FileDownloadResult>.NotFound("Không tìm thấy tài liệu mời thầu.");
+            }
+
+            var contentType = ContentTypeResolver.ResolveByFileName(document.FileName);
+
+            var downloadResult = await _fileStorageService.ResolveDownloadAsync(document.FilePath, document.FileName, contentType);
+            if (!downloadResult.IsRedirect && !downloadResult.IsStream &&
+                (string.IsNullOrEmpty(downloadResult.PhysicalPath) || !File.Exists(downloadResult.PhysicalPath)))
+            {
+                return ApiResponse<FileDownloadResult>.NotFound("Tệp tài liệu không tồn tại trên hệ thống lưu trữ.");
+            }
+
+            return ApiResponse<FileDownloadResult>.Ok(downloadResult);
         }
 
         public async Task<ApiResponse<List<PackageEvaluatorDto>>> GetPackageEvaluatorsAsync(int packageId)

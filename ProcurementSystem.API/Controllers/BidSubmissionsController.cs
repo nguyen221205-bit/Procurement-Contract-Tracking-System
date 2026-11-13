@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ProcurementSystem.API.Extensions;
 using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.BidSubmission;
 using ProcurementSystem.Core.Interfaces;
@@ -86,16 +87,7 @@ namespace ProcurementSystem.API.Controllers
             var roles = GetCurrentUserRoles();
             var result = await _bidSubmissionService.GetSubmissionByIdAsync(id, userId.Value, roles);
 
-            if (!result.Success)
-            {
-                if (result.StatusCode == StatusCodes.Status403Forbidden)
-                {
-                    return StatusCode(StatusCodes.Status403Forbidden, result);
-                }
-                return NotFound(result);
-            }
-
-            return Ok(result);
+            return result.ToActionResult(this, defaultFailureStatusCode: StatusCodes.Status404NotFound);
         }
 
         /// <summary>
@@ -122,16 +114,12 @@ namespace ProcurementSystem.API.Controllers
             var result = await _bidSubmissionService.GetSubmissionsByPackageAsync(
                 bidPackageId, userId.Value, roles);
 
-            if (!result.Success)
+            if (!result.Success && result.StatusCode != StatusCodes.Status403Forbidden)
             {
-                if (result.StatusCode == StatusCodes.Status403Forbidden)
-                {
-                    return StatusCode(StatusCodes.Status403Forbidden, result);
-                }
                 return BadRequest(result);
             }
 
-            return Ok(result);
+            return result.ToActionResult(this);
         }
 
         /// <summary>
@@ -163,6 +151,26 @@ namespace ProcurementSystem.API.Controllers
             }
 
             return Ok(result);
+        }
+
+        /// <summary>
+        /// Nhà thầu kiểm tra hồ sơ dự thầu của chính mình tại một gói thầu cụ thể
+        /// </summary>
+        /// <param name="bidPackageId">Mã gói thầu cần kiểm tra.</param>
+        [HttpGet("api/bid-packages/{bidPackageId:int}/my-submission")]
+        [Authorize(Roles = "Contractor")]
+        [ProducesResponseType(typeof(ApiResponse<BidSubmissionSummaryDto?>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<BidSubmissionSummaryDto?>), StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult<ApiResponse<BidSubmissionSummaryDto?>>> GetMySubmissionByPackage(int bidPackageId)
+        {
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
+            {
+                return Unauthorized(ApiResponse<BidSubmissionSummaryDto?>.Fail("Không xác định được danh tính người dùng."));
+            }
+
+            var result = await _bidSubmissionService.GetMySubmissionByPackageAsync(bidPackageId, userId.Value);
+            return result.ToActionResult(this);
         }
 
         /// <summary>
@@ -217,26 +225,7 @@ namespace ProcurementSystem.API.Controllers
             var roles = GetCurrentUserRoles();
             var result = await _bidSubmissionService.GetSubmissionFileForDownloadAsync(fileId, userId.Value, roles);
 
-            if (!result.Success)
-            {
-                if (result.StatusCode == StatusCodes.Status403Forbidden)
-                {
-                    return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<string>.Forbidden(result.Message));
-                }
-                return NotFound(ApiResponse<string>.Fail(result.Message));
-            }
-
-            if (result.Data!.IsRedirect)
-            {
-                return Redirect(result.Data.RedirectUrl!);
-            }
-
-            if (result.Data.IsStream)
-            {
-                return File(result.Data.FileStream!, result.Data.ContentType, result.Data.FileName);
-            }
-
-            return PhysicalFile(result.Data.PhysicalPath!, result.Data.ContentType, result.Data.FileName);
+            return result.ToSubmissionFileActionResult(this, "Không tìm thấy file đính kèm.");
         }
 
         private int? GetCurrentUserId()

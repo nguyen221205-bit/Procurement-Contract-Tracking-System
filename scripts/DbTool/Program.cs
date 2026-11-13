@@ -39,14 +39,64 @@ static string? ReadDefaultConnectionFromAppSettings(string filePath)
     return null;
 }
 
+static string? ReadConnectionFromDotEnv(string filePath)
+{
+    if (!File.Exists(filePath)) return null;
+    try
+    {
+        var candidateKeys = new[]
+        {
+            "PROCUREMENT_DB_CONN",
+            "ConnectionStrings__DefaultConnection",
+            "DB_CONNECTION_STRING"
+        };
+        var found = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var rawLine in File.ReadAllLines(filePath))
+        {
+            var line = rawLine.Trim();
+            if (string.IsNullOrEmpty(line) || line.StartsWith('#')) continue;
+            var sep = line.IndexOf('=');
+            if (sep <= 0) continue;
+
+            var key = line.Substring(0, sep).Trim();
+            var value = line.Substring(sep + 1).Trim();
+            if (value.Length >= 2 &&
+                ((value[0] == '"' && value[^1] == '"') || (value[0] == '\'' && value[^1] == '\'')))
+            {
+                value = value.Substring(1, value.Length - 2);
+            }
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                found[key] = value;
+            }
+        }
+
+        foreach (var key in candidateKeys)
+        {
+            if (found.TryGetValue(key, out var val)) return val;
+        }
+    }
+    catch
+    {
+        // Bỏ qua nếu tệp .env đang bị khóa hoặc định dạng chưa hoàn chỉnh
+    }
+    return null;
+}
+
 static string? ResolveConnectionString(string repoRoot)
 {
-    var fromEnv = Environment.GetEnvironmentVariable("PROCUREMENT_DB_CONN");
+    var fromEnv = Environment.GetEnvironmentVariable("PROCUREMENT_DB_CONN")
+        ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
+        ?? Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
     if (!string.IsNullOrWhiteSpace(fromEnv)) return fromEnv;
 
     var apiDir = Path.Combine(repoRoot, "ProcurementSystem.API");
     return ReadDefaultConnectionFromAppSettings(Path.Combine(apiDir, "appsettings.Development.json"))
-        ?? ReadDefaultConnectionFromAppSettings(Path.Combine(apiDir, "appsettings.json"));
+        ?? ReadDefaultConnectionFromAppSettings(Path.Combine(apiDir, "appsettings.json"))
+        ?? ReadConnectionFromDotEnv(Path.Combine(apiDir, ".env"))
+        ?? ReadConnectionFromDotEnv(Path.Combine(repoRoot, ".env"));
 }
 
 var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "backup";

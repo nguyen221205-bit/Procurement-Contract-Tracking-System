@@ -6,20 +6,21 @@ using ProcurementSystem.Core.DTOs.Common;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Data;
 using ProcurementSystem.Infrastructure.Entities;
+using ProcurementSystem.Infrastructure.Utilities;
 
 namespace ProcurementSystem.Infrastructure.Services
 {
     public class StorageMigrationService : IStorageMigrationService
     {
         private readonly AppDbContext _context;
-        private readonly SupabaseStorageService _supabaseService;
+        private readonly ICloudFileStorageProvider _supabaseService;
         private readonly StorageSettings _settings;
         private readonly ILogger<StorageMigrationService> _logger;
         private readonly string _baseUploadPath;
 
         public StorageMigrationService(
             AppDbContext context,
-            SupabaseStorageService supabaseService,
+            ICloudFileStorageProvider supabaseService,
             IOptions<StorageSettings> settings,
             ILogger<StorageMigrationService> logger)
         {
@@ -158,21 +159,7 @@ namespace ProcurementSystem.Infrastructure.Services
                     var parts = localRelative.Split('/');
                     var subFolder = parts.Length > 1 ? string.Join('/', parts.Take(parts.Length - 1)) : string.Empty;
                     var fileName = parts.Last();
-
-                    var ext = Path.GetExtension(fileName).ToLowerInvariant();
-                    var contentType = ext switch
-                    {
-                        ".pdf" => "application/pdf",
-                        ".doc" => "application/msword",
-                        ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        ".xls" => "application/vnd.ms-excel",
-                        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        ".png" => "image/png",
-                        ".jpg" or ".jpeg" => "image/jpeg",
-                        ".zip" => "application/zip",
-                        ".rar" => "application/x-rar-compressed",
-                        _ => "application/octet-stream"
-                    };
+                    var contentType = ContentTypeResolver.ResolveByFileName(fileName);
 
                     using var stream = File.OpenRead(filePath);
                     var cloudPath = await _supabaseService.SaveStreamAsync(stream, fileName, contentType, subFolder);

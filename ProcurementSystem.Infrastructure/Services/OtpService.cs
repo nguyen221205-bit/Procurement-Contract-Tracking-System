@@ -44,10 +44,10 @@ namespace ProcurementSystem.Infrastructure.Services
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
             var purpose = string.IsNullOrWhiteSpace(request.Purpose) ? "Register" : request.Purpose.Trim();
 
-            // Kiểm tra cấu hình máy chủ SMTP thực tế
-            var smtpHost = _configuration["Smtp:Host"];
-            var smtpUser = _configuration["Smtp:Username"];
-            var smtpPass = _configuration["Smtp:Password"];
+            // Kiểm tra cấu hình máy chủ SMTP thực tế (hỗ trợ cả appsettings.json và biến môi trường .env)
+            var smtpHost = FirstNonEmpty(Environment.GetEnvironmentVariable("SMTP_HOST"), _configuration["Smtp:Host"]);
+            var smtpUser = FirstNonEmpty(Environment.GetEnvironmentVariable("SMTP_USERNAME"), _configuration["Smtp:Username"]);
+            var smtpPass = FirstNonEmpty(Environment.GetEnvironmentVariable("SMTP_PASSWORD"), _configuration["Smtp:Password"]);
             var isSmtpConfigured = !string.IsNullOrWhiteSpace(smtpHost) &&
                                    !string.IsNullOrWhiteSpace(smtpUser) &&
                                    !string.IsNullOrWhiteSpace(smtpPass);
@@ -188,6 +188,19 @@ namespace ProcurementSystem.Infrastructure.Services
             _cache.Remove(otpKey);
             errorMessage = string.Empty;
             return true;
+        }
+
+        private static string? FirstNonEmpty(params string?[] candidates)
+        {
+            foreach (var value in candidates)
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
         }
     }
 }

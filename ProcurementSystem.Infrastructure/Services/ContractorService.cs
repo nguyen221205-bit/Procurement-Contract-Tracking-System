@@ -7,6 +7,7 @@ using ProcurementSystem.Core.DTOs.Contractor;
 using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
 using ProcurementSystem.Infrastructure.Entities;
+using ProcurementSystem.Infrastructure.Utilities;
 
 using System.Security.Cryptography;
 
@@ -716,6 +717,51 @@ namespace ProcurementSystem.Infrastructure.Services
             using var memoryStream = new MemoryStream();
             workbook.SaveAs(memoryStream);
             return await Task.FromResult(memoryStream.ToArray());
+        }
+
+        public async Task<ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>> GetBusinessLicenseForDownloadAsync(
+            int contractorId, int? currentUserId, bool isInternalStaff)
+        {
+            var contractor = await _unitOfWork.Repository<Contractor>().GetByIdAsync(contractorId);
+            if (contractor == null)
+            {
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.NotFound("Không tìm thấy thông tin nhà thầu.");
+            }
+
+            if (!isInternalStaff && (!currentUserId.HasValue || contractor.UserId != currentUserId.Value))
+            {
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Forbidden(
+                    "Bạn không có quyền xem tệp giấy phép kinh doanh của nhà thầu khác.");
+            }
+
+            if (string.IsNullOrWhiteSpace(contractor.BusinessLicenseFile))
+            {
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.NotFound(
+                    "Nhà thầu chưa tải lên tệp Giấy phép đăng ký kinh doanh.");
+            }
+
+            var originalFileName = Path.GetFileName(contractor.BusinessLicenseFile);
+            var contentType = ContentTypeResolver.ResolveByFileName(originalFileName);
+
+            ProcurementSystem.Core.DTOs.Common.FileDownloadResult downloadResult;
+            try
+            {
+                downloadResult = await _fileStorageService.ResolveDownloadAsync(contractor.BusinessLicenseFile, originalFileName, contentType);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Fail(
+                    $"Đường dẫn tệp không hợp lệ: {ex.Message}", statusCode: 400);
+            }
+
+            if (!downloadResult.IsRedirect && !downloadResult.IsStream &&
+                (string.IsNullOrEmpty(downloadResult.PhysicalPath) || !File.Exists(downloadResult.PhysicalPath)))
+            {
+                return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.NotFound(
+                    "Tệp Giấy phép đăng ký kinh doanh không tồn tại trên hệ thống lưu trữ.");
+            }
+
+            return ApiResponse<ProcurementSystem.Core.DTOs.Common.FileDownloadResult>.Ok(downloadResult);
         }
     }
 }

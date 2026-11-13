@@ -78,5 +78,14 @@ namespace ProcurementSystem.Core.DTOs.Contract
 
         /// <summary>Tổng giá trị điều chỉnh từ các phụ lục hợp đồng đã duyệt.</summary>
         public decimal TotalAdjustedValue => Addenda.Where(a => a.Status == AddendumStatus.Approved).Sum(a => a.AdditionalValue);
+
+        /// <summary>Quyền chỉnh sửa điều khoản, chuyển trạng thái, quản lý mốc/bảo lãnh/phụ lục/đánh giá hợp đồng.</summary>
+        public bool CanManageContract { get; set; }
+
+        /// <summary>Quyền xác nhận nghiệm thu kỹ thuật hiện trường (Maker - Officer của Bên mời thầu).</summary>
+        public bool CanTechnicalReview { get; set; }
+
+        /// <summary>Quyền ký phê duyệt giải ngân (Checker - có văn bản ủy quyền SigningAuthority hợp lệ).</summary>
+        public bool CanApproveDisbursement { get; set; }
     }
 }

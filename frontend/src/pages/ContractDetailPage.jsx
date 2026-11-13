@@ -161,6 +161,18 @@ export const ContractDetailPage = () => {
   const sumMilestones = contract.allocatedAmount;
   const remainingBudgetToAllocate = contract.unallocatedAmount;
   const isBudgetFullyAllocated = contract.isFullyAllocated === true;
+  const canManageContract =
+    typeof contract?.canManageContract === 'boolean'
+      ? contract.canManageContract
+      : isAdminOrProcurement;
+  const canTechnicalReview =
+    typeof contract?.canTechnicalReview === 'boolean'
+      ? contract.canTechnicalReview
+      : isAdminOrProcurement && !isAdmin;
+  const canApproveDisbursement =
+    typeof contract?.canApproveDisbursement === 'boolean'
+      ? contract.canApproveDisbursement
+      : isAdminOrProcurement && !isAdmin;
 
   const isContractFinished = contract.status === 'Completed' || contract.status === 'Terminated' || contract.status === 2 || contract.status === 3;
   const hasNearExpiryGuarantees = contract.guarantees?.some((g) => g.isNearExpiry);
@@ -218,7 +230,7 @@ export const ContractDetailPage = () => {
               </p>
             </div>
           </div>
-          {isAdminOrProcurement && (
+          {canManageContract && (
             <button
               type="button"
               onClick={() => setIsEvaluationModalOpen(true)}
@@ -285,7 +297,7 @@ export const ContractDetailPage = () => {
 
           {/* Action buttons (Admin / Procurement) */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {isAdminOrProcurement && (
+            {canManageContract && (
               <>
                 {/* Đổi trạng thái: Chuyển sang Active */}
                 {(contract.status === 'Draft' || contract.status === 0) && (
@@ -516,7 +528,7 @@ export const ContractDetailPage = () => {
                     <span>Tải về</span>
                   </button>
 
-                  {isAdminOrProcurement && (
+                  {canManageContract && (
                     <button
                       type="button"
                       onClick={() => setIsUploadModalOpen(true)}
@@ -531,7 +543,7 @@ export const ContractDetailPage = () => {
             ) : (
               <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center space-y-2">
                 <p className="text-xs text-slate-500">Chưa tải lên bản scan hợp đồng có chữ ký đóng dấu.</p>
-                {isAdminOrProcurement && (
+                {canManageContract && (
                   <button
                     type="button"
                     onClick={() => setIsUploadModalOpen(true)}
@@ -657,7 +669,7 @@ export const ContractDetailPage = () => {
                     </p>
                   </div>
 
-                  {isAdminOrProcurement && (
+                  {canManageContract && (
                     <button
                       type="button"
                       onClick={() => {
@@ -717,7 +729,7 @@ export const ContractDetailPage = () => {
                     <p className="text-xs text-slate-400 max-w-xs mx-auto">
                       Hợp đồng cần được phân bổ các mốc hoàn thành để tiến hành nghiệm thu và giải ngân tiền.
                     </p>
-                    {isAdminOrProcurement && (
+                    {canManageContract && (
                       <button
                         type="button"
                         onClick={() => {
@@ -823,7 +835,7 @@ export const ContractDetailPage = () => {
                             {/* Cụm Action Buttons cho Mốc (Maker - Checker Workflow) */}
                             <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-center">
                               {/* Nút 1: Xác nhận Kỹ thuật Hiện trường (Maker) */}
-                              {isAdminOrProcurement && isMilestonePending && (
+                              {canTechnicalReview && isMilestonePending && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -839,7 +851,7 @@ export const ContractDetailPage = () => {
                               )}
 
                               {/* Nút 2: Phê duyệt Nghiệm thu & Giải ngân (Checker) */}
-                              {isAdminOrProcurement && isMilestonePending && (
+                              {canApproveDisbursement && isMilestonePending && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -865,7 +877,7 @@ export const ContractDetailPage = () => {
                               )}
 
                               {/* Sửa mốc (Khi chưa Completed) */}
-                              {isAdminOrProcurement && !isMilestoneCompleted && (
+                              {canManageContract && !isMilestoneCompleted && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -880,7 +892,7 @@ export const ContractDetailPage = () => {
                               )}
 
                               {/* Xóa mốc (Khi chưa Completed) */}
-                              {isAdminOrProcurement && !isMilestoneCompleted && (
+                              {canManageContract && !isMilestoneCompleted && (
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteMilestone(m.id)}
@@ -904,7 +916,7 @@ export const ContractDetailPage = () => {
             {activeTab === 'guarantees' && (
               <ContractGuaranteeTab
                 contract={contract}
-                isAdminOrProcurement={isAdminOrProcurement}
+                isAdminOrProcurement={canManageContract}
                 onOpenAddModal={() => setIsGuaranteeModalOpen(true)}
                 onRefresh={() => fetchData(true)}
               />
@@ -914,7 +926,7 @@ export const ContractDetailPage = () => {
             {activeTab === 'addenda' && (
               <ContractAddendumTab
                 contract={contract}
-                isAdminOrProcurement={isAdminOrProcurement}
+                isAdminOrProcurement={canManageContract}
                 onOpenAddModal={() => setIsAddendumModalOpen(true)}
                 onRefresh={() => fetchData(true)}
               />
@@ -924,7 +936,7 @@ export const ContractDetailPage = () => {
             {activeTab === 'evaluation' && (
               <ContractorEvaluationTab
                 contract={contract}
-                isAdminOrProcurement={isAdminOrProcurement}
+                isAdminOrProcurement={canManageContract}
                 onOpenEvaluationModal={() => setIsEvaluationModalOpen(true)}
               />
             )}
