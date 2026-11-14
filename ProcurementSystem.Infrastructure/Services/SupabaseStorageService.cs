@@ -315,8 +315,9 @@ namespace ProcurementSystem.Infrastructure.Services
             var baseUploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
             var localRelativePath = key.Replace('/', Path.DirectorySeparatorChar);
             var localFullPath = Path.Combine(baseUploadsDir, localRelativePath);
+            var fileExt = Path.GetExtension(originalFileName ?? key);
 
-            if (!_sampleFallbackProvider.NeedsFallbackGeneration(localFullPath))
+            if (await IsValidLocalCopyAsync(localFullPath, fileExt))
             {
                 _logger.LogInformation("Tìm thấy tệp fallback cục bộ hợp lệ tại {Path}. Phục vụ stream tệp từ máy chủ nội bộ.", localFullPath);
                 var localBytes = await File.ReadAllBytesAsync(localFullPath);
@@ -341,6 +342,88 @@ namespace ProcurementSystem.Infrastructure.Services
             }
 
             return FileDownloadResult.FromStream(new MemoryStream(validPdfBytes), originalFileName, "application/pdf");
+        }
+
+        private static async Task<bool> IsValidLocalCopyAsync(string localFullPath, string? extension)
+        {
+            if (!File.Exists(localFullPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                var fileInfo = new FileInfo(localFullPath);
+                if (fileInfo.Length == 0)
+                {
+                    return false;
+                }
+
+                var ext = (extension ?? Path.GetExtension(localFullPath)).ToLowerInvariant();
+                if (ext == ".pdf")
+                {
+                    if (fileInfo.Length < 20)
+                    {
+                        return false;
+                    }
+
+                    var headerBytes = new byte[Math.Min(1024, (int)fileInfo.Length)];
+                    await using (var fs = File.OpenRead(localFullPath))
+                    {
+                        var read = await fs.ReadAsync(headerBytes, 0, headerBytes.Length);
+                        if (read < 4)
+                        {
+                            return false;
+                        }
+                    }
+
+                    // Kiểm tra magic bytes %PDF
+                    if (headerBytes[0] != 0x25 || headerBytes[1] != 0x50 || headerBytes[2] != 0x44 || headerBytes[3] != 0x46)
+                    {
+                        return false;
+                    }
+
+                    if (fileInfo.Length < 2000)
+                    {
+                        var sample = System.Text.Encoding.ASCII.GetString(headerBytes);
+                        var trimmed = sample.TrimStart();
+                        if (sample.Contains("Project Paused", StringComparison.OrdinalIgnoreCase) ||
+                            sample.Contains("HE THONG DAU THAU DIEN TU", StringComparison.OrdinalIgnoreCase) ||
+                            trimmed.StartsWith("<!DOCTYPE html", StringComparison.OrdinalIgnoreCase) ||
+                            trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+
+                // Đối với các định dạng khác (.png, .jpg, .docx, .zip, .xlsx...):
+                if (fileInfo.Length < 2000)
+                {
+                    var headerBytes = new byte[Math.Min(1024, (int)fileInfo.Length)];
+                    await using (var fs = File.OpenRead(localFullPath))
+                    {
+                        _ = await fs.ReadAsync(headerBytes, 0, headerBytes.Length);
+                    }
+                    var sample = System.Text.Encoding.ASCII.GetString(headerBytes);
+                    var trimmed = sample.TrimStart();
+                    if (sample.Contains("Project Paused", StringComparison.OrdinalIgnoreCase) ||
+                        sample.Contains("HE THONG DAU THAU DIEN TU", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("<!DOCTYPE html", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static async Task<bool> IsEmptyOrStubNoticeAsync(Stream stream)

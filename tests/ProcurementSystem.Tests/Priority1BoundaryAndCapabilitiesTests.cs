@@ -1,6 +1,11 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using ProcurementSystem.API.Extensions;
+using ProcurementSystem.Core.DTOs;
 using ProcurementSystem.Core.DTOs.BidPackage;
+using ProcurementSystem.Core.DTOs.Common;
 using ProcurementSystem.Core.DTOs.Contract;
 using ProcurementSystem.Core.Enums;
 using ProcurementSystem.Core.Interfaces;
@@ -294,7 +299,12 @@ namespace ProcurementSystem.Tests
             Assert.False(signerContract.Data.CanTechnicalReview);
             Assert.True(signerContract.Data.CanApproveDisbursement);
 
-            // 4. Outsider B: Blocked from downloading scanned contract (403) and viewing evaluation (403), whereas Signer A of Entity A can view evaluation (200)
+            // 4. Outsider B: Blocked from downloading scanned contract (403), viewing evaluation (403), and viewing contract details (403)
+            var outsiderContract = await contractService.GetContractByIdAsync(seed.contractA.Id, seed.outsiderB.Id, isInternalStaff: true, isAdmin: false);
+            Assert.False(outsiderContract.Success);
+            Assert.Equal(403, outsiderContract.StatusCode);
+            Assert.Null(outsiderContract.Data);
+
             var outsiderScan = await contractService.GetScannedContractForDownloadAsync(seed.contractA.Id, seed.outsiderB.Id, isInternalStaff: true, isAdmin: false);
             Assert.False(outsiderScan.Success);
             Assert.Equal(403, outsiderScan.StatusCode);
@@ -302,6 +312,31 @@ namespace ProcurementSystem.Tests
             var outsiderEval = await contractService.GetContractEvaluationAsync(seed.contractA.Id, seed.outsiderB.Id, isInternalStaff: true, isAdmin: false);
             Assert.False(outsiderEval.Success);
             Assert.Equal(403, outsiderEval.StatusCode);
+
+            // 5. Revoked Officer A: Membership is revoked -> Blocked from viewing contract details (403)
+            var revokedContract = await contractService.GetContractByIdAsync(seed.contractA.Id, seed.revokedOfficerA.Id, isInternalStaff: true, isAdmin: false);
+            Assert.False(revokedContract.Success);
+            Assert.Equal(403, revokedContract.StatusCode);
+            Assert.Null(revokedContract.Data);
+
+            // 6. Admin & Other Active Officer of Entity A: Can view contract details (200)
+            var adminContract = await contractService.GetContractByIdAsync(seed.contractA.Id, 9999, isInternalStaff: true, isAdmin: true);
+            Assert.True(adminContract.Success);
+            Assert.NotNull(adminContract.Data);
+
+            var otherOfficerContract = await contractService.GetContractByIdAsync(seed.contractA.Id, seed.officerOtherA.Id, isInternalStaff: true, isAdmin: false);
+            Assert.True(otherOfficerContract.Success);
+            Assert.NotNull(otherOfficerContract.Data);
+
+            // 7. Contractor 1 (Owner of contractA) vs Contractor 2 (Different contractor)
+            var c1Contract = await contractService.GetContractByIdAsync(seed.contractA.Id, seed.contractorUser1.Id, isInternalStaff: false, isAdmin: false);
+            Assert.True(c1Contract.Success);
+            Assert.NotNull(c1Contract.Data);
+
+            var c2Contract = await contractService.GetContractByIdAsync(seed.contractA.Id, seed.contractorUser2.Id, isInternalStaff: false, isAdmin: false);
+            Assert.False(c2Contract.Success);
+            Assert.Equal(403, c2Contract.StatusCode);
+            Assert.Null(c2Contract.Data);
 
             var entityStaffEval = await contractService.GetContractEvaluationAsync(seed.contractA.Id, seed.signerA.Id, isInternalStaff: true, isAdmin: false);
             Assert.True(entityStaffEval.Success);
@@ -332,6 +367,43 @@ namespace ProcurementSystem.Tests
                 seed.contractor2.Id, seed.contractorUser2.Id, isInternalStaff: false);
             Assert.False(missingRes.Success);
             Assert.Equal(404, missingRes.StatusCode);
+        }
+
+        private class DummyTestController : ControllerBase
+        {
+        }
+
+        [Fact]
+        public void ToFileActionResult_PreservesHttpErrorCodes_BadRequest_Forbidden_NotFound()
+        {
+            var controller = new DummyTestController();
+
+            // 1. Lỗi 400 BadRequest (ví dụ: đường dẫn hỏng hoặc tham số không hợp lệ)
+            var badRequestResponse = ApiResponse<FileDownloadResult>.Fail("Đường dẫn tệp không hợp lệ: invalid path", statusCode: StatusCodes.Status400BadRequest);
+            var badResult = badRequestResponse.ToFileActionResult(controller);
+            var badObjectResult = Assert.IsType<BadRequestObjectResult>(badResult);
+            Assert.Equal(StatusCodes.Status400BadRequest, badObjectResult.StatusCode);
+
+            // 2. Lỗi 403 Forbidden (ví dụ: không có quyền xem tệp của đơn vị khác)
+            var forbiddenResponse = ApiResponse<FileDownloadResult>.Forbidden("Bạn không có quyền truy cập tệp tài liệu này.");
+            var forbiddenResult = forbiddenResponse.ToFileActionResult(controller);
+            var forbidObjectResult = Assert.IsType<ObjectResult>(forbiddenResult);
+            Assert.Equal(StatusCodes.Status403Forbidden, forbidObjectResult.StatusCode);
+
+            // 3. Lỗi 404 NotFound (ví dụ: tệp chưa tải lên hoặc không tồn tại)
+            var notFoundResponse = ApiResponse<FileDownloadResult>.NotFound("Không tìm thấy tệp tài liệu.");
+            var notFoundResult = notFoundResponse.ToFileActionResult(controller);
+            var notFoundObjectResult = Assert.IsType<NotFoundObjectResult>(notFoundResult);
+            Assert.Equal(StatusCodes.Status404NotFound, notFoundObjectResult.StatusCode);
+
+            // 4. Luồng tải tệp thành công (200 OK FileStreamResult)
+            var memoryStream = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+            var okResponse = ApiResponse<FileDownloadResult>.Ok(
+                FileDownloadResult.FromStream(memoryStream, "hop_dong.pdf", "application/pdf"));
+            var okResult = okResponse.ToFileActionResult(controller);
+            var fileStreamResult = Assert.IsType<FileStreamResult>(okResult);
+            Assert.Equal("application/pdf", fileStreamResult.ContentType);
+            Assert.Equal("hop_dong.pdf", fileStreamResult.FileDownloadName);
         }
 
         [Theory]

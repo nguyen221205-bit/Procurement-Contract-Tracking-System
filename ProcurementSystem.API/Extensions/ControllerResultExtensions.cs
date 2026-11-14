@@ -70,7 +70,7 @@ namespace ProcurementSystem.API.Extensions
         {
             if (!result.Success || result.Data == null)
             {
-                var statusCode = result.StatusCode >= 400 && result.StatusCode != StatusCodes.Status400BadRequest
+                var statusCode = result.StatusCode >= 400
                     ? result.StatusCode
                     : StatusCodes.Status404NotFound;
 
@@ -78,9 +78,13 @@ namespace ProcurementSystem.API.Extensions
                     !string.IsNullOrWhiteSpace(result.Message) ? result.Message : fallbackMessage,
                     statusCode: statusCode);
 
-                return statusCode == StatusCodes.Status404NotFound
-                    ? controller.NotFound(payload)
-                    : controller.StatusCode(statusCode, payload);
+                return statusCode switch
+                {
+                    StatusCodes.Status400BadRequest => controller.BadRequest(payload),
+                    StatusCodes.Status403Forbidden => controller.StatusCode(StatusCodes.Status403Forbidden, payload),
+                    StatusCodes.Status404NotFound => controller.NotFound(payload),
+                    _ => controller.StatusCode(statusCode, payload)
+                };
             }
 
             return result.Data.ToFileActionResult(controller, fallbackMessage);

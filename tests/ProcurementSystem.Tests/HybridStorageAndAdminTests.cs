@@ -378,7 +378,7 @@ namespace ProcurementSystem.Tests
 
             // Mock IAmazonS3 trả về ciphertext stream của tệp PSEN
             var mockS3 = new Mock<IAmazonS3>();
-            mockS3.Setup(s => s.GetObjectAsync(It.Is<GetObjectRequest>(r => r.Key == "contracts/old_encrypted.pdf"), default))
+            mockS3.Setup(s => s.GetObjectAsync(It.Is<GetObjectRequest>(r => r.Key == "contracts/old_encrypted.pdf"), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new GetObjectResponse
                   {
                       ResponseStream = new MemoryStream(encryptedBytes)
@@ -429,7 +429,7 @@ namespace ProcurementSystem.Tests
             var cryptoWithoutKey = new FileCryptoCompressionService(settings, NullLogger<FileCryptoCompressionService>.Instance);
 
             var mockS3 = new Mock<IAmazonS3>();
-            mockS3.Setup(s => s.GetObjectAsync(It.IsAny<GetObjectRequest>(), default))
+            mockS3.Setup(s => s.GetObjectAsync(It.IsAny<GetObjectRequest>(), It.IsAny<CancellationToken>()))
                   .ReturnsAsync(new GetObjectResponse
                   {
                       ResponseStream = new MemoryStream(encryptedBytes)
@@ -492,6 +492,90 @@ namespace ProcurementSystem.Tests
 
             Assert.True(guaranteePdf.Length > 500);
             Assert.Equal(0x25, guaranteePdf[0]);
+        }
+
+        [Fact]
+        public async Task DocumentSampleFallbackProvider_NeedsFallbackGeneration_IdentifiesEmptyStubAndInvalidPdfs()
+        {
+            var provider = DocumentSampleFallbackProvider.Instance;
+
+            // 1. File không tồn tại
+            var nonExistentPath = Path.Combine(Path.GetTempPath(), $"not_exist_{Guid.NewGuid():N}.pdf");
+            Assert.True(provider.NeedsFallbackGeneration(nonExistentPath));
+
+            // 2. File rỗng (0 bytes)
+            var emptyPath = Path.Combine(Path.GetTempPath(), $"empty_{Guid.NewGuid():N}.pdf");
+            await File.WriteAllBytesAsync(emptyPath, Array.Empty<byte>());
+            _tempFilesToCleanup.Add(emptyPath);
+            Assert.True(provider.NeedsFallbackGeneration(emptyPath));
+
+            // 3. File stub notice HTML (chứa Project Paused)
+            var stubHtmlPath = Path.Combine(Path.GetTempPath(), $"stub_{Guid.NewGuid():N}.pdf");
+            await File.WriteAllTextAsync(stubHtmlPath, "<html><body>Project Paused</body></html>");
+            _tempFilesToCleanup.Add(stubHtmlPath);
+            Assert.True(provider.NeedsFallbackGeneration(stubHtmlPath));
+
+            // 4. File PDF hợp lệ (bắt đầu bằng %PDF và có dung lượng > 20 bytes)
+            var validPdfPath = Path.Combine(Path.GetTempPath(), $"valid_{Guid.NewGuid():N}.pdf");
+            await File.WriteAllBytesAsync(validPdfPath, Encoding.ASCII.GetBytes("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF"));
+            _tempFilesToCleanup.Add(validPdfPath);
+            Assert.False(provider.NeedsFallbackGeneration(validPdfPath));
+
+            // 5. File non-PDF hợp lệ (ví dụ ảnh .png 120 bytes dữ liệu hợp lệ)
+            var validPngPath = Path.Combine(Path.GetTempPath(), $"valid_{Guid.NewGuid():N}.png");
+            var dummyPngBytes = new byte[120];
+            new Random(42).NextBytes(dummyPngBytes);
+            await File.WriteAllBytesAsync(validPngPath, dummyPngBytes);
+            _tempFilesToCleanup.Add(validPngPath);
+            Assert.False(provider.NeedsFallbackGeneration(validPngPath));
+        }
+
+        [Fact]
+        public async Task SupabaseStorageService_ResolveDownloadAsync_WhenLocalCopyIsCorruptOrEmpty_ReplacesWithValidFallback()
+        {
+            var settings = Options.Create(new StorageSettings
+            {
+                Provider = "Supabase",
+                Supabase = new SupabaseStorageConfig
+                {
+                    BucketName = "procurement-documents"
+                }
+            });
+
+            var supabaseService = new SupabaseStorageService(
+                settings,
+                _cryptoService,
+                NullLogger<SupabaseStorageService>.Instance);
+
+            var key = $"contracts/test_corrupt_{Guid.NewGuid():N}.pdf";
+            var baseUploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+            var localRelativePath = key.Replace('/', Path.DirectorySeparatorChar);
+            var localFullPath = Path.Combine(baseUploadsDir, localRelativePath);
+
+            var dir = Path.GetDirectoryName(localFullPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            // Ghi file rỗng vào bản sao local
+            await File.WriteAllBytesAsync(localFullPath, Array.Empty<byte>());
+            _tempFilesToCleanup.Add(localFullPath);
+
+            // Act: Khi tải, service phát hiện bản sao local rỗng -> tự động sinh tài liệu chuẩn và ghi đè
+            var result = await supabaseService.ResolveDownloadAsync($"supabase://{key}", "test_doc.pdf");
+
+            // Assert: Kết quả trả về phải là PDF hợp lệ, không phải 0 bytes
+            Assert.NotNull(result);
+            Assert.True(result.FileStream.Length > 500);
+
+            var header = new byte[4];
+            result.FileStream.Position = 0;
+            _ = await result.FileStream.ReadAsync(header, 0, 4);
+            Assert.Equal((byte)'%', header[0]);
+            Assert.Equal((byte)'P', header[1]);
+            Assert.Equal((byte)'D', header[2]);
+            Assert.Equal((byte)'F', header[3]);
         }
     }
 }

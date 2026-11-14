@@ -161,7 +161,13 @@ namespace ProcurementSystem.Infrastructure.Services
                 .FirstOrDefaultAsync(c => c.Id == id);
             if (contract == null)
             {
-                return ApiResponse<ContractDto>.Fail("Không tìm thấy hợp đồng.");
+                return ApiResponse<ContractDto>.NotFound("Không tìm thấy hợp đồng.");
+            }
+
+            if (isInternalStaff && !isAdmin &&
+                !await PackageWriteAuthorization.CanReadEntityStaffAsync(_unitOfWork, contract.BidPackage, userId, isAdmin))
+            {
+                return ApiResponse<ContractDto>.Forbidden("Bạn không có quyền xem hợp đồng thuộc đơn vị mời thầu khác.");
             }
 
             // Contractor chỉ xem hợp đồng của mình
@@ -175,7 +181,6 @@ namespace ProcurementSystem.Infrastructure.Services
                 {
                     return ApiResponse<ContractDto>.Forbidden("Bạn không có quyền xem hợp đồng này.");
                 }
-
             }
 
             var dto = MapToDto(contract);

@@ -20,7 +20,12 @@ namespace ProcurementSystem.Infrastructure.Services
             try
             {
                 var fileInfo = new FileInfo(physicalPath);
-                if (fileInfo.Length > 0 && fileInfo.Length < 2000)
+                if (fileInfo.Length == 0)
+                {
+                    return true;
+                }
+
+                if (fileInfo.Length < 2000)
                 {
                     var headerBytes = new byte[Math.Min(1024, (int)fileInfo.Length)];
                     using (var fs = File.OpenRead(physicalPath))
@@ -29,7 +34,11 @@ namespace ProcurementSystem.Infrastructure.Services
                     }
 
                     var contentSample = System.Text.Encoding.ASCII.GetString(headerBytes);
-                    if (contentSample.Contains("Project Paused") || contentSample.Contains("HE THONG DAU THAU DIEN TU"))
+                    var trimmed = contentSample.TrimStart();
+                    if (contentSample.Contains("Project Paused", StringComparison.OrdinalIgnoreCase) ||
+                        contentSample.Contains("HE THONG DAU THAU DIEN TU", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("<!DOCTYPE html", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase))
                     {
                         return true;
                     }
